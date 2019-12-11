@@ -1,0 +1,672 @@
+---
+title: "Combined General, DxTerity, ABC, MS, OCRD, MDFL, ORDRCC.13-19, ORDRCC RNAseq data, BLAST"
+author: "Miles Smith"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{css, echo=FALSE}
+    body .main-container {
+      max-width: 1500px !important;
+      width: 1500px !important;
+    }
+    body {
+      max-width: 1500px !important;
+    }
+```
+
+```{r setup, include=FALSE}
+options(width = 1200)
+knitr::opts_chunk$set(echo = FALSE)
+theme_set(theme_cowplot())
+loadd(annotation_info,
+  annotated_module_scores,
+  annotated_modules,
+  disp_plot,
+  group_pal,
+  ifn_scores,
+  inflammation_scores,
+  ifn_scores_with_viral,
+  inflammation_scores_with_viral,
+  ISGs,
+  ldg_scores,
+  md,
+  md_cat_data,
+  md_dupes,
+  md_num_data,
+  module_ISGs,
+  module_scores,
+  module_tbl,
+  pca_qc,
+  pca_plot,
+  pca_plot2,
+  pca_results,
+  project_pal,
+  removed_outliers,
+  res,
+  sample_dendrogram,
+  sample_dists,
+  sampleDistMatrix,
+  up_table,
+  down_table,
+  top_up,
+  top_down,
+  tx_files,
+  umap_plot2,
+  umap_plot,
+  umap_results,
+  viral_transcripts,
+  vsd_exprs)
+```
+
+# Data processing of RNAseq data
+
+Overview of sample characteristics:
+
+```{r fig.height=6, fig.width=6}
+show_plot(md_cat_data, high_cardinality=1, col_palette = 3)
+```
+
+```{r}
+show_plot(md_num_data, col_palette = 3)
+```
+
+Breakdown of the source of samples:
+
+```{r}
+md %>%
+  tabyl(project) %>%
+  adorn_pct_formatting(digits = 2) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = FALSE) %>%
+  column_spec(1, bold = TRUE, border_right = TRUE, width = "10em") %>%
+  column_spec(2, border_right = TRUE, width = "10em") %>%
+  column_spec(3, border_right = FALSE, width = "10em")
+
+md %>%
+  tabyl(study_group) %>%
+  adorn_pct_formatting(digits = 2) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = FALSE) %>%
+  column_spec(1, bold = TRUE, border_right = TRUE, width = "10em") %>%
+  column_spec(2, border_right = TRUE, width = "10em") %>%
+  column_spec(3, border_right = FALSE, width = "10em")
+
+md %>%
+  tabyl(disease_class) %>%
+  adorn_pct_formatting(digits = 2) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = FALSE) %>%
+  column_spec(1, bold = TRUE, border_right = TRUE, width = "10em") %>%
+  column_spec(2, border_right = TRUE, width = "10em") %>%
+  column_spec(3, border_right = FALSE, width = "10em")
+
+```
+
+```{r}
+md %>% 
+  tabyl(run_id, disease_class) %>%
+  adorn_totals("col") %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = FALSE) %>%
+  column_spec(1, border_right = TRUE, bold = TRUE, width = "10em") %>%
+  column_spec(2, border_right = TRUE, width = "10em") %>%
+  column_spec(3, border_right = TRUE, width = "10em") %>%
+  column_spec(4, border_right = FALSE, width = "10em")
+```
+
+```{r echo=FALSE}
+message(str_glue("{length(md$sample_name)} samples selected for analysis"))
+message(str_glue("{length(names(tx_files))} files found"))
+if (!all(names(tx_files) %in% md$sample_name)){
+  message("The following files do not have a matching metadata entry:")
+  print(names(tx_files)[(names(tx_files) %nin% md$sample_name)])
+} else {
+  message("All files match a metadata entry.")
+}
+
+if (!all(md$sample_name %in% names(tx_files))){
+  message("A count file was not found for the following selected samples:")
+  print(md$sample_name[(md$sample_name %nin% names(tx_files))])
+} else {
+  message("All expected files found.")
+}
+```
+
+## Sample QC filtering
+
+Samples with a PC1 zscore > 2 (those that fall outside the green lines below) were dropped from analysis.
+```{r, fig.width=6, fig.height=6}
+pca_qc %>% ggplot(aes(x = PC1,
+                      y = PC2,
+                      color = zscore)) +
+  geom_point(alpha = 0.5) +
+  geom_vline(aes(xintercept = (3*sd(.data$PC1)) + mean(.data$PC1)),
+             color = "red") +
+  geom_vline(aes(xintercept = -(3*sd(.data$PC1)) + mean(.data$PC1)),
+             color = "red") +
+  geom_vline(aes(xintercept = (2*sd(.data$PC1)) + mean(.data$PC1)),
+             color = "green") +
+  geom_vline(aes(xintercept = -(2*sd(.data$PC1)) + mean(.data$PC1)),
+             color = "green") +
+  scale_color_gradient(low = "grey90",high = "red")
+```
+
+```{r}
+if (length(removed_outliers) > 0) {
+  message("Removing the following samples:")
+  md %>%
+    filter(sample_name %in% removed_outliers) %>%
+    kable() %>%
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+      full_width = FALSE)
+}
+```
+
+### Overall correlation between samples
+
+```{r, fig.width=12, fig.height=9}
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows = sample_dists,
+         clustering_distance_cols = sample_dists, 
+         annotation_row = annotation_info,
+         show_rownames = FALSE,
+         show_colnames = TRUE,
+         annotation_colors = group_pal,
+         angle_col = 45)
+```
+
+# Data quality
+
+##
+```{r}
+plotMA(res, ylim = c(-2,2))
+```
+
+## Dispersion estimates
+```{r}
+disp_plot
+```
+
+# Differential Gene Expression {.tabset}
+
+```{r}
+print("Log fold change results:")
+summary(res)
+```
+
+## 25 genes with largest negative log-fold change in SLE
+```{r}
+down_table %>%
+  dplyr::select(-baseMean) %>%
+  dplyr::filter(log2FoldChange > 0) %>%
+  arrange(desc(log2FoldChange)) %>%
+  mutate(
+    gene = cell_spec(gene,
+                     bold = TRUE),
+    padj = cell_spec(padj,
+                     color = "white",
+                     bold = TRUE,
+                     background = spec_color(padj)),
+    log2FoldChange = color_bar("tomato")(log2FoldChange)) %>%
+  ungroup() %>%
+  rename(!!paste0("pvalue", footnote_marker_symbol(1)) := pvalue,
+         !!paste0("stat", footnote_marker_symbol(2)) := stat,
+         !!paste0("padj", footnote_marker_symbol(3)) := padj,
+         "lfc standard error" = lfcSE) %>%
+  kable(escape = FALSE) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = TRUE,
+    fixed_thead = TRUE) %>%
+  footnote(symbol = c("Wald test p-values", "Wald statistic", "Benjamini–Hochberg adjusted value")) %>%
+  column_spec(2, color = "black")
+```
+
+## 25 genes with largest positive log-fold change in SLE
+```{r}
+up_table %>%
+  select(-baseMean) %>%
+  filter(log2FoldChange > 0) %>%
+  arrange(desc(log2FoldChange)) %>%
+  mutate(
+    gene = cell_spec(gene,
+                     bold = TRUE),
+    padj = cell_spec(padj,
+                     color = "white",
+                     bold = ifelse(pvalue < 0.05, T, F),
+                     background = spec_color(padj)),
+    log2FoldChange = color_bar("lightgreen")(log2FoldChange)) %>%
+  ungroup() %>%
+  rename(!!paste0("pvalue", footnote_marker_symbol(1)) := pvalue,
+         !!paste0("stat", footnote_marker_symbol(2)) := stat,
+         !!paste0("padj", footnote_marker_symbol(3)) := padj,
+         "lfc standard error" = lfcSE) %>%
+  kable(escape = FALSE) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = TRUE,
+    fixed_thead = TRUE) %>%
+  footnote(symbol = c("Wald test p-values", "Wald statistic", "Benjamini–Hochberg adjusted value")) %>%
+  column_spec(2, color = "black")
+```
+
+## Expression of top DE genes:
+
+```{r, fig.width=12, fig.height=9}
+range_bound = 4
+zscore_range <- c(-range_bound:range_bound)
+t(vsd_exprs)[,unique(c(top_up, top_down))] %>% 
+    pheatmap(
+      scale = 'column',
+      fontsize_row = 6, 
+      fontsize_col = 6, 
+      annotation_row = annotation_info,
+      annotation_colors = group_pal,
+      angle_col = 315,
+      breaks = zscore_range,
+      color = viridis(n = length(zscore_range)-1, option = "D"),
+      gaps_col = class_gaps,
+      border_color = NA
+      )
+```
+
+## Expression of selected interferon-stimulated genes:
+```{r, fig.width=10, fig.height=9}
+range_bound = 4
+zscore_range <- c(-range_bound:range_bound)
+t(vsd_exprs)[,ISGs] %>%
+    pheatmap(
+      scale = 'column',
+      fontsize_row = 6,
+      fontsize_col = 6,
+      annotation_row = annotation_info,
+      annotation_colors = group_pal,
+      angle_col = 315,
+      breaks = zscore_range,
+      color = viridis(n = length(zscore_range)-1, option = "D"),
+      gaps_col = class_gaps,
+      border_color = NA)
+```
+
+## Expression of individual genes in the M1.2, M3.4, and M5.12 gene modules
+```{r fig.height=9, fig.width=12}
+range_bound = 4
+zscore_range <- c(-range_bound:range_bound)
+vsd_exprs %>%
+  as_tibble(rownames = "gene") %>%
+  filter(gene %in% rownames(module_ISGs)) %>%
+  filter(gene != "MT1A") %>%
+  column_to_rownames("gene") %>%
+  t() %>%
+  `[`(,rownames(module_ISGs)[(rownames(module_ISGs) != "MT1A")]) %>%
+  pheatmap(
+    scale = 'column',
+    fontsize_row = 6, 
+    fontsize_col = 6, 
+    annotation_row = annotation_info,
+    annotation_col = module_ISGs,
+    annotation_colors = group_pal,
+    cluster_cols = FALSE,
+    angle_col = 315,
+    breaks = zscore_range,
+    color = viridis(n = length(zscore_range)-1, option = "D"),
+    border_color = NA)
+```
+
+
+# Clustering and variation of samples in reduced dimensional space {.tabset}
+
+## PCA
+
+### PCA, grouped by disease classification
+```{r, fig.width=12, fig.height=6}
+plot_grid(pca_plot +
+            theme(legend.position = "none"),
+          pca_plot +
+            geom_mark_ellipse(aes(fill=disease_class),
+                              alpha = 0.05))
+```
+
+### PCA, grouped by project
+```{r, fig.width=12, fig.height=6}
+plot_grid(
+  pca_results %>%
+    ggplot(aes(x = PC1,
+               y = PC2,
+               color = project)) +
+    geom_point(alpha = 0.3) + 
+    scale_color_brewer(palette = "Set1") +
+    scale_fill_brewer(palette = "Set1") +
+    labs(color = "project") +
+    theme(legend.position = "none"),
+  pca_results %>%
+    ggplot(aes(x = PC1,
+               y = PC2,
+               color = project)) +
+    geom_point(alpha = 0.3) + 
+    scale_color_brewer(palette = "Set1") +
+    scale_fill_brewer(palette = "Set1") +
+    labs(color = "project") +
+    geom_mark_ellipse(aes(fill=project),
+                      alpha = 0.05)
+)
+```
+
+### PCA, grouped by the plate on which the sample was run
+```{r, fig.width=12, fig.height=6}
+plot_grid(pca_plot2 +
+            theme(legend.position = "none"),
+          pca_plot2 +
+            geom_mark_ellipse(aes(fill=run_id),
+                              alpha = 0.05))
+```
+
+### PCA, colored by initial sample concentration
+```{r, fig.width=8, fig.height=6}
+pca_results %>%
+  ggplot(aes(x = PC1,
+             y = PC2,
+             color = initial_concentration_ng_ul)) +
+  geom_point(alpha = 0.3) + 
+  scale_color_gradient2(low = "blue", mid = "grey90", high = "red", midpoint = 10)
+```
+
+### PCA, colored by Leiden cluster
+```{r, fig.width=8, fig.height=6}
+pca_results %>%
+  ggplot(aes(x = PC1,
+             y = PC2,
+             color = cluster)) +
+  geom_point() +
+  scale_color_manual(values = group_pal$cluster)
+```
+
+### 3D PCA, colored by Leiden cluster
+```{r}
+pca_results %>%
+  inner_join(ifn_scores_with_viral) %>%
+  inner_join(inflammation_scores_with_viral) %>%
+  plot_ly(x = ~PC1,
+          y = ~PC2,
+          z = ~PC3,
+          color = ~cluster,
+          size = 1.5,
+          alpha = 0.75,
+          colors = group_pal$cluster,
+          text = ~paste('<br>Sample: ', sample,
+                        '<br>Classification: ', disease_class,
+                        '<br>Ethnicity ', race_code,
+                        '<br>Cluster: ', cluster,
+                        '<br>Sex: ', sex,
+                        '<br>Plate: ', run_id
+          )
+  ) %>%
+  add_markers()
+```
+
+
+## UMAP
+
+### UMAP, grouped by the plate on which the sample was run
+```{r, fig.width=12, fig.height=6}
+plot_grid(umap_plot +
+            theme(legend.position = "none"),
+          umap_plot +
+            geom_mark_ellipse(aes(fill=disease_class), alpha = 0.05))
+```
+
+### UMAP, grouped by the plate on which the sample was run
+```{r, fig.width=12, fig.height=6}
+plot_grid(umap_plot2 +
+            theme(legend.position = "none"),
+          umap_plot2 +
+            geom_mark_ellipse(aes(fill=run_id), alpha = 0.05))
+```
+
+### UMAP, grouped by study group
+```{r, fig.width=12, fig.height=6}
+plot_grid(
+  umap_results %>%
+    ggplot(aes(x = umap_1,
+               y = umap_2,
+               color = project)) +
+    geom_point(alpha = 0.3) + 
+    scale_color_brewer(palette = "Set1") +
+    scale_fill_brewer(palette = "Set1") +
+    labs(color = "project") +
+    theme(legend.position = "none"),
+  umap_results %>%
+    ggplot(aes(x = umap_1,
+               y = umap_2,
+               color = project)) +
+    geom_point(alpha = 0.3) + 
+    scale_color_brewer(palette = "Set1") +
+    scale_fill_brewer(palette = "Set1") +
+    labs(color = "project") +
+    geom_mark_ellipse(aes(fill=project),
+                      alpha = 0.05)
+)
+```
+
+### UMAP, colored by initial sample concentration
+```{r, fig.width=8, fig.height=6}
+umap_results %>%
+  ggplot(aes(x = umap_1,
+             y = umap_2,
+             color = initial_concentration_ng_ul)) +
+  geom_point(alpha = 0.3) + 
+  scale_color_gradient2(low = "blue", mid = "grey90", high = "red", midpoint = 10)
+```
+
+### UMAP, colored by Leiden cluster
+```{r, fig.width=7, fig.height=6}
+umap_results %>%
+  ggplot(aes(x = umap_1,
+             y = umap_2,
+             color = cluster)) +
+  geom_point() +
+    geom_mark_ellipse(aes(fill=cluster),
+                      alpha = 0.05) +
+  scale_color_manual(values = group_pal$cluster)
+```
+
+### UMAP, in 3D, colored by Leiden cluster
+```{r}
+umap_results %>%
+  inner_join(ifn_scores_with_viral) %>%
+  inner_join(inflammation_scores_with_viral) %>%
+  plot_ly(x = ~umap_1,
+          y = ~umap_2,
+          z = ~umap_3,
+          color = ~cluster,
+          size = 1.5,
+          alpha = 0.75,
+          colors = group_pal$cluster,
+          text = ~paste('<br>Sample: ', sample,
+                        '<br>Classification: ', disease_class,
+                        '<br>Ethnicity ', race_code,
+                        '<br>Cluster: ', cluster,
+                        '<br>Sex: ', sex,
+                        '<br>Plate: ', run_id
+          )
+  ) %>%
+  add_markers()
+```
+
+# Module scores {.tabset}
+
+## SLE Interferon module scores
+
+```{r fig.height=11, fig.width=7}
+range_bound = 4
+zscore_range <- c(-range_bound:range_bound)
+ifn_scores %>%
+  column_to_rownames("sample") %>%
+  pheatmap(
+    scale="column",
+    fontsize_row = 7,
+    annotation_colors = group_pal,
+    annotation_row = annotation_info,
+    breaks = zscore_range,
+    color = viridis(n = length(zscore_range)-1, option = "D"),
+    angle = 315,
+    border_color = NA)
+```
+
+## SLE Inflammatory module scores
+
+```{r fig.height=11, fig.width=7}
+range_bound = 4
+zscore_range <- c(-range_bound:range_bound)
+inflammation_scores %>%
+  column_to_rownames("sample") %>%
+  pheatmap(scale="column",
+    fontsize_row = 7,
+    annotation_colors = group_pal,
+    annotation_row = annotation_info,
+    breaks = zscore_range,
+    color = viridis(n = length(zscore_range)-1, option = "D"),
+    angle = 315,
+    border_color = NA)
+```
+
+## Low-density granulocyte module scores
+
+```{r fig.height=11, fig.width=9}
+range_bound = 3
+zscore_range <- c(-range_bound:range_bound)
+ldg_scores %>%
+  column_to_rownames("sample") %>%
+  pheatmap(
+    scale="column",
+    fontsize_row = 7,
+    annotation_colors = group_pal,
+    annotation_row = annotation_info,
+    breaks = zscore_range,
+    color = viridis(n = length(zscore_range)-1, option = "D"),
+    angle = 315,
+    border_color = NA)
+```
+
+## SLE Modules with an annotated associated pathway
+```{r fig.height=9, fig.width=9}
+range_bound = 4
+zscore_range <- c(-range_bound:range_bound)
+pheatmap(
+  annotated_module_scores,
+  scale = 'column',
+  fontsize_row = 6, 
+  fontsize_col = 6, 
+  annotation_row = annotation_info,
+  annotation_col = column_to_rownames(annotated_modules, var = "module"),
+  annotation_colors = group_pal,
+  show_rownames = FALSE,
+  angle_col = 315,
+  breaks = zscore_range,
+  color = viridis(n = length(zscore_range)-1, option = "D"),
+  border_color = NA)
+```
+
+## All SLE modules
+
+```{r fig.height=9, fig.width=11}
+range_bound = 3
+zscore_range <- c(-range_bound:range_bound)
+pheatmap(module_scores,
+         scale = 'column',
+         fontsize_row = 6, 
+         fontsize_col = 6, 
+         annotation_row = annotation_info,
+         annotation_col = module_annot,
+         annotation_colors = group_pal %>% `$<-`(type, c(.$type, Undetermined = "#000000")),
+         show_rownames = FALSE,
+         angle_col = 315,
+         breaks = zscore_range,
+  color = viridis(n = length(zscore_range)-1, option = "D"),
+  border_color = NA)
+```
+
+# Viral trancription {.tabset}
+
+Samples were examined for transcripts from the following viruses:
+HSV-1, HSV-2, VZV, EBV, EBV-2, HCMV, HHV7, KSHV, Adenovirus 2, B19, HIV-1, HBV, HPV-2, HPV-16, JCV, and MCV-1
+
+## Detected viral transcription and Interferon module scores
+
+```{r fig.height=10, fig.width=12}
+range_bound = 5
+zscore_range <- c(-range_bound:range_bound)
+ifn_scores_with_viral %>%
+  column_to_rownames("sample") %>%
+  pheatmap(
+    scale="column",
+    annotation_colors = group_pal,
+    annotation_row = annotation_info,
+    breaks = zscore_range,
+    color = viridis(n = length(zscore_range)-1, option = "D"),
+    border_color = NA,
+    angle=315)
+```
+
+## Detected viral transcription and Inflammatory module scores
+
+```{r fig.height=10, fig.width=13}
+range_bound = 5
+zscore_range <- c(-range_bound:range_bound)
+inflammation_scores_with_viral %>%
+  column_to_rownames("sample") %>%
+  pheatmap(scale="column",
+           annotation_colors = group_pal,
+           annotation_row = annotation_info,
+           breaks = zscore_range,
+  color = viridis(n = length(zscore_range)-1, option = "D"),
+  border_color = NA,
+  angle=315)
+```
+
+
+# Sample Sanity check
+
+To determine if there is a gross mixup of samples, examine the expression of sex-specific transcripts to ensure that only female-subject samples express "XIST" and male-subject samples "DDX3Y:
+
+```{r}
+sex_specific_genes <- tibble(chr = c(rep("Y",16), rep("X",2)),
+                             symbol = c("DDX3Y","EIF1AY",
+                                       "KDM5D","NLGN4Y",
+                                       "PCDH11Y","PRORY",
+                                       "PRY","PRY2",
+                                       "RPS4Y1","RPS4Y2",
+                                       "TBL1Y","TMSB4Y",
+                                       "USP9Y","UTY",
+                                       "VCY","ZFY",
+                                       "XIST","ZFX")) %>%
+  filter(symbol %in% rownames(vsd_exprs))
+
+range_bound = 5
+zscore_range <- c(-range_bound:range_bound)
+t(vsd_exprs)[,c(sex_specific_genes[['symbol']])] %>%
+  pheatmap(
+    scale='column',
+    fontsize_row=6,
+    fontsize_col = 6,
+    annotation_row = annotation_info[,c("sex","run_id", "disease_class")],
+    annotation_colors = group_pal,
+    annotation_col = column_to_rownames(sex_specific_genes, "symbol"),
+    cluster_cols = FALSE,
+    breaks = zscore_range,
+    color = viridis(n = length(zscore_range)-1, option = "D"),
+    border_color = NA,
+    angle=315)
+```
+
+These appear to be correct.
+
+```{r}
+devtools::session_info()
+```
