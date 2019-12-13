@@ -406,6 +406,61 @@ plan = drake_plan(
            one_of(annotated_modules$module)) %>%
     column_to_rownames("sample"),
   
+  top_vars = matrixStats::rowSds(vsd_exprs) %>%
+    `names<-`(rownames(vsd_exprs)) %>%
+    enframe() %>%
+    top_n(7500, value) %>%
+    pull(name),
+  
+  vsd_top = vsd_exprs[top_vars,] %>% t(),
+  
+  sft = pickSoftThreshold(vsd_top,
+                          powerVector = c(c(1:10),
+                                          seq(from = 12, to=20, by=2)),
+                          verbose = 5),
+  
+  wgcna_modules = blockwiseModules(datExpr = vsd_top,
+                                    power = sft$powerEstimate,
+                                    maxBlockSize = 7500,
+                                    mergeCutHeight = 0.25,
+                                    minModuleSize = 20,
+                                    pamRespectsDendro = FALSE,
+                                    saveTOMs = TRUE,
+                                    verbose = 3,
+                                    detectCutHeight = 0.995,
+                                    TOMDenom = "min",
+                                    networkType = "signed hybrid",
+                                    reassignThreshold = 1e-6),
+  
+  wgcna_module_genes = wgcna_modules$colors %>%
+    enframe(name = "gene",
+            value = "module"),
+  
+  wgcna_hub_genes = chooseTopHubInEachModule(vsd_top, wgcna_modules$colors, power = 4, type = "signed hybrid"),
+  
+  wgcna_scores = wgcna_modules$MEs %>%
+    as_tibble(rownames="sample_name") %>%
+    select(-MEgrey) %>%
+    left_join(as_tibble(annotation_info,
+                        rownames="sample_name")) %>%
+    select(cluster, starts_with("ME")),
+  
+  wgcna_split = initial_split(data = wgcna_scores,
+                               prop = 0.75,
+                               strata = "cluster"),
+  
+  wgcna_train = training(wgcna_split),
+  wgcna_test = testing(wgcna_split),
+  
+  wgcna_rf_cv = train(cluster ~ .,
+                       method = "parRF",
+                       data = wgcna_train,
+                       trControl = trainControl(method = "repeatedcv",
+                                                number = 10,
+                                                repeats = 10)),
+  
+  wgcna_rf_cv_varImp = varImp(object = wgcna_rf_cv, scale = FALSE),
+  
   viral_transcripts =
     annot %>%
     filter(!str_detect(string = transcript,
@@ -471,6 +526,13 @@ plan = drake_plan(
     data.table::fwrite(row.names = TRUE,
                        file = file_out("data/log_fold_changes.csv")),
   
+  wgcna_modules$MEs %>%
+    data.table::fwrite(row.names = TRUE,
+                       file = file_out("data/wgcna_eigengene_scores.csv")),
+  
+  wgcna_module_genes %>%
+    write_csv(path = file_out("data/wgcna_genes.csv")),
+  
   colData(dds_with_scores) %>%
     as_tibble(rownames="sample") %>%
     select(sample, 
@@ -493,5 +555,6 @@ plan = drake_plan(
        top_up,
        umap_results,
        vsd_exprs,
+       wgcna_modules,
        file = file_out("data/for_shiny_vis.RData"))
 )

@@ -630,6 +630,62 @@ inflammation_scores_with_viral %>%
   angle=315)
 ```
 
+# WGCNA
+
+## Expression similarity dendrogram
+
+```{r echo=FALSE, fig.height=6, fig.width=10}
+loadd(wgcna_modules)
+plotDendroAndColors(dendro = wgcna_modules$dendrograms[[1]],
+                    colors = wgcna_modules$colors[wgcna_modules$blockGenes[[1]]],
+                    groupLabels = "Module colors",
+                    main = "Gene dendrogram and module colors in block 1",
+                    dendroLabels = FALSE,
+                    hang = 0.03,
+                    addGuide = TRUE,
+                    guideHang = 0.05)
+```
+
+## Expression of identified modules
+
+```{r fig.width=10}
+loadd(wgcna_scores)
+wgcna_scores %>%
+  pivot_longer(-cluster,
+               names_to = "module",
+               values_to = "score") %>%
+  mutate(cluster = as_factor(cluster)) %>%
+  ggplot(aes(x = cluster,
+             y = score,
+             fill = cluster)) +
+  geom_boxplot() +
+  scale_fill_brewer("Set1") +
+  facet_wrap(facets = vars(module),
+             scales = "free_y") +
+  theme_cowplot()
+```
+
+## Use of WGCNA modules in classifying clusters.
+
+The module eigengene scores were used to train a random forest model with repeated cross validation to predict cluster identity.
+
+The model was trained with 75% of the dataset and tested on 25%.
+
+```{r}
+loadd(wgcna_rf_cv, wgcna_test)
+caret::confusionMatrix(
+  data = predict(wgcna_rf_cv, wgcna_test),
+  reference = wgcna_test$cluster
+)
+```
+
+The relative importance of each eigengene in classification:
+
+```{r}
+loadd(wgcna_rf_cv_varImp)
+wgcna_rf_cv_varImp
+```
+
 
 # Sample Sanity check
 

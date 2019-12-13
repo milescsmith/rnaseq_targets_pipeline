@@ -2,9 +2,10 @@ options(future.globals.maxSize = +Inf)
 source("R/packages.R")  # Load your packages, e.g. library(drake).
 source("R/functions.R") # Define your custom code as a bunch of functions.
 Sys.setenv('RSTUDIO_PANDOC' = '/usr/lib/rstudio-server/bin/pandoc')
+WGCNA::allowWGCNAThreads()
 ### Setup bucket access
 flyio_set_datasource("gcs")
-flyio_auth("/opt/google_project_scrna_196615_storage_key.json")
+flyio_auth("/home/rstudio/google_storage_access_key_scrna-196615.json")
 flyio_set_bucket("memory-beta", data_source="gcs")
 
 import_rda(file="references/gencode_v32_virus_tx2gene.RData",
