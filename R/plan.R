@@ -1,5 +1,5 @@
 #For ALE06
-plan = drake_plan(
+analysis_plan = drake_plan(
   non_project_controls = import_table(file=metadata_file,
                                       bucket="memory-beta",
                                       FUN=read_excel, 
@@ -191,26 +191,79 @@ plan = drake_plan(
          resolution_parameter = optimal_resolution,
          partition_type = "RBConfigurationVertexPartition"),
   
-  leiden_res = tibble(sample = rownames(neighbors$snn),
+  leiden_res = tibble(sample_name = rownames(neighbors$snn),
                       cluster = as_factor(clusters)),
+  
+  visit_ref =
+    import_table(file=metadata_file,
+                 bucket="memory-beta",
+                 FUN=read_excel, 
+                 sheet = "main", 
+                 col_types = c("numeric", 
+                               rep("text",10),
+                               "numeric",
+                               rep("text",6),
+                               rep("numeric", 3),
+                               "text",
+                               "logical"),
+                 trim_ws = TRUE,
+                 na = "n/a",
+                 .name_repair = ~ make_clean_names) %>%
+    select(sample_name,
+           visit_ref) %>%
+    mutate(sample_name = make_clean_names(sample_name, case = "all_caps")) %>%
+    filter(sample_name %in% rownames(final_md)) %>%
+    distinct(),
+  
+  sledai = read_xlsx("metadata/SLEDAI_BPX.xlsx",
+                     sheet = "SLEDAI",
+                     .name_repair = make_clean_names) %>%
+    select(visit_ref, sledai_total_score),
+  
+  bpx = read_xlsx("metadata/SLEDAI_BPX.xlsx",
+                  sheet = "BPX",
+                  .name_repair = make_clean_names) %>%
+    mutate_at(.vars = vars(ends_with("flag")), 
+              .funs = funs(as_factor(tolower(.)))) %>%
+    mutate_at(.vars = vars(ends_with("ai")),
+              .funs = funs(as.numeric(str_remove(string = .,
+                                                 pattern = "<|>")))) %>%
+    mutate(ds_dna_iu_ml = as.numeric(str_remove(string = ds_dna_iu_m_l,
+                                                pattern = "<|>"))) %>%
+    mutate_if(.predicate = is.factor,
+              .funs = funs(str_replace(string = .,
+                                       pattern = "no val|indeterminate",
+                                       replacement = "unknown"))) %>%
+    right_join(select(visit_ref, sample_name, visit_ref)) %>% 
+    select(-ds_dna_iu_m_l,
+           -jo_1_flag,
+           -bpx_accession,
+           -bpx_timestamp) %>%
+    select(sample_name, everything()) %>%
+    group_by(sample_name) %>%
+    slice(1) %>%
+    ungroup(),
   
   annotation_info = as.data.frame(colData(dds_processed))[,c("disease_class",
                                                              "project",
-                                                             "run_id",
                                                              "sex")] %>%
-    as_tibble(rownames = "sample") %>%
-    inner_join(leiden_res) %>%
+    as_tibble(rownames = "sample_name") %>%
+    left_join(leiden_res) %>% 
+    left_join(visit_ref) %>%
+    left_join(sledai) %>%
+    select(-visit_ref) %>%
     mutate(cluster = as_factor(cluster),
-           project = as_factor(project)) %>%
-    column_to_rownames(var="sample"),
+           project = as_factor(project),
+           sledai_total_score = replace_na(sledai_total_score, 0)) %>%
+    column_to_rownames(var="sample_name"),
   
   # Variation can also be examined in reduced dimensional space by PCA or UMAP:
   pca_results = prcomp_irlba(x = vsd_exprs) %>%
     `[[`("rotation") %>%
     as_tibble() %>%
-    mutate(sample = colnames(vsd_exprs)) %>% 
+    mutate(sample_name = colnames(vsd_exprs)) %>% 
     inner_join(as_tibble(colData(dds_processed), 
-                         rownames="sample")) %>%
+                         rownames="sample_name")) %>%
     inner_join(leiden_res),
   
   #fig.width=12, fig.height=6
@@ -248,9 +301,9 @@ plan = drake_plan(
     `colnames<-`(c("umap_1",
                    "umap_2",
                    "umap_3")) %>%
-    mutate(sample = colnames(vsd_exprs)) %>% 
+    mutate(sample_name = colnames(vsd_exprs)) %>% 
     inner_join(as_tibble(colData(dds_processed),
-                         rownames="sample")) %>%
+                         rownames="sample_name")) %>%
     inner_join(leiden_res),
   
   umap_plot = umap_results %>% 
@@ -352,6 +405,7 @@ plan = drake_plan(
                          n = length(unique(annotated_modules$type))) %>%
     `names<-`(unique(annotated_modules$type)),
   
+  ###--- PALETTES ---###
   # we manually setup the palettes for pheatmap because letting it automatically pick the colors results in terrible choices
   run_groups =
     colData(dds_with_scores) %>%
@@ -359,17 +413,22 @@ plan = drake_plan(
     pull(run_id) %>%
     unique(),
   
-  run_id_color_set =
-    colorRampPalette(
-      brewer.pal(12, "Paired"))(length(run_groups)) %>%
-    `names<-`(run_groups),
+  # run_id_color_set =
+  #   colorRampPalette(
+  #     brewer.pal(12, "Paired"))(length(run_groups)) %>%
+  #   `names<-`(run_groups),
   
-  chr_pal = c("Y" = "#0000FF", "X" = "#FF0000"),
+  chr_pal = c("Y" = "#E41A1C",
+              "X" = "#377EB8"),
   
-  sex_pal = c("Male" = "#6666FF", "Female" = "#FF0000", "unk" = "#333333"),
+  sex_pal = c("Male" = "coral3",
+              "Female" = "azure2",
+              "unk" = "#333333"),
   
   comparison_grouping_variable_colors = c("#000000",
-                                          "#999999") %>% `names<-`(c(control_group, experimental_group)),
+                                          "#CCCCCC") %>%
+    `names<-`(c(control_group,
+                experimental_group)),
   
   cluster_pal = 
     colorRampPalette(
@@ -384,27 +443,35 @@ plan = drake_plan(
   group_pal =
     list(
       comparison_grouping_variable_colors,
-      run_id_color_set,
       type_pal,
       chr_pal,
       sex_pal,
       cluster_pal,
-      project_pal
-    ) %>% `names<-`(c(comparison_grouping_variable, "run_id", "type", "chr", "sex", "cluster", "project")),
+      project_pal,
+      viridis(n = max(annotation_info$sledai_total_score),
+              option = "E",
+              direction = -1)) %>%
+    `names<-`(c(comparison_grouping_variable,
+                      "type",
+                      "chr",
+                      "sex",
+                      "cluster",
+                      "project",
+                      "sledai_total_score")),
   
   module_scores =
     colData(dds_with_scores) %>%
-    as_tibble(rownames="sample") %>%
-    select(sample, 
+    as_tibble(rownames="sample_name") %>%
+    select(sample_name, 
            matches("^M[[:digit:]]+\\.")) %>%
-    column_to_rownames("sample"),
+    column_to_rownames("sample_name"),
   
   annotated_module_scores =
     colData(dds_with_scores) %>%
-    as_tibble(rownames="sample") %>%
-    select(sample, 
+    as_tibble(rownames="sample_name") %>%
+    select(sample_name, 
            one_of(annotated_modules$module)) %>%
-    column_to_rownames("sample"),
+    column_to_rownames("sample_name"),
   
   top_vars = matrixStats::rowSds(vsd_exprs) %>%
     `names<-`(rownames(vsd_exprs)) %>%
@@ -442,24 +509,24 @@ plan = drake_plan(
     as_tibble(rownames="sample_name") %>%
     select(-MEgrey) %>%
     left_join(as_tibble(annotation_info,
-                        rownames="sample_name")) %>%
-    select(cluster, starts_with("ME")),
+                        rownames="sample_name")),
   
-  wgcna_split = initial_split(data = wgcna_scores,
+  wgcna_cluster_split = initial_split(data = wgcna_scores %>%
+                                select(cluster, starts_with("ME")),
                                prop = 0.75,
                                strata = "cluster"),
   
-  wgcna_train = training(wgcna_split),
-  wgcna_test = testing(wgcna_split),
+  wgcna_cluster_train = training(wgcna_cluster_split),
+  wgcna_cluster_test = testing(wgcna_cluster_split),
   
-  wgcna_rf_cv = train(cluster ~ .,
+  wgcna_cluster_rf_cv = train(cluster ~ .,
                        method = "parRF",
-                       data = wgcna_train,
+                       data = wgcna_cluster_train,
                        trControl = trainControl(method = "repeatedcv",
                                                 number = 10,
                                                 repeats = 10)),
   
-  wgcna_rf_cv_varImp = varImp(object = wgcna_rf_cv, scale = FALSE),
+  wgcna_cluster_rf_cv_varImp = varImp(object = wgcna_cluster_rf_cv, scale = FALSE),
   
   viral_transcripts =
     annot %>%
@@ -471,7 +538,7 @@ plan = drake_plan(
   viral_exprs =
     vsd_exprs[viral_transcripts,] %>%
     t() %>%
-    as_tibble(rownames="sample"),
+    as_tibble(rownames="sample_name"),
   
   ifn_modules =
     annotated_modules %>%
@@ -486,17 +553,17 @@ plan = drake_plan(
   ifn_scores =
     colData(dds_with_scores)[,ifn_modules] %>%
     as.data.frame() %>%
-    as_tibble(rownames="sample"),
+    as_tibble(rownames="sample_name"),
   
   inflammation_scores =
     colData(dds_with_scores)[,inflame_modules] %>%
     as.data.frame() %>%
-    as_tibble(rownames="sample"),
+    as_tibble(rownames="sample_name"),
   
   ldg_scores =
     colData(dds_with_scores)[,names(ldg_modules)] %>%
     as.data.frame() %>%
-    as_tibble(rownames="sample"),
+    as_tibble(rownames="sample_name"),
   
   ifn_scores_with_viral =
     inner_join(viral_exprs, ifn_scores),
@@ -534,8 +601,8 @@ plan = drake_plan(
     write_csv(path = file_out("data/wgcna_genes.csv")),
   
   colData(dds_with_scores) %>%
-    as_tibble(rownames="sample") %>%
-    select(sample, 
+    as_tibble(rownames="sample_name") %>%
+    select(sample_name, 
            one_of(module_tbl$module),
            one_of(names(ldg_modules))) %>%
     as.data.frame() %>%
@@ -546,6 +613,7 @@ plan = drake_plan(
   
   save(annotation_info,
        final_md,
+       bpx,
        group_pal,
        ifn_scores_with_viral,
        inflammation_scores_with_viral,

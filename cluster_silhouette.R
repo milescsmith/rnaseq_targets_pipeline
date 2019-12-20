@@ -1,4 +1,9 @@
 future::plan("multiprocess")
+library(parallelDist)
+library(leiden)
+library(tidyverse)
+library(cluster)
+library(Seurat)
 
 optimize_cluster_resolution <- function(snn_graph,
                                         dist_mat,
@@ -30,7 +35,7 @@ optimize_cluster_resolution <- function(snn_graph,
                                   cluster_opt,
                                   vars("sample_name", i))
                               ),
-                              sample_dists
+                              dist_mat
                             )
                             
                             if(!is.na(sil)){

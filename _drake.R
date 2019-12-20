@@ -1,4 +1,5 @@
 options(future.globals.maxSize = +Inf)
+reticulate::use_condaenv('reticulate', required = TRUE, conda = "~/conda/bin/conda")
 source("R/packages.R")  # Load your packages, e.g. library(drake).
 source("R/functions.R") # Define your custom code as a bunch of functions.
 Sys.setenv('RSTUDIO_PANDOC' = '/usr/lib/rstudio-server/bin/pandoc')
@@ -36,14 +37,14 @@ pc1_zscore_threshold = 2
 seq_file_directory = "/media/charon/datasets/viral_transcripts"
 metadata_file = "datasets/rnaseq/novaseq/NovaSeq_Sample_List.xlsx"
 
-BPPARAM = SnowParam(workers=parallel::detectCores()-4, type = "SOCK")
+BPPARAM = SnowParam(workers=parallel::detectCores(), type = "SOCK")
 register(BPPARAM)
 
 source("R/plan.R")
 # _drake.R must end with a call to drake_config().
 # The arguments to drake_config() are basically the same as those to make().
-drake_config(plan,
+drake_config(plan = analysis_plan,
              verbose = 2,
              parallelism = "future",
-             jobs = parallel::detectCores()-4,
+             jobs = parallel::detectCores(),
              lock_envir = FALSE)

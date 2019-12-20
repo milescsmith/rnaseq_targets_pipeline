@@ -165,3 +165,11 @@ plot_dispersion_estimate <- function(object, CV = FALSE){
   
   return(disp_plot)
 }
+
+fix_antibody_values <- function(i) {
+  recode(.x = i, 
+         Negative = "negative",
+         POSITIVE = "positive",
+         `no_val` = "no_val",
+         Indeterminate = "indeterminate")
+}
