@@ -1,22 +1,28 @@
 #For ALE06
 analysis_plan = drake_plan(
-  non_project_controls = import_table(file=metadata_file,
-                                      bucket="memory-beta",
-                                      FUN=read_excel, 
-                                      sheet = "main", 
-                                      col_types = c("numeric", 
-                                                    rep("text",10),
-                                                    "numeric",
-                                                    rep("text",6),
-                                                    rep("numeric", 3),
-                                                    "text",
-                                                    "logical"),
-                                      trim_ws = TRUE,
-                                      na = "n/a",
-                                      .name_repair = ~ make_clean_names) %>%
-    mutate(sample_name = make_clean_names(sample_name, case = "all_caps")) %>%
-    filter(initial_concentration_ng_ul > initial_concentration_threshold,
-           disease_class == "Control") %>% 
+  
+  metadata = readxl::read_excel(path = metadata_file,
+                        sheet = "main", 
+                        col_types = c("numeric", 
+                                      rep("text",10),
+                                      "numeric",
+                                      rep("text",6),
+                                      rep("numeric", 3),
+                                      "text",
+                                      "text"),
+                        trim_ws = TRUE,
+                        na = "n/a",
+                        .name_repair = ~ make_clean_names) %>%
+    mutate(sample_name = make_clean_names(sample_name, case = "all_caps"),
+           disease_class = str_remove(
+             string = recode(disease_class, "Unaffected Control" = "Control"),
+             pattern = " Patient")
+           ) %>%
+    filter(initial_concentration_ng_ul > initial_concentration_threshold),
+  
+  non_project_controls = 
+    metadata %>%
+    filter(disease_class == "Control") %>% 
     #Select the portions of the metadata that are useful:
     select(sample_name,
            study_group,
@@ -24,7 +30,6 @@ analysis_plan = drake_plan(
            project,
            run_id,
            sample_alias,
-           ord,
            sex,
            race_code,
            initial_concentration_ng_ul,
@@ -37,23 +42,8 @@ analysis_plan = drake_plan(
            initial_concentration_ng_ul = replace_na(initial_concentration_ng_ul, 200)),
   
   md =
-    import_table(file=metadata_file,
-                 bucket="memory-beta",
-                 FUN=read_excel, 
-                 sheet = "main", 
-                 col_types = c("numeric", 
-                               rep("text",10),
-                               "numeric",
-                               rep("text",6),
-                               rep("numeric", 3),
-                               "text",
-                               "logical"),
-                 trim_ws = TRUE,
-                 na = "n/a",
-                 .name_repair = ~ make_clean_names) %>%
-    mutate(sample_name = make_clean_names(sample_name, case = "all_caps")) %>%
-    filter(initial_concentration_ng_ul > 1.5,
-           project %in% (projects_to_include %||% unique(.data$project)),
+    metadata %>%
+    filter(project %in% (projects_to_include %||% unique(.data$project)),
            project %nin% projects_to_exclude,
            disease_class %in% (disease_classes_to_include %||% unique(.data$disease_class)),
            disease_class %nin% disease_classes_to_exclude) %>% 
@@ -64,7 +54,6 @@ analysis_plan = drake_plan(
            project,
            run_id,
            sample_alias,
-           ord,
            sex,
            race_code,
            initial_concentration_ng_ul,
@@ -77,15 +66,6 @@ analysis_plan = drake_plan(
            initial_concentration_ng_ul = replace_na(initial_concentration_ng_ul, 200)) %>%
     bind_rows(non_project_controls) %>%
     distinct(),
-  
-  #Inspect the metadata:
-  md_cat_data = inspect_cat(md),
-  md_num_data = inspect_num(md),
-  
-  # Import count data
-  #Raw FASTQs were processed using Salmon, which created pseudocounts.  
-  #To import those, we need a named list (e.g. a dictionary) of the location
-  #of all files ending in "h5" which each list member named for the sample it represents.
   
   tx_sample_names = dir(path = seq_file_directory,
                         pattern = "quant.sf.gz",
@@ -110,25 +90,28 @@ analysis_plan = drake_plan(
     `names<-`(tx_sample_names) %>%
     `[`(!is.na(match(names(.), md$sample_name))),
   
-  #Most data structures that support row or column names cannot tolerate duplicates.  Are there any duplicate samples that need to be fixed?
-  # md_dupes = md %>% filter(sample_name %in% tx_sample_names) %>% get_dupes(sample_name),
-  # 
-  # dedupe = deduplicate_samples(md, tx_files),
-  # deduplicated_md = dedupe$md,
-  # deduplicated_tx_files = dedupe$sample,
-  
-  # Read in count files
-  # final_md = deduplicated_md[which(deduplicated_md[['sample_name']] %in% names(deduplicated_tx_files)),] %>%
-  #   column_to_rownames('sample_name'),
-  final_md = md[which(md[['sample_name']] %in% names(tx_files)),] %>%
+  final_md = md[which(md[['sample_name']] %in% names(tx_files)),] %>% 
+    mutate(disease_grouping = recode(disease_class,
+                                     Control = "Control",
+                                     MS = "MS_group",
+                                     RRMS = "MS_group",
+                                     SPMS = "MS_group",
+                                     `MS-like` = "MS_group",
+                                     PPMS = "MS_group",
+                                     NMO = "MS_group")) %>%
     column_to_rownames('sample_name'),
+  
+  #Inspect the metadata:
+  md_cat_data = inspectdf::inspect_cat(final_md),
+  md_num_data = inspectdf::inspect_num(final_md),
+  
   samples = tx_files[rownames(final_md)],
   counts = tximport(samples,
                     type = "salmon",
                     txIn = TRUE,
                     txOut = FALSE,
                     tx2gene = annot,
-                    importer = fread),
+                    importer = data.table::fread),
   
   # Process the data using DESeq2
   # The `DESeq` function run several subfunctions that take 
@@ -148,7 +131,8 @@ analysis_plan = drake_plan(
   ## Sample QC filtering
   # Remove samples that have a PC1 Z-score > 3. This matches what I was doing visually, but is vastly quicker.
   outlier_qc = remove_outliers(dds = dds_filtered,
-                               zscore_cutoff = pc1_zscore_threshold),
+                               pc1_zscore_cutoff = pc1_zscore_threshold,
+                               pc2_zscore_cutoff = pc2_zscore_threshold),
   dds_qc = outlier_qc$dds,
   pca_qc = outlier_qc$pca,
   removed_outliers = outlier_qc$removed,
@@ -162,7 +146,7 @@ analysis_plan = drake_plan(
   vsd = vst(dds_processed),
   vsd_exprs = assay(vsd),
   
-  sample_dists = vsd_exprs %>% t() %>% parallelDist(),
+  sample_dists = vsd_exprs %>% t() %>% parallelDist::parallelDist(),
   #fig.width=12, fig.height=9
   sampleDistMatrix = as.matrix(sample_dists),
   
@@ -173,126 +157,43 @@ analysis_plan = drake_plan(
   # to build an SNN graph off of a distance matrix, which we can then pass to the Leiden
   # algorithm to identify clusters.
   
-  neighbors = FindNeighbors(object = sample_dists),
+  neighbors = Seurat::FindNeighbors(object = sample_dists),
   
   # Test a range of resolutions and choose the one with the highest silhouette
   # coefficient
-  optimal_resolution = target(optimize_cluster_resolution(snn_graph = neighbors$snn,
+  optimal_resolution = optimize_cluster_resolution(snn_graph = neighbors$snn,
                                                    dist_mat = sample_dists,
                                                    from = 0,
                                                    to = 1.5,
                                                    by = 0.01) %>%
     top_n(1, coeff) %>%
     pull(res),
-    resources = list(cores = parallel::detectCores()-4, gpus = 0)),
     
   clusters = leiden(as.matrix(neighbors$snn),
          n_iterations = 10,
-         resolution_parameter = optimal_resolution,
+         resolution_parameter = sample(optimal_resolution, 1), # On the chance that we have multiple equally good resolutions
          partition_type = "RBConfigurationVertexPartition"),
   
   leiden_res = tibble(sample_name = rownames(neighbors$snn),
                       cluster = as_factor(clusters)),
   
-  visit_ref =
-    import_table(file=metadata_file,
-                 bucket="memory-beta",
-                 FUN=read_excel, 
-                 sheet = "main", 
-                 col_types = c("numeric", 
-                               rep("text",10),
-                               "numeric",
-                               rep("text",6),
-                               rep("numeric", 3),
-                               "text",
-                               "logical"),
-                 trim_ws = TRUE,
-                 na = "n/a",
-                 .name_repair = ~ make_clean_names) %>%
-    select(sample_name,
-           visit_ref) %>%
-    mutate(sample_name = make_clean_names(sample_name, case = "all_caps")) %>%
-    filter(sample_name %in% rownames(final_md)) %>%
-    distinct(),
-  
-  sledai = read_xlsx("metadata/SLEDAI_BPX.xlsx",
-                     sheet = "SLEDAI",
-                     .name_repair = make_clean_names) %>%
-    select(visit_ref, sledai_total_score),
-  
-  bpx = read_xlsx("metadata/SLEDAI_BPX.xlsx",
-                  sheet = "BPX",
-                  .name_repair = make_clean_names) %>%
-    mutate_at(.vars = vars(ends_with("flag")), 
-              .funs = funs(as_factor(tolower(.)))) %>%
-    mutate_at(.vars = vars(ends_with("ai")),
-              .funs = funs(as.numeric(str_remove(string = .,
-                                                 pattern = "<|>")))) %>%
-    mutate(ds_dna_iu_ml = as.numeric(str_remove(string = ds_dna_iu_m_l,
-                                                pattern = "<|>"))) %>%
-    mutate_if(.predicate = is.factor,
-              .funs = funs(str_replace(string = .,
-                                       pattern = "no val|indeterminate",
-                                       replacement = "unknown"))) %>%
-    right_join(select(visit_ref, sample_name, visit_ref)) %>% 
-    select(-ds_dna_iu_m_l,
-           -jo_1_flag,
-           -bpx_accession,
-           -bpx_timestamp) %>%
-    select(sample_name, everything()) %>%
-    group_by(sample_name) %>%
-    slice(1) %>%
-    ungroup(),
-  
   annotation_info = as.data.frame(colData(dds_processed))[,c("disease_class",
-                                                             "project",
                                                              "sex")] %>%
     as_tibble(rownames = "sample_name") %>%
     left_join(leiden_res) %>% 
-    left_join(visit_ref) %>%
-    left_join(sledai) %>%
-    select(-visit_ref) %>%
-    mutate(cluster = as_factor(cluster),
-           project = as_factor(project),
-           sledai_total_score = replace_na(sledai_total_score, 0)) %>%
+    mutate(cluster = as_factor(cluster)) %>%
     column_to_rownames(var="sample_name"),
   
   # Variation can also be examined in reduced dimensional space by PCA or UMAP:
-  pca_results = prcomp_irlba(x = vsd_exprs) %>%
+  pca_results = irlba::prcomp_irlba(x = vsd_exprs) %>%
     `[[`("rotation") %>%
     as_tibble() %>%
     mutate(sample_name = colnames(vsd_exprs)) %>% 
     inner_join(as_tibble(colData(dds_processed), 
                          rownames="sample_name")) %>%
     inner_join(leiden_res),
-  
-  #fig.width=12, fig.height=6
-  pca_plot = pca_results %>%
-    ggplot(aes(x = PC1,
-               y = PC2,
-               color = disease_class)) +
-    geom_point(alpha = 0.3) + 
-    scale_color_brewer(palette = "Set1") +
-    scale_fill_brewer(palette = "Set1") +
-    theme_cowplot(),
-  
-  #fig.width=12, fig.height=6
-  pca_plot2 = pca_results %>%
-    ggplot(aes(x = PC1,
-               y = PC2,
-               color = run_id)) +
-    geom_point(alpha = 0.3) + 
-    #geom_mark_hull(aes(fill=run_id)) +
-    scale_color_paletteer_d(package="ggsci",
-                            palette = "category20_d3") +
-    scale_fill_paletteer_d(package="ggsci",
-                           palette = 
-                             "category20_d3") +
-    labs(color = "run_id") +
-    theme_cowplot(),
-  
-  #fig.width=12, fig.height=6
-  umap_results = umap(t(vsd_exprs),
+
+  umap_results = uwot::umap(t(vsd_exprs),
                       n_threads = detectCores(),
                       n_sgd_threads = detectCores(),
                       verbose = TRUE,
@@ -305,28 +206,6 @@ analysis_plan = drake_plan(
     inner_join(as_tibble(colData(dds_processed),
                          rownames="sample_name")) %>%
     inner_join(leiden_res),
-  
-  umap_plot = umap_results %>% 
-    ggplot(aes(x = umap_1,
-               y = umap_2,
-               color = disease_class)) +
-    geom_point(alpha=0.5) +
-    scale_color_brewer(palette = "Set1") +
-    scale_fill_brewer(palette = "Set1") +
-    labs(color = "disease_class") +
-    theme_cowplot(),
-  
-  #fig.width=12, fig.height=6
-  umap_plot2 = umap_results %>% 
-    ggplot(aes(x = umap_1, 
-               y = umap_2,
-               color = run_id)) +
-    geom_point(alpha=0.5) +
-    scale_color_paletteer_d(package="ggsci",
-                            palette = "category20_d3") +
-    scale_fill_paletteer_d(package="ggsci",
-                           palette = "category20_d3") +
-    theme_cowplot(),
   
   res = results(
     object = dds_processed,
@@ -395,13 +274,18 @@ analysis_plan = drake_plan(
     column_to_rownames("gene"),
   
   dds_with_scores =
-    scoreEigengenes(dds_processed, module_list = module_list, score_func = 'rsvd') %>%
-    scoreEigengenes(object = ., module_list = ldg_modules, score_func = 'rsvd'),
+    moduleScoreR::scoreEigengenes(object = dds_processed,
+                                  module_list = module_list,
+                                  score_func = 'rsvd') %>%
+    moduleScoreR::scoreEigengenes(object = .,
+                                  module_list = ldg_modules,
+                                  score_func = 'rsvd'),
   
-  annotated_modules = module_annot %>% as_tibble(rownames="module") %>% filter(type != "Undetermined"),
+  annotated_modules = module_annot %>%
+    as_tibble(rownames="module") %>%
+    filter(type != "Undetermined"),
   
-  type_pal = paletteer_d(package="ggsci",
-                         palette = "category20_d3",
+  type_pal = paletteer_d("ggsci::category20_d3",
                          n = length(unique(annotated_modules$type))) %>%
     `names<-`(unique(annotated_modules$type)),
   
@@ -413,10 +297,10 @@ analysis_plan = drake_plan(
     pull(run_id) %>%
     unique(),
   
-  # run_id_color_set =
-  #   colorRampPalette(
-  #     brewer.pal(12, "Paired"))(length(run_groups)) %>%
-  #   `names<-`(run_groups),
+  run_id_color_set =
+    colorRampPalette(
+      brewer.pal(12, "Paired"))(length(run_groups)) %>%
+    `names<-`(run_groups),
   
   chr_pal = c("Y" = "#E41A1C",
               "X" = "#377EB8"),
@@ -440,6 +324,10 @@ analysis_plan = drake_plan(
       brewer.pal(12, "Set1"))(length(levels(annotation_info$project))) %>%
     `names<-`(levels(annotation_info$project)),
   
+  disease_class_pal =
+    oaColors::oaPalette(7) %>%
+    `names<-`(unique(annotation_info$disease_class)),
+  
   group_pal =
     list(
       comparison_grouping_variable_colors,
@@ -448,16 +336,14 @@ analysis_plan = drake_plan(
       sex_pal,
       cluster_pal,
       project_pal,
-      viridis(n = max(annotation_info$sledai_total_score),
-              option = "E",
-              direction = -1)) %>%
+      disease_class_pal) %>%
     `names<-`(c(comparison_grouping_variable,
-                      "type",
-                      "chr",
-                      "sex",
-                      "cluster",
-                      "project",
-                      "sledai_total_score")),
+                "type",
+                "chr",
+                "sex",
+                "cluster",
+                "project",
+                "disease_class")),
   
   module_scores =
     colData(dds_with_scores) %>%
@@ -476,7 +362,7 @@ analysis_plan = drake_plan(
   top_vars = matrixStats::rowSds(vsd_exprs) %>%
     `names<-`(rownames(vsd_exprs)) %>%
     enframe() %>%
-    top_n(7500, value) %>%
+    top_n(20000, value) %>%
     pull(name),
   
   vsd_top = vsd_exprs[top_vars,] %>% t(),
@@ -486,13 +372,14 @@ analysis_plan = drake_plan(
                                           seq(from = 12, to=20, by=2)),
                           verbose = 5),
   
+  ###--- WGCNA ---###
   wgcna_modules = blockwiseModules(datExpr = vsd_top,
                                     power = sft$powerEstimate,
-                                    maxBlockSize = 7500,
-                                    mergeCutHeight = 0.25,
+                                    maxBlockSize = 20000,
+                                    mergeCutHeight = 0.2,
                                     minModuleSize = 20,
                                     pamRespectsDendro = FALSE,
-                                    saveTOMs = TRUE,
+                                    saveTOMs = FALSE,
                                     verbose = 3,
                                     detectCutHeight = 0.995,
                                     TOMDenom = "min",
@@ -503,7 +390,10 @@ analysis_plan = drake_plan(
     enframe(name = "gene",
             value = "module"),
   
-  wgcna_hub_genes = chooseTopHubInEachModule(vsd_top, wgcna_modules$colors, power = 4, type = "signed hybrid"),
+  wgcna_hub_genes = chooseTopHubInEachModule(vsd_top,
+                                             wgcna_modules$colors,
+                                             power = 4,
+                                             type = "signed hybrid"),
   
   wgcna_scores = wgcna_modules$MEs %>%
     as_tibble(rownames="sample_name") %>%
@@ -512,7 +402,8 @@ analysis_plan = drake_plan(
                         rownames="sample_name")),
   
   wgcna_cluster_split = initial_split(data = wgcna_scores %>%
-                                select(cluster, starts_with("ME")),
+                                select(cluster,
+                                       starts_with("ME")),
                                prop = 0.75,
                                strata = "cluster"),
   
@@ -524,9 +415,70 @@ analysis_plan = drake_plan(
                        data = wgcna_cluster_train,
                        trControl = trainControl(method = "repeatedcv",
                                                 number = 10,
-                                                repeats = 10)),
+                                                repeats = 10, 
+                                                search = "grid",
+                                                allowParallel = TRUE)),
   
-  wgcna_cluster_rf_cv_varImp = varImp(object = wgcna_cluster_rf_cv, scale = FALSE),
+  wgcna_cluster_rf_cv_varImp = varImp(object = wgcna_cluster_rf_cv,
+                                      scale = FALSE),
+  
+  wgcna_disease_class_split = initial_split(data = wgcna_scores %>%
+                                              select(disease_class,
+                                                     starts_with("ME")),
+                                            prop = 0.75,
+                                            strata = "disease_class"),
+  
+  wgcna_disease_class_train = training(wgcna_disease_class_split),
+  wgcna_disease_class_test = testing(wgcna_disease_class_split),
+  
+  wgcna_disease_class_rf_cv = train(disease_class ~ .,
+                                    method = "parRF",
+                                    data = wgcna_disease_class_train,
+                                    trControl = trainControl(method = "repeatedcv",
+                                                             number = 20,
+                                                             repeats = 20, 
+                                                             search = "grid",
+                                                             allowParallel = TRUE)),
+  
+  wgcna_disease_class_rf_cv_varImp = varImp(object = wgcna_disease_class_rf_cv,
+                                            scale = FALSE),
+  
+  ###--- WGCNA-based GSEA ---###
+  filtered_wgcna_module_genes =
+    wgcna_module_genes %>%
+    mutate(hugo = checkGeneSymbols(gene)[["Suggested.Symbol"]]) %>%
+    filter(!is.na(hugo)),
+  
+  MEenriched = future_map_dfr(
+    .x = unique(filtered_wgcna_module_genes$module),
+    .f = function(i){
+      filtered_wgcna_module_genes %>%
+        filter(module == i) %>%
+        pull(hugo) %>%
+        enricher(gene = .,
+                 TERM2GENE = c5) %>%
+        slot("result") %>%
+        mutate(module = i)
+      }),
+  
+  MEplotting = MEenriched %>%
+    filter(p.adjust < 0.05,
+           module != "grey") %>%
+    mutate(
+      GeneRatio = map_dbl(.x = GeneRatio, 
+                          .f = function(i){
+                            j = str_split(i, "/") %>%
+                              `[[`(1) %>% 
+                              as.double()
+                            j[[1]]/j[[2]]
+                          }),
+      ID =  str_replace_all(string = ID, pattern = "_", replacement = " "),
+      module = paste0("ME", module)) %>%
+    group_by(module) %>%
+    top_n(5, GeneRatio) %>%
+    ungroup() %>%
+    arrange(module, GeneRatio) %>%
+    mutate(order = row_number()),
   
   viral_transcripts =
     annot %>%
@@ -549,27 +501,18 @@ analysis_plan = drake_plan(
     annotated_modules %>%
     filter(type == "Inflammation") %>%
     pull(module),
-  
-  ifn_scores =
-    colData(dds_with_scores)[,ifn_modules] %>%
-    as.data.frame() %>%
-    as_tibble(rownames="sample_name"),
-  
-  inflammation_scores =
-    colData(dds_with_scores)[,inflame_modules] %>%
-    as.data.frame() %>%
-    as_tibble(rownames="sample_name"),
-  
-  ldg_scores =
-    colData(dds_with_scores)[,names(ldg_modules)] %>%
-    as.data.frame() %>%
-    as_tibble(rownames="sample_name"),
-  
-  ifn_scores_with_viral =
-    inner_join(viral_exprs, ifn_scores),
-  
-  inflammation_scores_with_viral =
-    inner_join(viral_exprs, inflammation_scores),
+
+  module_scores_with_viral =
+    colData(dds_with_scores) %>%
+    as_tibble(rownames='sample_name') %>%
+    select(sample_name,
+           disease_class,
+           disease_grouping,
+           matches("^M[[:digit:]]+"),
+           one_of(names(ldg_modules))) %>%
+    inner_join(wgcna_scores) %>%
+    inner_join(viral_exprs) %>%
+    inner_join(leiden_res),
   
   report = rmarkdown::render(
     knitr_in("report.rmd"),
@@ -603,7 +546,7 @@ analysis_plan = drake_plan(
   colData(dds_with_scores) %>%
     as_tibble(rownames="sample_name") %>%
     select(sample_name, 
-           one_of(module_tbl$module),
+           matches("^M[[:digit:]]+"),
            one_of(names(ldg_modules))) %>%
     as.data.frame() %>%
     data.table::fwrite(row.names = TRUE,
@@ -613,10 +556,8 @@ analysis_plan = drake_plan(
   
   save(annotation_info,
        final_md,
-       bpx,
        group_pal,
-       ifn_scores_with_viral,
-       inflammation_scores_with_viral,
+       module_scores_with_viral,
        ISGs,
        pca_results,
        top_down,

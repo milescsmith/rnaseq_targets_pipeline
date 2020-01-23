@@ -7,7 +7,7 @@ deduplicate_samples <- function(md, samples){
       mutate(sample_name = make_clean_names(string = sample_name, 
                                             case = "all_caps"))
     deduplicated_samples = `names<-`(samples, make_clean_names(string = names(samples),
-                                                               case = "all_caps"))  
+                                                                        case = "all_caps"))  
   } else {
     deduplicated_md = md %>%
       filter(sample_name %in% names(samples))
@@ -19,18 +19,30 @@ deduplicate_samples <- function(md, samples){
 }
 
 
-remove_outliers <- function(dds, zscore_cutoff){
+remove_outliers <- function(dds,
+                            pc1_zscore_cutoff,
+                            pc2_zscore_cutoff){
   dds  <- estimateSizeFactors(dds,
-                              locfun = shorth,
+                              locfun = genefilter::shorth,
                               type = "poscounts")
   vsd <- assay(vst(dds))
-  pca_res = prcomp_irlba(vsd)[['rotation']] %>%
+  pca_res = irlba::prcomp_irlba(vsd)[['rotation']] %>%
     as_tibble() %>%
     mutate(sample = colnames(vsd),
-           zscore = abs((PC1 - mean(PC1))/sd(PC1))) %>%
+           pc1_zscore = abs((PC1 - mean(PC1))/sd(PC1)),
+           pc2_zscore = abs((PC2 - mean(PC2))/sd(PC2))) %>%
     inner_join(as_tibble(colData(dds), rownames = "sample"))
   
-  outliers <- pca_res %>% filter(zscore >= zscore_cutoff) %>% pull(sample)
+  pc1_outliers <- pca_res %>%
+    filter(pc1_zscore >= pc1_zscore_cutoff) %>%
+    pull(sample)
+  
+  pc2_outliers <- pca_res %>%
+    filter(pc2_zscore >= pc2_zscore_cutoff) %>%
+    pull(sample)
+  
+  outliers <- unique(c(pc1_outliers, pc2_outliers))
+  
   if (length(outliers > 0)){
     dds <- dds[,colnames(dds) %nin% outliers] 
   }

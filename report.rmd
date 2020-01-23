@@ -1,5 +1,5 @@
 ---
-title: "Combined General, DxTerity, ABC, MS, OCRD, MDFL, ORDRCC.13-19, ORDRCC RNAseq data, BLAST"
+title: "MS dataset"
 author: "Miles Smith"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -24,30 +24,14 @@ options(width = 1200)
 knitr::opts_chunk$set(echo = FALSE)
 theme_set(theme_cowplot())
 loadd(annotation_info,
-  annotated_module_scores,
-  annotated_modules,
-  disp_plot,
   group_pal,
-  ifn_scores,
-  inflammation_scores,
-  ifn_scores_with_viral,
-  inflammation_scores_with_viral,
-  ISGs,
-  ldg_scores,
-  md,
-  md_cat_data,
-  md_dupes,
-  md_num_data,
+  module_scores_with_viral,
+  ifn_modules,
+  inflame_modules,
   module_ISGs,
-  module_scores,
-  module_tbl,
   pca_qc,
-  pca_plot,
-  pca_plot2,
   pca_results,
-  project_pal,
   removed_outliers,
-  res,
   sample_dendrogram,
   sample_dists,
   sampleDistMatrix,
@@ -56,28 +40,30 @@ loadd(annotation_info,
   top_up,
   top_down,
   tx_files,
-  umap_plot2,
-  umap_plot,
   umap_results,
-  viral_transcripts,
-  vsd_exprs)
+  viral_transcripts)
 ```
 
 # Data processing of RNAseq data
 
-Overview of sample characteristics:
+## Overview of sample characteristics:
 
-```{r fig.height=6, fig.width=6}
-show_plot(md_cat_data, high_cardinality=1, col_palette = 3)
+```{r fig.height=4, fig.width=10}
+loadd(md_cat_data)
+inspectdf::show_plot(md_cat_data, high_cardinality=1, col_palette = 3)
+rm(md_cat_data)
 ```
 
-```{r}
-show_plot(md_num_data, col_palette = 3)
+```{r fig.height=4, fig.width=10}
+loadd(md_num_data)
+inspectdf::show_plot(md_num_data, col_palette = 3)
+rm(md_num_data)
 ```
 
-Breakdown of the source of samples:
+## Breakdown of the source of samples:
 
 ```{r}
+loadd(md)
 md %>%
   tabyl(project) %>%
   adorn_pct_formatting(digits = 2) %>%
@@ -139,21 +125,23 @@ if (!all(md$sample_name %in% names(tx_files))){
 
 ## Sample QC filtering
 
-Samples with a PC1 zscore > 2 (those that fall outside the green lines below) were dropped from analysis.
+Samples with a PC1 > 2 (the red lines) and/or PC2 zscore > 2.5 (the green lines) were dropped from analysis.
 ```{r, fig.width=6, fig.height=6}
 pca_qc %>% ggplot(aes(x = PC1,
-                      y = PC2,
-                      color = zscore)) +
-  geom_point(alpha = 0.5) +
-  geom_vline(aes(xintercept = (3*sd(.data$PC1)) + mean(.data$PC1)),
+                      y = PC2)) +
+  geom_point(shape = 21,
+               colour = "black",
+               size = 2,
+               stroke = 0.25,
+               alpha = 0.6) +
+  geom_vline(aes(xintercept = (pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
              color = "red") +
-  geom_vline(aes(xintercept = -(3*sd(.data$PC1)) + mean(.data$PC1)),
+  geom_vline(aes(xintercept = -(pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
              color = "red") +
-  geom_vline(aes(xintercept = (2*sd(.data$PC1)) + mean(.data$PC1)),
+  geom_hline(aes(yintercept = (pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
              color = "green") +
-  geom_vline(aes(xintercept = -(2*sd(.data$PC1)) + mean(.data$PC1)),
-             color = "green") +
-  scale_color_gradient(low = "grey90",high = "red")
+  geom_hline(aes(yintercept = -(pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
+             color = "green")
 ```
 
 ```{r}
@@ -166,10 +154,10 @@ if (length(removed_outliers) > 0) {
       bootstrap_options = c("striped", "hover", "condensed", "responsive"),
       full_width = FALSE)
 }
+rm(md)
 ```
 
 ### Overall correlation between samples
-
 ```{r, fig.width=12, fig.height=9}
 pheatmap(sampleDistMatrix,
          clustering_distance_rows = sample_dists,
@@ -183,25 +171,27 @@ pheatmap(sampleDistMatrix,
 
 # Data quality
 
-##
+## MA-plot
 ```{r}
+loadd(res)
 plotMA(res, ylim = c(-2,2))
 ```
 
 ## Dispersion estimates
 ```{r}
+loadd(disp_plot)
 disp_plot
+rm(disp_plot)
 ```
 
 # Differential Gene Expression {.tabset}
-
 ```{r}
 print("Log fold change results:")
 summary(res)
 ```
 
-## 25 genes with largest negative log-fold change in SLE
-```{r}
+## 25 genes with largest negative log-fold change in MS-like disorders
+```{r fig.height=9, fig.width=9}
 down_table %>%
   dplyr::select(-baseMean) %>%
   dplyr::filter(log2FoldChange > 0) %>%
@@ -228,7 +218,7 @@ down_table %>%
   column_spec(2, color = "black")
 ```
 
-## 25 genes with largest positive log-fold change in SLE
+## 25 genes with largest positive log-fold change in MS-like disorders
 ```{r}
 up_table %>%
   select(-baseMean) %>%
@@ -256,15 +246,16 @@ up_table %>%
   column_spec(2, color = "black")
 ```
 
-## Expression of top DE genes:
-
-```{r, fig.width=12, fig.height=6}
+## Expression of top DE genes
+```{r, fig.width=12, fig.height=9}
+loadd(vsd_exprs)
 range_bound = 4
 zscore_range <- c(-range_bound:range_bound)
 t(vsd_exprs)[,unique(c(top_up[1:50], top_down))] %>% 
     pheatmap(
       scale = 'column',
       fontsize = 9,
+      fontsize_col = 6,
       show_rownames = FALSE,
       annotation_row = annotation_info,
       annotation_colors = group_pal,
@@ -276,8 +267,45 @@ t(vsd_exprs)[,unique(c(top_up[1:50], top_down))] %>%
       )
 ```
 
-## Expression of selected interferon-stimulated genes:
-```{r, fig.width=12, fig.height=9}
+## Volcano plot of gene expression
+```{r fig.height=9, fig.width=9}
+volcano_data <- res %>%
+  as_tibble(rownames = "gene") %>%
+  mutate(sig = case_when(
+    padj > 0.01 ~ "insig",
+    padj < 0.01 & log2FoldChange <= -0.25 ~ "down",
+    padj < 0.01 & log2FoldChange >= 0.25 ~ "up",
+    padj < 0.01 & between(log2FoldChange, -1, 1) ~ "ignore",
+    is.na(padj) ~ "insig"
+  ))
+
+top_volcano_data =
+  rbind(
+    top_n(filter(volcano_data, sig == "up"), n = 20, log2FoldChange),
+    top_n(filter(volcano_data, sig == "down"), n = -20, log2FoldChange)
+  )
+  
+ggplot(data = volcano_data,
+       mapping = aes(x = log2FoldChange,
+                     y = 1/padj,
+                     color = sig)) +
+  geom_point(alpha = 0.25) +
+  scale_y_log10() +
+  theme_cowplot() +
+  scale_color_manual(values = c("down" = 'red',
+                                "up" = "blue",
+                                "insig" = "black",
+                                "ignore" = 'grey')) +
+  geom_text_repel(data = top_volcano_data,
+                  aes(label = gene)) +
+  guides(color = "none")
+rm(res)
+```
+
+## Expression of selected interferon-stimulated genes
+```{r, fig.width=9, fig.height=6}
+loadd(ISGs)
+
 range_bound = 4
 zscore_range <- c(-range_bound:range_bound)
 t(vsd_exprs)[,ISGs] %>%
@@ -292,10 +320,12 @@ t(vsd_exprs)[,ISGs] %>%
       color = viridis(n = length(zscore_range)-1, option = "D"),
       gaps_col = class_gaps,
       border_color = NA)
+
+rm(ISGs)
 ```
 
 ## Expression of individual genes in the M1.2, M3.4, and M5.12 gene modules
-```{r fig.height=9, fig.width=12}
+```{r fig.height=6, fig.width=9}
 range_bound = 4
 zscore_range <- c(-range_bound:range_bound)
 vsd_exprs %>%
@@ -319,89 +349,239 @@ vsd_exprs %>%
     border_color = NA)
 ```
 
+# Sample Clustering
+
+Using gene expression distance, a sample adjacency matrix was calculated from a shared nearest neighbor graph.  This, in turn, was used to cluster the samples, with the optimal clustering resolution being determined by silhouette width at multiple resolutions.
+
+```{r}
+annotation_info %>%
+  group_by(disease_class,
+           cluster) %>%
+  summarise(n = n()) %>%
+  pivot_wider(names_from = cluster,
+              values_from = n) %>%
+  DT::datatable()
+
+annotation_info %>%
+  select(disease_class, cluster) %>%
+  group_by(disease_class) %>%
+  mutate(total_disease = n()) %>%
+  ungroup() %>%
+  group_by(disease_class, cluster) %>%
+  mutate(total_cluster_disease = n(),
+         freq = total_cluster_disease/total_disease) %>%
+  distinct() %>%
+  ggplot(aes(
+    x = disease_class,
+    y = freq,
+    group = cluster,
+    fill = cluster
+  )) +
+  geom_col() +
+  labs(y = "Proportion of disease class in cluster") +
+  scale_fill_brewer(palette = "Set1") +
+  theme_cowplot()
+```
+
 
 # Clustering and variation of samples in reduced dimensional space {.tabset}
 
 ## PCA
 
-### PCA, grouped by disease classification
-```{r, fig.width=12, fig.height=6}
-plot_grid(pca_plot +
-            theme(legend.position = "none"),
-          pca_plot +
-            geom_mark_ellipse(aes(fill=disease_class),
-                              alpha = 0.05))
-```
-
-### PCA, grouped by project
+### PCA, by disease classification
 ```{r, fig.width=12, fig.height=6}
 plot_grid(
-  pca_results %>%
-    ggplot(aes(x = PC1,
-               y = PC2,
-               color = project)) +
-    geom_point(alpha = 0.3) + 
-    scale_color_paletteer_d(package = "ggthemes", palette = "calc") +
-    scale_fill_paletteer_d(package = "ggthemes", palette = "calc") +
-    labs(color = "project") +
+  ggplot(
+    data = pca_results,
+    aes(
+      x = PC1,
+      y = PC2,
+      fill = disease_class,
+      line = 1
+    ),
+    shape = 1
+  ) +
+    geom_point(
+      shape = 21,
+      colour = "black",
+      size = 2,
+      stroke = 0.5,
+      alpha = 0.6
+    ) +
+    scale_fill_brewer(palette = "Set1") +
+    theme_cowplot() +
     theme(legend.position = "none"),
-  pca_results %>%
-    ggplot(aes(x = PC1,
-               y = PC2,
-               color = project)) +
-    geom_point(alpha = 0.3) + 
-    scale_color_paletteer_d(package = "ggthemes", palette = "calc") +
-    scale_fill_paletteer_d(package = "ggthemes", palette = "calc") +
-    labs(color = "project") +
-    geom_mark_ellipse(aes(fill=project),
+  ggplot(
+    data = pca_results,
+    aes(
+      x = PC1,
+      y = PC2,
+      fill = disease_class,
+      line = 1
+    ), shape = 1
+  ) +
+    geom_point(
+      shape = 21,
+      colour = "black",
+      size = 2,
+      stroke = 0.5,
+      alpha = 0.6
+    ) +
+    scale_fill_brewer(palette = "Set1") +
+    scale_color_brewer(palette = "Set1") +
+    theme_cowplot() +
+    geom_mark_ellipse(aes(fill = disease_class,
+                          color = disease_class),
+                      alpha = 0.05
+    )
+)
+```
+
+### PCA, by disease group
+```{r, fig.width=12, fig.height=6}
+plot_grid(
+  ggplot(data = pca_results,
+         mapping = aes(x = PC1,
+                       y = PC2,
+                       fill = disease_grouping)) +
+    geom_point(shape = 21,
+               colour = "black",
+               size = 2,
+               stroke = 0.25,
+               alpha = 0.6) + 
+    scale_color_paletteer_d("ggthemes::calc") +
+    scale_fill_paletteer_d("ggthemes::calc") +
+    theme(legend.position = "none"),
+  ggplot(data = pca_results,
+         mapping = aes(x = PC1,
+                       y = PC2,
+                       fill = disease_grouping)) +
+    geom_point(shape = 21,
+               colour = "black",
+               size = 2,
+               stroke = 0.25,
+               alpha = 0.6) + 
+    scale_color_paletteer_d("ggthemes::calc") +
+    scale_fill_paletteer_d("ggthemes::calc") +
+    labs(color = "Group",
+         fill = "none") +
+    geom_mark_ellipse(aes(fill=disease_grouping,
+                          color=disease_grouping),
                       alpha = 0.05)
 )
 ```
 
-### PCA, grouped by the plate on which the sample was run
+### PCA, by plate
 ```{r, fig.width=12, fig.height=6}
-plot_grid(pca_plot2 + 
-            scale_color_paletteer_d(package = "ggsci", palette = "default_igv") +
-            scale_fill_paletteer_d(package = "ggsci", palette = "default_igv") +
-            theme(legend.position = "none"),
-          pca_plot2 +
-            geom_mark_ellipse(aes(fill=run_id),
-                              alpha = 0.05) +
-            scale_color_paletteer_d(package = "ggsci", palette = "default_igv") +
-            scale_fill_paletteer_d(package = "ggsci", palette = "default_igv"))
+p1 <- ggplot(
+  data = pca_results,
+  mapping = aes(
+    x = PC1,
+    y = PC2,
+    fill = run_id
+  )
+) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.5,
+    alpha = 0.6
+  ) +
+  labs(color = "run_id") +
+  scale_color_paletteer_d("ggsci::default_igv") +
+  scale_fill_paletteer_d("ggsci::default_igv")
+
+
+p2 <- ggplot(
+  data = pca_results,
+  mapping = aes(
+    x = PC1,
+    y = PC2,
+    fill = run_id
+  )
+) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.5,
+    alpha = 0.6
+  ) +
+  labs(color = "run_id") +
+  geom_mark_ellipse(aes(
+    fill = run_id,
+    color = run_id
+  ),
+  alpha = 0.05
+  ) +
+  scale_color_paletteer_d("ggsci::default_igv") +
+  scale_fill_paletteer_d("ggsci::default_igv") +
+  guides(color = guide_legend(ncol = 1))
+
+legend <- get_legend(p2)
+
+plot_grid(p1 + theme(legend.position = "none"),
+  p2 + theme(legend.position = "none"),
+  legend,
+  nrow = 1,
+  rel_widths = c(1, 1, .25)
+)
 ```
 
-### PCA, colored by initial sample concentration
+### PCA, by initial sample concentration
 ```{r, fig.width=8, fig.height=6}
-pca_results %>%
-  ggplot(aes(x = PC1,
-             y = PC2,
-             color = initial_concentration_ng_ul)) +
-  geom_point(alpha = 0.3) + 
-  scale_color_gradient2(low = "blue", mid = "grey90", high = "red", midpoint = 10)
+ggplot(
+  data = pca_results,
+  mapping = aes(
+    x = PC1,
+    y = PC2,
+    fill = initial_concentration_ng_ul
+  )
+) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.25,
+    alpha = 0.6
+  ) +
+  scale_fill_gradient2(low = "blue",
+                       mid = "grey90",
+                       high = "red",
+                       midpoint = 10)
+
 ```
 
-### PCA, colored by Leiden cluster
+### PCA, by Leiden cluster
 ```{r, fig.width=8, fig.height=6}
-pca_results %>%
-  ggplot(aes(x = PC1,
-             y = PC2,
-             color = cluster)) +
-  geom_point() +
-  scale_color_manual(values = group_pal$cluster)
+ggplot(
+  data = pca_results,
+  mapping = aes(
+    x = PC1,
+    y = PC2,
+    fill = cluster
+  )
+) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.25,
+    alpha = 0.6
+  ) +
+  scale_fill_manual(values = group_pal$cluster)
 ```
 
 ### 3D PCA, colored by Leiden cluster
 ```{r}
 pca_results %>%
-  inner_join(ifn_scores_with_viral) %>%
-  inner_join(inflammation_scores_with_viral) %>%
   plot_ly(x = ~PC1,
           y = ~PC2,
           z = ~PC3,
           color = ~cluster,
-          size = 1.5,
-          alpha = 0.75,
+          size = 2.5,
+          alpha = 0.9,
           colors = group_pal$cluster,
           text = ~paste('<br>Sample: ', sample_name,
                         '<br>Classification: ', disease_class,
@@ -411,90 +591,208 @@ pca_results %>%
                         '<br>Plate: ', run_id
           )
   ) %>%
-  add_markers()
+  add_markers(marker = list(size = 3,
+                            line = list(color = 'rgba(0, 0, 0, .8)',
+                                        width = 1.5)))
 ```
 
 
 ## UMAP
 
-### UMAP, grouped by the plate on which the sample was run
-```{r, fig.width=12, fig.height=6}
-plot_grid(umap_plot +
-            theme(legend.position = "none"),
-          umap_plot +
-            geom_mark_ellipse(aes(fill=disease_class), alpha = 0.05))
-```
-
-### UMAP, grouped by the plate on which the sample was run
-```{r, fig.width=12, fig.height=6}
-plot_grid(umap_plot2 + 
-            scale_color_paletteer_d(package = "ggsci", palette = "default_igv") +
-            scale_fill_paletteer_d(package = "ggsci", palette = "default_igv") +
-            theme(legend.position = "none"),
-          umap_plot2 +
-            geom_mark_ellipse(aes(fill=run_id), alpha = 0.05) +
-            scale_color_paletteer_d(package = "ggsci", palette = "default_igv") +
-            scale_fill_paletteer_d(package = "ggsci", palette = "default_igv"))
-```
-
-### UMAP, grouped by study group
+### UMAP, by disease classification
 ```{r, fig.width=12, fig.height=6}
 plot_grid(
-  umap_results %>%
-    ggplot(aes(x = umap_1,
-               y = umap_2,
-               color = project)) +
-    geom_point(alpha = 0.3) + 
-    scale_color_paletteer_d(package = "ggthemes", palette = "calc") +
-    scale_fill_paletteer_d(package = "ggthemes", palette = "calc") +
-    labs(color = "project") +
+  ggplot(
+    data = umap_results,
+    aes(
+      x = umap_1,
+      y = umap_2,
+      fill = disease_class,
+      line = 1
+    ),
+    shape = 1
+  ) +
+    geom_point(
+      shape = 21,
+      colour = "black",
+      size = 2,
+      stroke = 0.5,
+      alpha = 0.6
+    ) +
+    scale_fill_brewer(palette = "Set1") +
+    theme_cowplot() +
     theme(legend.position = "none"),
-  umap_results %>%
-    ggplot(aes(x = umap_1,
-               y = umap_2,
-               color = project)) +
-    geom_point(alpha = 0.3) + 
-    scale_color_paletteer_d(package = "ggthemes", palette = "calc") +
-    scale_fill_paletteer_d(package = "ggthemes", palette = "calc") +
-    labs(color = "project") +
-    geom_mark_ellipse(aes(fill=project),
+  ggplot(
+    data = umap_results,
+    aes(
+      x = umap_1,
+      y = umap_2,
+      fill = disease_class,
+      line = 1
+    ), shape = 1
+  ) +
+    geom_point(
+      shape = 21,
+      colour = "black",
+      size = 2,
+      stroke = 0.5,
+      alpha = 0.6
+    ) +
+    scale_fill_brewer(palette = "Set1") +
+    scale_color_brewer(palette = "Set1") +
+    theme_cowplot() +
+    geom_mark_ellipse(aes(fill = disease_class,
+                          color = disease_class),
+                      alpha = 0.05
+    )
+)
+```
+
+### UMAP, by disease group
+```{r, fig.width=12, fig.height=6}
+plot_grid(
+  ggplot(data = umap_results,
+         mapping = aes(x = umap_1,
+                       y = umap_2,
+                       fill = disease_grouping)) +
+    geom_point(shape = 21,
+               colour = "black",
+               size = 2,
+               stroke = 0.25,
+               alpha = 0.6) + 
+    scale_color_paletteer_d("ggthemes::calc") +
+    scale_fill_paletteer_d("ggthemes::calc") +
+    theme(legend.position = "none"),
+  ggplot(data = umap_results,
+         mapping = aes(x = umap_1,
+                       y = umap_2,
+                       fill = disease_grouping)) +
+    geom_point(shape = 21,
+               colour = "black",
+               size = 2,
+               stroke = 0.25,
+               alpha = 0.6) + 
+    scale_color_paletteer_d("ggthemes::calc") +
+    scale_fill_paletteer_d("ggthemes::calc") +
+    labs(color = "Group",
+         fill = "none") +
+    geom_mark_ellipse(aes(fill=disease_grouping,
+                          color=disease_grouping),
                       alpha = 0.05)
 )
 ```
 
-### UMAP, colored by initial sample concentration
-```{r, fig.width=8, fig.height=6}
-umap_results %>%
-  ggplot(aes(x = umap_1,
-             y = umap_2,
-             color = initial_concentration_ng_ul)) +
-  geom_point(alpha = 0.3) + 
-  scale_color_gradient2(low = "blue", mid = "grey90", high = "red", midpoint = 10)
+### UMAP, by plate
+```{r, fig.width=12, fig.height=6}
+p1 <- ggplot(
+  data = umap_results,
+  mapping = aes(
+    x = umap_1,
+    y = umap_2,
+    fill = run_id
+  )
+) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.5,
+    alpha = 0.6
+  ) +
+  labs(color = "run_id") +
+  scale_color_paletteer_d("ggsci::default_igv") +
+  scale_fill_paletteer_d("ggsci::default_igv")
+
+
+p2 <- ggplot(
+  data = umap_results,
+  mapping = aes(
+    x = umap_1,
+    y = umap_2,
+    fill = run_id
+  )
+) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.5,
+    alpha = 0.6
+  ) +
+  labs(color = "run_id") +
+  geom_mark_ellipse(aes(
+    fill = run_id,
+    color = run_id
+  ),
+  alpha = 0.05
+  ) +
+  scale_color_paletteer_d("ggsci::default_igv") +
+  scale_fill_paletteer_d("ggsci::default_igv") +
+  guides(color = guide_legend(ncol = 1))
+
+legend <- get_legend(p2)
+
+plot_grid(p1 + theme(legend.position = "none"),
+          p2 + theme(legend.position = "none"),
+          legend,
+          nrow = 1,
+          rel_widths = c(1, 1, .25)
+)
+
 ```
 
-### UMAP, colored by Leiden cluster
+### UMAP, by initial sample concentration
+```{r, fig.width=8, fig.height=6}
+ggplot(
+  data = umap_results,
+  mapping = aes(
+    x = umap_1,
+    y = umap_2,
+    fill = initial_concentration_ng_ul
+  )
+) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.25,
+    alpha = 0.6
+  ) +
+  scale_fill_gradient2(low = "blue",
+                       mid = "grey90",
+                       high = "red",
+                       midpoint = 10)
+```
+
+### UMAP, by Leiden cluster
 ```{r, fig.width=7, fig.height=6}
-umap_results %>%
-  ggplot(aes(x = umap_1,
-             y = umap_2,
-             color = cluster)) +
-  geom_point() +
-    geom_mark_ellipse(aes(fill=cluster),
-                      alpha = 0.05) +
-  scale_color_manual(values = group_pal$cluster)
+ggplot(
+  data = umap_results,
+  mapping = aes(
+    x = umap_1,
+    y = umap_2,
+    fill = cluster
+  )
+) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.25,
+    alpha = 0.6
+  ) +
+  scale_fill_manual(values = group_pal$cluster)
 ```
 
 ### UMAP, in 3D, colored by Leiden cluster
 ```{r}
 umap_results %>%
-  inner_join(ifn_scores_with_viral) %>%
-  inner_join(inflammation_scores_with_viral) %>%
   plot_ly(x = ~umap_1,
           y = ~umap_2,
           z = ~umap_3,
           color = ~cluster,
-          size = 1.5,
-          alpha = 0.75,
+          size = 2.5,
+          alpha = 0.9,
           colors = group_pal$cluster,
           text = ~paste('<br>Sample: ', sample_name,
                         '<br>Classification: ', disease_class,
@@ -504,17 +802,20 @@ umap_results %>%
                         '<br>Plate: ', run_id
           )
   ) %>%
-  add_markers()
+  add_markers(marker = list(size = 3,
+                            line = list(color = 'rgba(0, 0, 0, .8)',
+                                        width = 1.5)))
 ```
 
 # Module scores {.tabset}
 
 ## SLE Interferon module scores
-
 ```{r fig.height=9, fig.width=4}
 range_bound = 4
 zscore_range <- c(-range_bound:range_bound)
-ifn_scores %>%
+
+module_scores_with_viral %>%
+  select(sample_name, one_of(ifn_modules)) %>%
   column_to_rownames("sample_name") %>%
   pheatmap(
     scale="column",
@@ -529,13 +830,15 @@ ifn_scores %>%
 ```
 
 ## SLE Inflammatory module scores
-
 ```{r fig.height=9, fig.width=6}
 range_bound = 4
 zscore_range <- c(-range_bound:range_bound)
-inflammation_scores %>%
+
+module_scores_with_viral %>%
+  select(sample_name, one_of(inflame_modules)) %>%
   column_to_rownames("sample_name") %>%
-  pheatmap(scale="column",
+  pheatmap(
+    scale="column",
     fontsize = 9,
     show_rownames = FALSE,
     annotation_colors = group_pal,
@@ -547,11 +850,13 @@ inflammation_scores %>%
 ```
 
 ## Low-density granulocyte module scores
-
 ```{r fig.height=9, fig.width=5}
 range_bound = 3
 zscore_range <- c(-range_bound:range_bound)
-ldg_scores %>%
+
+module_scores_with_viral %>%
+  select(sample_name,
+         one_of(names(ldg_modules))) %>%
   column_to_rownames("sample_name") %>%
   pheatmap(
     scale="column",
@@ -567,38 +872,51 @@ ldg_scores %>%
 
 ## SLE Modules with an annotated associated pathway
 ```{r fig.height=9, fig.width=11}
+loadd(annotated_modules)
+
 range_bound = 4
 zscore_range <- c(-range_bound:range_bound)
-pheatmap(
-  annotated_module_scores,
-  scale = 'column',
-  fontsize = 9,
-  show_rownames = FALSE,
-  annotation_row = annotation_info,
-  annotation_col = column_to_rownames(annotated_modules, var = "module"),
-  annotation_colors = group_pal,
-  angle_col = 315,
-  breaks = zscore_range,
-  color = viridis(n = length(zscore_range)-1, option = "D"),
-  border_color = NA)
+
+module_scores_with_viral %>%
+  select(sample_name,
+         one_of(annotated_modules$module)) %>%
+  column_to_rownames("sample_name") %>%
+  pheatmap(
+    scale = 'column',
+    fontsize = 9,
+    show_rownames = FALSE,
+    annotation_row = annotation_info,
+    annotation_col = column_to_rownames(annotated_modules, var = "module"),
+    annotation_colors = group_pal,
+    angle_col = 315,
+    breaks = zscore_range,
+    color = viridis(n = length(zscore_range)-1, option = "D"),
+    border_color = NA)
+
 ```
 
 ## All SLE modules
-
 ```{r fig.height=9, fig.width=11}
 range_bound = 3
 zscore_range <- c(-range_bound:range_bound)
-pheatmap(module_scores,
-         scale = 'column',
-         fontsize = 9,
-         annotation_row = annotation_info,
-         annotation_col = module_annot,
-         annotation_colors = group_pal %>% `$<-`(type, c(.$type, Undetermined = "#000000")),
-         show_rownames = FALSE,
-         show_colnames = FALSE,
-         angle_col = 315,
-         breaks = zscore_range,
-  color = viridis(n = length(zscore_range)-1, option = "D"),
+
+module_scores_with_viral %>%
+  select(sample_name,
+         matches("^M[[:digit:]]+")) %>%
+  column_to_rownames("sample_name") %>%
+  pheatmap(scale = 'column',
+           fontsize = 9,
+           annotation_row = annotation_info,
+           annotation_col = module_annot,
+           annotation_colors = group_pal %>%
+             `$<-`(type,
+                   c(.$type,
+                     Undetermined = "#000000")),
+           show_rownames = FALSE,
+           show_colnames = FALSE,
+           angle_col = 315,
+           breaks = zscore_range,
+    color = viridis(n = length(zscore_range)-1, option = "D"),
   border_color = NA)
 ```
 
@@ -608,12 +926,14 @@ Samples were examined for transcripts from the following viruses:
 HSV-1, HSV-2, VZV, EBV, EBV-2, HCMV, HHV7, KSHV, Adenovirus 2, B19, HIV-1, HBV, HPV-2, HPV-16, JCV, and MCV-1
 
 ## Detected viral transcription and Interferon module scores
-
 ```{r fig.height=10, fig.width=10}
 range_bound = 5
 zscore_range <- c(-range_bound:range_bound)
-ifn_scores_with_viral %>%
-  #select(sample_name, one_of(viral_transcripts)) %>%
+
+module_scores_with_viral %>%
+  select(sample_name,
+         one_of(ifn_modules,
+                viral_transcripts)) %>%
   column_to_rownames("sample_name") %>%
   pheatmap(
     scale="column",
@@ -628,13 +948,16 @@ ifn_scores_with_viral %>%
 ```
 
 ## Detected viral transcription and Inflammatory module scores
-
 ```{r fig.height=10, fig.width=9}
 range_bound = 5
 zscore_range <- c(-range_bound:range_bound)
-inflammation_scores_with_viral %>%
+
+module_scores_with_viral %>%
+  select(sample_name,
+         one_of(inflame_modules,
+                viral_transcripts)) %>%
   column_to_rownames("sample_name") %>%
-  pheatmap(scale="column",
+  pheatmap(scale = "column",
            annotation_colors = group_pal,
            annotation_row = annotation_info,
            breaks = zscore_range,
@@ -648,7 +971,6 @@ inflammation_scores_with_viral %>%
 # WGCNA
 
 ## Expression similarity dendrogram
-
 ```{r echo=FALSE, fig.height=6, fig.width=10}
 loadd(wgcna_modules)
 plotDendroAndColors(dendro = wgcna_modules$dendrograms[[1]],
@@ -663,12 +985,13 @@ plotDendroAndColors(dendro = wgcna_modules$dendrograms[[1]],
 
 ## Expression of identified modules
 
-### Grouped by cluster
-
+### By cluster
 ```{r echo=FALSE, fig.height=8, fig.width=12}
 loadd(wgcna_scores)
-wgcna_scores %>%
-  select(cluster, starts_with("ME")) %>%
+
+module_scores_with_viral %>%
+  select(cluster,
+         starts_with("ME")) %>%
   pivot_longer(-cluster,
                names_to = "module",
                values_to = "score") %>%
@@ -676,17 +999,20 @@ wgcna_scores %>%
   ggplot(aes(x = cluster,
              y = score,
              fill = cluster)) +
-  geom_boxplot() +
+  geom_violin() +
+  geom_jitter(size = 0.25, alpha = 0.25) +
   scale_fill_brewer(palette = "Set1") +
   facet_wrap(facets = vars(module),
              scales = "free_y") +
   theme_cowplot()
 ```
 
+### By disease classification
 ```{r echo=FALSE, fig.height=8, fig.width=12}
-loadd(wgcna_scores)
-wgcna_scores %>%
-  select(disease_class, starts_with("ME")) %>%
+
+module_scores_with_viral %>%
+  select(disease_class,
+         starts_with("ME")) %>%
   pivot_longer(-disease_class,
                names_to = "module",
                values_to = "score") %>%
@@ -694,12 +1020,95 @@ wgcna_scores %>%
   ggplot(aes(x = disease_class,
              y = score,
              fill = disease_class)) +
-  geom_boxplot() +
+  geom_violin() +
+  geom_jitter(size = 0.25, alpha = 0.25) +
   scale_fill_brewer(palette = "Set1") +
+  facet_wrap(facets = vars(module),
+             scales = "free_y") +
+  theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 45,
+                                   hjust = 1,
+                                   vjust = 1))
+```
+
+### By disease grouping
+```{r echo=FALSE, fig.height=8, fig.width=12}
+
+module_scores_with_viral %>%
+  select(disease_grouping,
+         starts_with("ME")) %>%
+  pivot_longer(-disease_grouping,
+               names_to = "module",
+               values_to = "score") %>%
+  mutate(disease_grouping = as_factor(disease_grouping)) %>%
+  ggplot(aes(x = disease_grouping,
+             y = score,
+             fill = disease_grouping)) +
+  geom_violin() +
+  geom_jitter(size = 0.25, alpha = 0.25) +
+  paletteer::scale_fill_paletteer_d("ggsci::alternating_igv") +
   facet_wrap(facets = vars(module),
              scales = "free_y") +
   theme_cowplot()
 ```
+
+## WGCNA eigenvalues
+```{r fig.height=9, fig.width=11}
+range_bound = 3
+zscore_range <- c(-range_bound:range_bound)
+
+module_scores_with_viral %>%
+  select(sample_name,
+         matches("^ME")) %>%
+  column_to_rownames("sample_name") %>%
+  pheatmap(scale = 'column',
+           fontsize = 9,
+           annotation_row = annotation_info,
+           annotation_colors = group_pal %>%
+             `$<-`(type,
+                   c(.$type,
+                     Undetermined = "#000000")),
+           show_rownames = FALSE,
+           show_colnames = TRUE,
+           angle_col = 315,
+           breaks = zscore_range,
+    color = viridis(n = length(zscore_range)-1, option = "D"),
+  border_color = NA)
+```
+
+## Gene ontology GSEA of WGCNA modules
+```{r fig.height=11, fig.width=12}
+loadd(MEplotting)
+map(1:ceiling(length(unique(MEplotting$module))/6),
+    function(i){
+      ggplot(data = MEplotting,
+             mapping = aes(
+               y = GeneRatio,
+               x = order,
+               color = p.adjust)
+             ) +
+        geom_point(stat = "identity",
+                   size = 2) +
+        scale_x_continuous(breaks = MEplotting$order,
+                         labels = str_wrap(MEplotting$ID, width = 40),
+                         expand = c(0.1,0.1)) +
+        scale_color_gradient(low = "blue", high = "red") +
+        labs(color = "adjusted\np value") +
+        facet_wrap_paginate(~ module,
+                            ncol = 2,
+                            nrow = 3,
+                            scales = "free",
+                            page = i) +
+        theme(axis.text.y = element_text(size = 6),
+              axis.text.x = element_text(size = 6),
+              panel.background = element_rect(fill = "white", linetype = "solid"),
+              panel.border = element_rect(colour = "black", fill=NA, size=1),
+              panel.grid = element_line(color = "grey90"),
+              axis.title.y = element_blank()) +
+        coord_flip()
+    })
+```
+
 
 ## Use of WGCNA modules in classifying clusters.
 
@@ -709,9 +1118,10 @@ The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r}
 loadd(wgcna_cluster_rf_cv, wgcna_cluster_test)
+
 caret::confusionMatrix(
   data = predict(wgcna_cluster_rf_cv, wgcna_cluster_test),
-  reference = wgcna_cluster_test$cluster
+  reference = as_factor(wgcna_cluster_test$cluster)
 )
 ```
 
@@ -719,7 +1129,31 @@ The relative importance of each eigengene in classification:
 
 ```{r}
 loadd(wgcna_cluster_rf_cv_varImp)
+
 wgcna_cluster_rf_cv_varImp
+```
+
+## Use of WGCNA modules in labeling disease class.
+
+The module eigengene scores were used to train a random forest model with repeated cross validation to predict cluster identity.
+
+The model was trained with 75% of the dataset and tested on 25%.
+
+```{r}
+loadd(wgcna_disease_class_rf_cv, wgcna_disease_class_test)
+
+caret::confusionMatrix(
+  data = predict(wgcna_disease_class_rf_cv, wgcna_disease_class_test),
+  reference = as_factor(wgcna_disease_class_test$disease_class)
+)
+```
+
+The relative importance of each eigengene in classification:
+
+```{r}
+loadd(wgcna_disease_class_rf_cv_varImp)
+
+wgcna_disease_class_rf_cv_varImp
 ```
 
 # Sample Sanity check
@@ -741,6 +1175,7 @@ sex_specific_genes <- tibble(chr = c(rep("Y",16), rep("X",2)),
 
 range_bound = 5
 zscore_range <- c(-range_bound:range_bound)
+
 t(vsd_exprs)[,c(sex_specific_genes[['symbol']])] %>%
   pheatmap(
     scale='column',
@@ -759,5 +1194,5 @@ t(vsd_exprs)[,c(sex_specific_genes[['symbol']])] %>%
 These appear to be correct.
 
 ```{r}
-devtools::session_info()
+sessioninfo::session_info()
 ```
