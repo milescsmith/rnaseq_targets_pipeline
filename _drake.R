@@ -24,11 +24,11 @@ import_rda(file="references/kegerreis-ldg-modules.RData",
 ### Setup project variables
 projects_to_include = c("General","MS")
 projects_to_exclude = c("ALE06", "Xencor", "BChong2019.1")
-disease_classes_to_include = c("Control", "MS", "SPMS", "RRMS", "NMO", "PPMS", "MS-like")
+disease_classes_to_include = c("Control", "RRMS")
 disease_classes_to_exclude = NULL
-study_design = ~ sex + disease_grouping
-comparison_grouping_variable = "disease_grouping"
-control_group = "Control"
+study_design = ~ sex + disease_activity
+comparison_grouping_variable = "disease_activity"
+control_group = "none"
 experimental_group = "MS_group"
 
 initial_concentration_threshold = 1.5

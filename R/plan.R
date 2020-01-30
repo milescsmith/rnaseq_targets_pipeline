@@ -1,7 +1,7 @@
 #For ALE06
 analysis_plan = drake_plan(
   
-  metadata = readxl::read_excel(path = metadata_file,
+  metadata = read_excel(path = metadata_file,
                         sheet = "main", 
                         col_types = c("numeric", 
                                       rep("text",10),
@@ -20,12 +20,25 @@ analysis_plan = drake_plan(
            ) %>%
     filter(initial_concentration_ng_ul > initial_concentration_threshold),
   
+  rrms_activity = read_xlsx("metadata/ms_activity.xlsx") %>%
+    clean_names(case = "snake") %>%
+    rename(., disease_activity = "disease_activity_in_blood_draw") %>%
+    mutate(disease_activity = disease_activity %>%
+             str_replace_all(pattern = " ", replacement = "_") %>%
+             str_replace_all(pattern = "-", replacement = "_") %>%
+             tolower()),
+  
+  deident = read_xlsx(path = "metadata/Experiment Deidentification Master.xlsx",
+                      sheet = "AA") %>%
+    clean_names(case = "snake") %>%
+    drop_na(exs_id) %>%
+    mutate(exs_id = make_clean_names(exs_id, case = "all_caps")),
+  
   non_project_controls = 
     metadata %>%
     filter(disease_class == "Control") %>% 
     #Select the portions of the metadata that are useful:
     select(sample_name,
-           study_group,
            disease_class,
            project,
            run_id,
@@ -35,11 +48,7 @@ analysis_plan = drake_plan(
            initial_concentration_ng_ul,
            final_concentration_ng_ul,
            rin) %>%
-    mutate(project = factor(project),
-           study_group = factor(study_group),
-           disease_class = factor(disease_class),
-           run_id = factor(run_id),
-           initial_concentration_ng_ul = replace_na(initial_concentration_ng_ul, 200)),
+    mutate(disease_activity = "none"),
   
   md =
     metadata %>%
@@ -59,12 +68,20 @@ analysis_plan = drake_plan(
            initial_concentration_ng_ul,
            final_concentration_ng_ul,
            rin) %>%
-    mutate(project = factor(project),
-           study_group = factor(study_group),
-           disease_class = factor(disease_class),
-           run_id = factor(run_id),
-           initial_concentration_ng_ul = replace_na(initial_concentration_ng_ul, 200)) %>%
+    filter(sample_name %in% deident$exs_id) %>%
+    inner_join(deident[,c("exs_id","subject_id")],
+               by = c("sample_name" = "exs_id")) %>%
+    right_join(rrms_activity,
+               by = c("subject_id" = "barcode")) %>%
+    drop_na(sample_name) %>%
+    select(-subject_id, -study_group) %>%
     bind_rows(non_project_controls) %>%
+    mutate(project = as_factor(project),
+           disease_class = as_factor(disease_class),
+           run_id = factor(run_id),
+           initial_concentration_ng_ul = replace_na(initial_concentration_ng_ul, 200),
+           disease_class = as_factor(disease_class),
+           sex = as_factor(sex)) %>%
     distinct(),
   
   tx_sample_names = dir(path = seq_file_directory,
@@ -90,15 +107,7 @@ analysis_plan = drake_plan(
     `names<-`(tx_sample_names) %>%
     `[`(!is.na(match(names(.), md$sample_name))),
   
-  final_md = md[which(md[['sample_name']] %in% names(tx_files)),] %>% 
-    mutate(disease_grouping = recode(disease_class,
-                                     Control = "Control",
-                                     MS = "MS_group",
-                                     RRMS = "MS_group",
-                                     SPMS = "MS_group",
-                                     `MS-like` = "MS_group",
-                                     PPMS = "MS_group",
-                                     NMO = "MS_group")) %>%
+  final_md = md[which(md[['sample_name']] %in% names(tx_files)),] %>%
     column_to_rownames('sample_name'),
   
   #Inspect the metadata:
@@ -161,7 +170,7 @@ analysis_plan = drake_plan(
   
   # Test a range of resolutions and choose the one with the highest silhouette
   # coefficient
-  optimal_resolution = optimize_cluster_resolution(snn_graph = neighbors$snn,
+  optimal_resolution = optimize_cluster_resolution(snn_graph = as.matrix(neighbors$snn),
                                                    dist_mat = sample_dists,
                                                    from = 0,
                                                    to = 1.5,
@@ -178,6 +187,7 @@ analysis_plan = drake_plan(
                       cluster = as_factor(clusters)),
   
   annotation_info = as.data.frame(colData(dds_processed))[,c("disease_class",
+                                                             "disease_activity",
                                                              "sex")] %>%
     as_tibble(rownames = "sample_name") %>%
     left_join(leiden_res) %>% 
@@ -207,44 +217,70 @@ analysis_plan = drake_plan(
                          rownames="sample_name")) %>%
     inner_join(leiden_res),
   
-  res = results(
-    object = dds_processed,
-    contrast = c(comparison_grouping_variable, 
-                 experimental_group,
-                 control_group),
-    alpha = 0.05,
-    parallel = TRUE),
+  disease_activities = final_md %>% filter(disease_activity != "none") %>% pull(disease_activity) %>% unique(),
   
-  down_table = 
-    res %>%
+  res = map(disease_activities, function(i){
+    results(
+      object = dds_processed,
+      contrast = c("disease_activity", 
+                   i,
+                   "none"),
+      alpha = 0.05,
+      parallel = TRUE)
+    }) %>%
+    `names<-`(map_chr(disease_activities, function(i){ paste0(i, "_vs_none")})),
+  
+  down_tables = map(seq_along(res), function(i){
+    res[[i]] %>%
+      as_tibble(rownames = "gene") %>%
+      filter(!is.na(padj) & padj <= 0.05) %>%
+      mutate(log2FoldChange = -log2FoldChange) %>%
+      mutate_at(vars(-gene), list(~signif(., 2))) %>%
+      top_n(25, log2FoldChange) %>%
+      arrange(desc(log2FoldChange))
+  }) %>%
+    `names<-`(map_chr(disease_activities, function(i){ paste0(i, "_vs_none")})),
+  
+  up_tables = map(seq_along(res), function(i){
+    res[[i]] %>%
     as_tibble(rownames = "gene") %>%
-    filter(padj <= 0.05) %>%
-    mutate(log2FoldChange = -log2FoldChange) %>%
+    filter(!is.na(padj) & padj <= 0.05) %>%
     mutate_at(vars(-gene), list(~signif(., 2))) %>%
     top_n(25, log2FoldChange) %>%
-    arrange(desc(log2FoldChange)),
+    arrange(desc(log2FoldChange))
+  }) %>%
+    `names<-`(map_chr(disease_activities, function(i){ paste0(i, "_vs_none")})),
   
-  up_table = 
-    res %>%
-    as_tibble(rownames = "gene") %>%
-    filter(padj <= 0.05) %>%
-    mutate_at(vars(-gene), list(~signif(., 2))) %>%
-    top_n(25, log2FoldChange) %>%
-    arrange(desc(log2FoldChange)),
+  degs = map(seq_along(res), function(i){
+    res[[i]] %>%
+      as_tibble(rownames = "gene") %>%
+      filter(padj < 0.05) %>%
+      filter(abs(log2FoldChange) >= 0.5) %>%
+      pull(gene)
+  }) %>% 
+    `names<-`(map_chr(disease_activities,
+                      function(i){ paste0(i, "_vs_none") })),
   
-  degs = 
-    res %>% 
-    as_tibble(rownames = "gene") %>%
-    filter(padj < 0.05),
+  deg_class = enframe(degs) %>%
+    unnest(cols = c(value)) %>%
+    column_to_rownames(var = "value") %>%
+    `names<-`("comparison"),
   
-  top_up = degs %>%
-    filter(log2FoldChange > 0) %>%
-    top_n(100, log2FoldChange) %>%
-    pull(gene),
-  top_down = degs %>%
-    filter(log2FoldChange < 0) %>%
-    top_n(100, -log2FoldChange) %>%
-    pull(gene),
+  deg_means = vsd_exprs %>%
+    t() %>%
+    as_tibble(rownames = "name") %>%
+    select(name, one_of(rownames(deg_class))) %>%
+    pivot_longer(-name,
+                 names_to = "gene",
+                 values_to = "expr") %>%
+    left_join(as_tibble(colData(dds_processed), rownames = "name") %>%
+                select(name, sex, race_code, disease_activity, disease_class)) %>%
+    group_by(gene,
+             disease_activity) %>%
+    summarise(avg = mean(expr)) %>%
+    pivot_wider(names_from = gene,
+                values_from = avg) %>%
+    column_to_rownames("disease_activity"),
   
   #fig.width=10, fig.height=9
   ISGs = intersect(c("STAT1", "ADAR", "ABCE1", "RNASEL", "TYK2", "IFNAR1",
@@ -309,11 +345,6 @@ analysis_plan = drake_plan(
               "Female" = "azure2",
               "unk" = "#333333"),
   
-  comparison_grouping_variable_colors = c("#000000",
-                                          "#CCCCCC") %>%
-    `names<-`(c(control_group,
-                experimental_group)),
-  
   cluster_pal = 
     colorRampPalette(
       brewer.pal(12, "Set1"))(length(levels(leiden_res$cluster))) %>%
@@ -325,25 +356,36 @@ analysis_plan = drake_plan(
     `names<-`(levels(annotation_info$project)),
   
   disease_class_pal =
-    oaColors::oaPalette(7) %>%
+    oaColors::oaPalette(length(unique(annotation_info$disease_class))) %>%
     `names<-`(unique(annotation_info$disease_class)),
+  
+  disease_activity_pal =
+    oaColors::oaPalette(length(unique(annotation_info$disease_activity))) %>%
+    `names<-`(unique(annotation_info$disease_activity)),
+  
+  comparison_pal =
+    oaColors::oaPalette(3) %>%
+    `names<-`(unique(deg_class$comparison)),
   
   group_pal =
     list(
-      comparison_grouping_variable_colors,
       type_pal,
       chr_pal,
       sex_pal,
       cluster_pal,
       project_pal,
-      disease_class_pal) %>%
-    `names<-`(c(comparison_grouping_variable,
-                "type",
-                "chr",
-                "sex",
-                "cluster",
-                "project",
-                "disease_class")),
+      disease_class_pal,
+      disease_activity_pal,
+      comparison_pal) %>%
+    `names<-`(c(
+      "type",
+      "chr",
+      "sex",
+      "cluster",
+      "project",
+      "disease_class",
+      "disease_activity",
+      "comparison_pal")),
   
   module_scores =
     colData(dds_with_scores) %>%
@@ -476,6 +518,7 @@ analysis_plan = drake_plan(
       module = paste0("ME", module)) %>%
     group_by(module) %>%
     top_n(5, GeneRatio) %>%
+    slice(5) %>% # if the GeneRatio is equal among several IDs, they are all displayed regardless of the n in top_n()
     ungroup() %>%
     arrange(module, GeneRatio) %>%
     mutate(order = row_number()),
@@ -507,7 +550,7 @@ analysis_plan = drake_plan(
     as_tibble(rownames='sample_name') %>%
     select(sample_name,
            disease_class,
-           disease_grouping,
+           disease_activity,
            matches("^M[[:digit:]]+"),
            one_of(names(ldg_modules))) %>%
     inner_join(wgcna_scores) %>%
@@ -560,8 +603,7 @@ analysis_plan = drake_plan(
        module_scores_with_viral,
        ISGs,
        pca_results,
-       top_down,
-       top_up,
+       degs,
        umap_results,
        vsd_exprs,
        wgcna_modules,
