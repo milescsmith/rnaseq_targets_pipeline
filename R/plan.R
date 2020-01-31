@@ -20,20 +20,6 @@ analysis_plan = drake_plan(
            ) %>%
     filter(initial_concentration_ng_ul > initial_concentration_threshold),
   
-  rrms_activity = read_xlsx("metadata/ms_activity.xlsx") %>%
-    clean_names(case = "snake") %>%
-    rename(., disease_activity = "disease_activity_in_blood_draw") %>%
-    mutate(disease_activity = disease_activity %>%
-             str_replace_all(pattern = " ", replacement = "_") %>%
-             str_replace_all(pattern = "-", replacement = "_") %>%
-             tolower()),
-  
-  deident = read_xlsx(path = "metadata/Experiment Deidentification Master.xlsx",
-                      sheet = "AA") %>%
-    clean_names(case = "snake") %>%
-    drop_na(exs_id) %>%
-    mutate(exs_id = make_clean_names(exs_id, case = "all_caps")),
-  
   non_project_controls = 
     metadata %>%
     filter(disease_class == "Control") %>% 
@@ -47,8 +33,7 @@ analysis_plan = drake_plan(
            race_code,
            initial_concentration_ng_ul,
            final_concentration_ng_ul,
-           rin) %>%
-    mutate(disease_activity = "none"),
+           rin),
   
   md =
     metadata %>%
@@ -58,7 +43,6 @@ analysis_plan = drake_plan(
            disease_class %nin% disease_classes_to_exclude) %>% 
     #Select the portions of the metadata that are useful:
     select(sample_name,
-           study_group,
            disease_class,
            project,
            run_id,
@@ -68,13 +52,6 @@ analysis_plan = drake_plan(
            initial_concentration_ng_ul,
            final_concentration_ng_ul,
            rin) %>%
-    filter(sample_name %in% deident$exs_id) %>%
-    inner_join(deident[,c("exs_id","subject_id")],
-               by = c("sample_name" = "exs_id")) %>%
-    right_join(rrms_activity,
-               by = c("subject_id" = "barcode")) %>%
-    drop_na(sample_name) %>%
-    select(-subject_id, -study_group) %>%
     bind_rows(non_project_controls) %>%
     mutate(project = as_factor(project),
            disease_class = as_factor(disease_class),
@@ -187,7 +164,6 @@ analysis_plan = drake_plan(
                       cluster = as_factor(clusters)),
   
   annotation_info = as.data.frame(colData(dds_processed))[,c("disease_class",
-                                                             "disease_activity",
                                                              "sex")] %>%
     as_tibble(rownames = "sample_name") %>%
     left_join(leiden_res) %>% 
@@ -217,18 +193,26 @@ analysis_plan = drake_plan(
                          rownames="sample_name")) %>%
     inner_join(leiden_res),
   
-  disease_activities = final_md %>% filter(disease_activity != "none") %>% pull(disease_activity) %>% unique(),
+  disease_classes = final_md %>% filter(disease_class != "Control") %>% pull(disease_class) %>% as.character() %>% unique(),
   
-  res = map(disease_activities, function(i){
-    results(
-      object = dds_processed,
-      contrast = c("disease_activity", 
-                   i,
-                   "none"),
-      alpha = 0.05,
-      parallel = TRUE)
-    }) %>%
-    `names<-`(map_chr(disease_activities, function(i){ paste0(i, "_vs_none")})),
+  # res = map(disease_classes, function(i){
+  #   results(
+  #     object = dds_processed,
+  #     contrast = c("disease_class", 
+  #                  i,
+  #                  "Control"),
+  #     alpha = 0.05,
+  #     parallel = TRUE)
+  #   }) %>%
+  #   `names<-`(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
+  
+  res = map(seq(from = 3, to = length(resultsNames(dds_processed))), function(i){
+    lfcShrink(dds_processed,
+              coef = resultsNames(dds_processed)[[i]],
+              parallel = TRUE,
+              type = "apeglm")
+  }) %>%
+  `names<-`(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
   
   down_tables = map(seq_along(res), function(i){
     res[[i]] %>%
@@ -239,7 +223,7 @@ analysis_plan = drake_plan(
       top_n(25, log2FoldChange) %>%
       arrange(desc(log2FoldChange))
   }) %>%
-    `names<-`(map_chr(disease_activities, function(i){ paste0(i, "_vs_none")})),
+    `names<-`(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
   
   up_tables = map(seq_along(res), function(i){
     res[[i]] %>%
@@ -249,7 +233,7 @@ analysis_plan = drake_plan(
     top_n(25, log2FoldChange) %>%
     arrange(desc(log2FoldChange))
   }) %>%
-    `names<-`(map_chr(disease_activities, function(i){ paste0(i, "_vs_none")})),
+    `names<-`(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
   
   degs = map(seq_along(res), function(i){
     res[[i]] %>%
@@ -258,11 +242,17 @@ analysis_plan = drake_plan(
       filter(abs(log2FoldChange) >= 0.5) %>%
       pull(gene)
   }) %>% 
-    `names<-`(map_chr(disease_activities,
-                      function(i){ paste0(i, "_vs_none") })),
+    `names<-`(map_chr(disease_classes,
+                      function(i){ paste0(i, "_vs_Control") })),
   
   deg_class = enframe(degs) %>%
     unnest(cols = c(value)) %>%
+    group_by(value) %>%
+    mutate(count = n()) %>%
+    mutate(name = case_when(count == 1 ~ name,
+                            count > 1 ~ "multiple")) %>%
+    select(-count) %>%
+    distinct() %>%
     column_to_rownames(var = "value") %>%
     `names<-`("comparison"),
   
@@ -274,13 +264,13 @@ analysis_plan = drake_plan(
                  names_to = "gene",
                  values_to = "expr") %>%
     left_join(as_tibble(colData(dds_processed), rownames = "name") %>%
-                select(name, sex, race_code, disease_activity, disease_class)) %>%
+                select(name, sex, race_code, disease_class)) %>%
     group_by(gene,
-             disease_activity) %>%
+             disease_class) %>%
     summarise(avg = mean(expr)) %>%
     pivot_wider(names_from = gene,
                 values_from = avg) %>%
-    column_to_rownames("disease_activity"),
+    column_to_rownames("disease_class"),
   
   #fig.width=10, fig.height=9
   ISGs = intersect(c("STAT1", "ADAR", "ABCE1", "RNASEL", "TYK2", "IFNAR1",
@@ -359,12 +349,8 @@ analysis_plan = drake_plan(
     oaColors::oaPalette(length(unique(annotation_info$disease_class))) %>%
     `names<-`(unique(annotation_info$disease_class)),
   
-  disease_activity_pal =
-    oaColors::oaPalette(length(unique(annotation_info$disease_activity))) %>%
-    `names<-`(unique(annotation_info$disease_activity)),
-  
   comparison_pal =
-    oaColors::oaPalette(3) %>%
+    oaColors::oaPalette(length(unique(deg_class$comparison))) %>%
     `names<-`(unique(deg_class$comparison)),
   
   group_pal =
@@ -375,7 +361,6 @@ analysis_plan = drake_plan(
       cluster_pal,
       project_pal,
       disease_class_pal,
-      disease_activity_pal,
       comparison_pal) %>%
     `names<-`(c(
       "type",
@@ -384,8 +369,7 @@ analysis_plan = drake_plan(
       "cluster",
       "project",
       "disease_class",
-      "disease_activity",
-      "comparison_pal")),
+      "comparison")),
   
   module_scores =
     colData(dds_with_scores) %>%
@@ -518,7 +502,9 @@ analysis_plan = drake_plan(
       module = paste0("ME", module)) %>%
     group_by(module) %>%
     top_n(5, GeneRatio) %>%
-    slice(5) %>% # if the GeneRatio is equal among several IDs, they are all displayed regardless of the n in top_n()
+    sample_n(size = 5,
+             replace = TRUE) %>%
+    distinct() %>%
     ungroup() %>%
     arrange(module, GeneRatio) %>%
     mutate(order = row_number()),
@@ -550,7 +536,6 @@ analysis_plan = drake_plan(
     as_tibble(rownames='sample_name') %>%
     select(sample_name,
            disease_class,
-           disease_activity,
            matches("^M[[:digit:]]+"),
            one_of(names(ldg_modules))) %>%
     inner_join(wgcna_scores) %>%

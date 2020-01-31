@@ -1,5 +1,5 @@
 ---
-title: "MS dataset - comparison of RRMS patients by disease state"
+title: "MS dataset - comparison of subjects with MS-related conditions to Controls"
 author: "Miles Smith"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -37,6 +37,7 @@ loadd(annotation_info,
   pca_qc,
   pca_results,
   removed_outliers,
+  res,
   sample_dendrogram,
   sample_dists,
   sampleDistMatrix,
@@ -49,23 +50,6 @@ loadd(annotation_info,
   viral_transcripts)
 ```
 
-# Data processing of RNAseq data
-
-## Overview of sample characteristics:
-
-```{r fig.height=4, fig.width=10}
-loadd(md_cat_data)
-inspectdf::show_plot(md_cat_data, high_cardinality=1, col_palette = 3)
-rm(md_cat_data)
-```
-
-```{r fig.height=4, fig.width=10}
-loadd(md_num_data)
-inspectdf::show_plot(md_num_data, col_palette = 3)
-rm(md_num_data)
-```
-
-## Breakdown of the source of samples:
 
 ```{r}
 loadd(md)
@@ -80,105 +64,25 @@ md %>%
 
 ```
 
-```{r}
-md %>% 
-  tabyl(run_id, disease_activity) %>%
-  adorn_totals("col") %>%
-  kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"), full_width = FALSE) %>%
-  column_spec(1, border_right = TRUE, bold = TRUE, width = "10em") %>%
-  column_spec(2, border_right = TRUE, width = "10em") %>%
-  column_spec(3, border_right = TRUE, width = "10em") %>%
-  column_spec(4, border_right = FALSE, width = "10em")
-```
-
-```{r echo=FALSE}
-message(str_glue("{length(md$sample_name)} samples selected for analysis"))
-message(str_glue("{length(names(tx_files))} files found"))
-if (!all(names(tx_files) %in% md$sample_name)){
-  message("The following files do not have a matching metadata entry:")
-  print(names(tx_files)[(names(tx_files) %nin% md$sample_name)])
-} else {
-  message("All files match a metadata entry.")
-}
-
-if (!all(md$sample_name %in% names(tx_files))){
-  message("A count file was not found for the following selected samples:")
-  print(md$sample_name[(md$sample_name %nin% names(tx_files))])
-} else {
-  message("All expected files found.")
-}
-```
-
-## Sample QC filtering
-
-Samples with a PC1 > 2 (the red lines) and/or PC2 zscore > 2.5 (the green lines) were dropped from analysis.
-```{r, fig.width=6, fig.height=6}
-pca_qc %>% ggplot(aes(x = PC1,
-                      y = PC2)) +
-  geom_point(shape = 21,
-             colour = "black",
-             fill = "grey80",
-             size = 2,
-             stroke = 0.5,
-             alpha = 0.6) +
-  geom_vline(aes(xintercept = (pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
-             color = "red") +
-  geom_vline(aes(xintercept = -(pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
-             color = "red") +
-  geom_hline(aes(yintercept = (pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
-             color = "green") +
-  geom_hline(aes(yintercept = -(pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
-             color = "green")
-```
-
-```{r}
-if (length(removed_outliers) > 0) {
-  filter(md, sample_name %in% removed_outliers) %>%
-  kable(caption = "Removing the following samples:") %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-    full_width = FALSE)
-}
-```
-
-### Overall correlation between samples
-```{r, fig.width=12, fig.height=9}
-pheatmap(sampleDistMatrix,
-         clustering_distance_rows = sample_dists,
-         clustering_distance_cols = sample_dists, 
-         annotation_row = annotation_info,
-         show_rownames = FALSE,
-         show_colnames = TRUE,
-         annotation_colors = group_pal,
-         angle_col = 45)
-```
-
-# Data quality
-
-## MA-plot
-```{r echo=FALSE}
-loadd(res)
-for(m in seq_along(res)){
-  plotMA(res[[m]], ylim = c(-6,6), main = names(res)[[m]])
-}
-#plotMA(res[[1]], ylim = c(-4,4))
-```
-
-## Dispersion estimates
-```{r}
-loadd(disp_plot)
-disp_plot
-rm(disp_plot)
-```
-
 # Differential Gene Expression {.tabset .tabset-fade .tabset-pills}
 ```{r}
-message("Log fold change results:")
-for (j in seq_along(res)){
-  message(names(res)[[j]])
-  summary(res[[j]])
-}
+res %>% 
+  map(alt_summary) %>%
+  enframe() %>%
+  unnest(cols = c(value)) %>%
+  mutate(`up %` = round(100*(as.integer(up)/as.integer(total)),
+                        digits = 2) %>% paste("%"),
+         `down %` = round(100*(as.integer(down)/as.integer(total)),
+                        digits = 2) %>% paste("%"),
+         `low counts %` = round(100*(as.integer(lowcounts)/as.integer(total)),
+                                digits = 2) %>% paste("%"),
+         name = str_replace_all(string = name, 
+                                pattern = "_",
+                                replacement = " ")) %>%
+  select(comparison = name, up, `up %`, down, `down %`, `mean count cutoff` = ft, `low counts` = lowcounts, `low counts %`) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive")) %>%
+  footnote(paste(alt_summary(res[[1]])$total, "with nonzero total read count", "\nOutliers: ", alt_summary(res[[1]])$outlier))
 ```
 
 ## 25 genes with largest negative log-fold change in MS-like disorders
@@ -199,17 +103,23 @@ for (i in seq_along(down_tables)){
       log2FoldChange = color_bar("tomato")(log2FoldChange)) %>%
     ungroup() %>%
     rename(!!paste0("pvalue", footnote_marker_symbol(1)) := pvalue,
-           !!paste0("stat", footnote_marker_symbol(2)) := stat,
-           !!paste0("padj", footnote_marker_symbol(3)) := padj,
+           #!!paste0("stat", footnote_marker_symbol(2)) := stat,
+           !!paste0("padj", footnote_marker_symbol(2)) := padj,
            "lfc standard error" = lfcSE) %>%
     kable(escape = FALSE,
-          caption = names(down_tables)[[i]]) %>%
+          caption = paste0("<b>", names(down_tables)[[i]],
+          ": downregulated in ",
+          str_split(string = names(down_tables)[[i]],
+                    pattern = "_vs_",
+                    simplify = TRUE)[[1]], "</b>")) %>%
     kable_styling(
       bootstrap_options = c("striped", "hover", "condensed", "responsive"),
       full_width = TRUE,
       fixed_thead = TRUE) %>%
-    footnote(symbol = c("Wald test p-values", "Wald statistic", "Benjamini–Hochberg adjusted value")) %>%
-    column_spec(2, color = "black") %>% print()
+    #footnote(symbol = c("Wald test p-values", "Wald statistic", "Benjamini–Hochberg adjusted value")) %>%
+    footnote(symbol = c("Wald test p-values", "Benjamini–Hochberg adjusted value")) %>%
+    column_spec(2, color = "black") %>%
+    print()
 }
 ```
 
@@ -231,21 +141,59 @@ for (j in seq_along(up_tables)){
       log2FoldChange = color_bar("lightgreen")(log2FoldChange)) %>%
     ungroup() %>%
     rename(!!paste0("pvalue", footnote_marker_symbol(1)) := pvalue,
-           !!paste0("stat", footnote_marker_symbol(2)) := stat,
-           !!paste0("padj", footnote_marker_symbol(3)) := padj,
+           #!!paste0("stat", footnote_marker_symbol(2)) := stat,
+           !!paste0("padj", footnote_marker_symbol(2)) := padj,
            "lfc standard error" = lfcSE) %>%
     kable(escape = FALSE,
-          caption = names(up_tables)[[j]]) %>%
+          caption = paste0("<b>", names(up_tables)[[i]],
+          ": upregulated in ",
+          str_split(string = names(up_tables)[[i]],
+                    pattern = "_vs_",
+                    simplify = TRUE)[[1]], "</b>")) %>%
     kable_styling(
       bootstrap_options = c("striped", "hover", "condensed", "responsive"),
       full_width = TRUE,
       fixed_thead = TRUE) %>%
-    footnote(symbol = c("Wald test p-values", "Wald statistic", "Benjamini–Hochberg adjusted value")) %>%
+    #footnote(symbol = c("Wald test p-values", "Wald statistic", "Benjamini–Hochberg adjusted value")) %>%
+    footnote(symbol = c("Wald test p-values", "Benjamini–Hochberg adjusted value")) %>%
     column_spec(2, color = "black") %>% print()
   }
 ```
 
-## Expression of top DE genes
+## Expression of top class DE genes by class
+```{r, fig.width=12, fig.height=9}
+loadd(deg_class, final_md, vsd_exprs)
+
+deg_class_tbl <- as_tibble(deg_class, rownames = "gene")
+comparisons = unique(deg_class_tbl$comparison)
+
+final_md_tbl <- final_md %>% as_tibble(rownames = "subject") %>% filter(subject %in% colnames(vsd_exprs))
+
+range_bound = 4
+zscore_range <- c(-range_bound:range_bound)
+for (i in names(up_tables)){
+  #comparison_genes <- filter(deg_class_tbl, comparison == i) %>% pull(gene)
+  comparison_genes <- c(pull(up_tables[[i]], gene), pull(down_tables[[i]], gene))
+  people <- filter(final_md_tbl, disease_class %in% str_split(i, "_vs_", simplify = TRUE)) %>% pull(subject)
+    
+  t(vsd_exprs)[people,comparison_genes] %>% 
+      pheatmap(
+        scale = 'column',
+        main = i,
+        fontsize = 9,
+        fontsize_col = 9,
+        show_rownames = FALSE,
+        annotation_row = annotation_info,
+        annotation_colors = group_pal,
+        angle_col = 315,
+        breaks = zscore_range,
+        color = viridis(n = length(zscore_range), option = "D"),
+        border_color = NA
+      )
+  }
+```
+
+## Expression of all top DE genes
 ```{r, fig.width=12, fig.height=9}
 loadd(vsd_exprs, deg_means)
 range_bound = 4
@@ -266,7 +214,8 @@ t(vsd_exprs)[,colnames(deg_means)] %>%
       )
 ```
 
-## Mean expression of disease activity-specific genes
+
+## Mean expression of disease class-specific genes
 
 Gene expression for each of the three disease classes - active relapse, recent recovery, and long term stable - were compared to those in controls.  Genes were considered differentially expressed if their log2 fold change was >= than 0.5 or <= -0.5 and had an adjusted p-value of < 0.05.
 
@@ -319,7 +268,7 @@ pheatmap(
     geom_text_repel(data = top_volcano_data,
                     aes(label = gene)) +
     guides(color = "none") +
-    labs(caption = names(res)[[k]]))
+    labs(title = names(res)[[k]]))
   }
 ```
 
@@ -384,22 +333,22 @@ annotation_info %>%
   DT::datatable()
 
 annotation_info %>%
-  select(disease_activity, cluster) %>%
-  group_by(disease_activity) %>%
+  select(disease_class, cluster) %>%
+  group_by(disease_class) %>%
   mutate(total_disease = n()) %>%
   ungroup() %>%
-  group_by(disease_activity, cluster) %>%
+  group_by(disease_class, cluster) %>%
   mutate(total_cluster_disease = n(),
          freq = total_cluster_disease/total_disease) %>%
   distinct() %>%
   ggplot(aes(
-    x = disease_activity,
+    x = disease_class,
     y = freq,
     group = cluster,
     fill = cluster
   )) +
   geom_col() +
-  labs(y = "Proportion of disease activity class in cluster") +
+  labs(y = "Proportion of disease class in cluster") +
   scale_fill_brewer(palette = "Set1") +
   theme_cowplot()
 ```
@@ -458,17 +407,17 @@ plot_grid(
 )
 ```
 
-### PCA, by disease activity
+### PCA, by disease class
 ```{r, fig.width=12, fig.height=6}
 plot_grid(
   ggplot(data = pca_results,
          mapping = aes(x = PC1,
                        y = PC2,
-                       fill = disease_activity)) +
+                       fill = disease_class)) +
     geom_point(shape = 21,
                colour = "black",
                size = 2,
-               stroke = 0.25,
+               stroke = 0.5,
                alpha = 0.6) + 
     scale_color_paletteer_d("ggthemes::calc") +
     scale_fill_paletteer_d("ggthemes::calc") +
@@ -476,18 +425,18 @@ plot_grid(
   ggplot(data = pca_results,
          mapping = aes(x = PC1,
                        y = PC2,
-                       fill = disease_activity)) +
+                       fill = disease_class)) +
     geom_point(shape = 21,
                colour = "black",
                size = 2,
-               stroke = 0.25,
+               stroke = 0.5,
                alpha = 0.6) + 
     scale_color_paletteer_d("ggthemes::calc") +
     scale_fill_paletteer_d("ggthemes::calc") +
     labs(color = "Group",
          fill = "none") +
-    geom_mark_ellipse(aes(fill=disease_activity,
-                          color=disease_activity),
+    geom_mark_ellipse(aes(fill=disease_class,
+                          color=disease_class),
                       alpha = 0.05)
 )
 ```
@@ -564,7 +513,7 @@ ggplot(
     shape = 21,
     colour = "black",
     size = 2,
-    stroke = 0.25,
+    stroke = 0.5,
     alpha = 0.6
   ) +
   scale_fill_gradient2(low = "blue",
@@ -588,7 +537,7 @@ ggplot(
     shape = 21,
     colour = "black",
     size = 2,
-    stroke = 0.25,
+    stroke = 0.5,
     alpha = 0.6
   ) +
   scale_fill_manual(values = group_pal$cluster)
@@ -606,7 +555,6 @@ pca_results %>%
           colors = group_pal$cluster,
           text = ~paste('<br>Sample: ', sample_name,
                         '<br>Classification: ', disease_class,
-                        '<br>Activity: ', disease_activity,
                         '<br>Ethnicity ', race_code,
                         '<br>Cluster: ', cluster,
                         '<br>Sex: ', sex,
@@ -676,11 +624,11 @@ plot_grid(
   ggplot(data = umap_results,
          mapping = aes(x = umap_1,
                        y = umap_2,
-                       fill = disease_activity)) +
+                       fill = disease_class)) +
     geom_point(shape = 21,
                colour = "black",
                size = 2,
-               stroke = 0.25,
+               stroke = 0.5,
                alpha = 0.6) + 
     scale_color_paletteer_d("ggthemes::calc") +
     scale_fill_paletteer_d("ggthemes::calc") +
@@ -688,18 +636,18 @@ plot_grid(
   ggplot(data = umap_results,
          mapping = aes(x = umap_1,
                        y = umap_2,
-                       fill = disease_activity)) +
+                       fill = disease_class)) +
     geom_point(shape = 21,
                colour = "black",
                size = 2,
-               stroke = 0.25,
+               stroke = 0.5,
                alpha = 0.6) + 
     scale_color_paletteer_d("ggthemes::calc") +
     scale_fill_paletteer_d("ggthemes::calc") +
     labs(color = "Group",
          fill = "none") +
-    geom_mark_ellipse(aes(fill=disease_activity,
-                          color=disease_activity),
+    geom_mark_ellipse(aes(fill=disease_class,
+                          color=disease_class),
                       alpha = 0.05)
 )
 ```
@@ -777,7 +725,7 @@ ggplot(
     shape = 21,
     colour = "black",
     size = 2,
-    stroke = 0.25,
+    stroke = 0.5,
     alpha = 0.6
   ) +
   scale_fill_gradient2(low = "blue",
@@ -800,7 +748,7 @@ ggplot(
     shape = 21,
     colour = "black",
     size = 2,
-    stroke = 0.25,
+    stroke = 0.5,
     alpha = 0.6
   ) +
   scale_fill_manual(values = group_pal$cluster)
@@ -818,7 +766,6 @@ umap_results %>%
           colors = group_pal$cluster,
           text = ~paste('<br>Sample: ', sample_name,
                         '<br>Classification: ', disease_class,
-                        '<br>Activity: ', disease_activity,
                         '<br>Ethnicity ', race_code,
                         '<br>Cluster: ', cluster,
                         '<br>Sex: ', sex,
@@ -1053,29 +1000,6 @@ module_scores_with_viral %>%
                                    vjust = 1))
 ```
 
-### By disease activity
-```{r echo=FALSE, fig.height=8, fig.width=12}
-
-module_scores_with_viral %>%
-  mutate(disease_activity = fct_relevel(disease_activity, "none")) %>%
-  select(disease_activity,
-         starts_with("ME")) %>%
-  pivot_longer(-disease_activity,
-               names_to = "module",
-               values_to = "score") %>%
-  mutate(disease_activity = as_factor(disease_activity)) %>%
-  ggplot(aes(x = disease_activity,
-             y = score,
-             fill = disease_activity)) +
-  geom_violin() +
-  geom_jitter(size = 0.5, alpha = 0.25) +
-  scale_fill_paletteer_d("ggsci::uniform_startrek") +
-  facet_wrap(facets = vars(module),
-             scales = "free_y") +
-  theme_cowplot() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
-```
-
 ## WGCNA eigenvalues
 ```{r fig.height=9, fig.width=11}
 range_bound = 3
@@ -1103,10 +1027,10 @@ module_scores_with_viral %>%
 ## Gene ontology GSEA of WGCNA modules
 ```{r fig.height=11, fig.width=12}
 loadd(MEplotting)
+
 for(i in 1:ceiling(length(unique(MEplotting$module))/6)){
-    function(i){
-      print(
-        ggplot(data = MEplotting,
+    
+      plots <- ggplot(data = MEplotting,
                mapping = aes(
                  y = GeneRatio,
                  x = order,
@@ -1124,15 +1048,14 @@ for(i in 1:ceiling(length(unique(MEplotting$module))/6)){
                               nrow = 3,
                               scales = "free",
                               page = i) +
-          theme(axis.text.y = element_text(size = 6),
-                axis.text.x = element_text(size = 6),
+          theme(axis.text.y = element_text(size = 9),
+                axis.text.x = element_text(size = 9),
                 panel.background = element_rect(fill = "white", linetype = "solid"),
                 panel.border = element_rect(colour = "black", fill=NA, size=1),
                 panel.grid = element_line(color = "grey90"),
                 axis.title.y = element_blank()) +
           coord_flip()
-      )
-    }
+      print(plots)
 }
 ```
 
@@ -1181,6 +1104,102 @@ The relative importance of each eigengene in classification:
 loadd(wgcna_disease_class_rf_cv_varImp)
 
 wgcna_disease_class_rf_cv_varImp
+```
+
+# Data processing of RNAseq data
+
+## Overview of sample characteristics:
+
+```{r fig.height=4, fig.width=10}
+loadd(md_cat_data)
+inspectdf::show_plot(md_cat_data, high_cardinality=1, col_palette = 3) +
+  labs(title = "Frequency of categorical levels")
+```
+
+```{r fig.height=4, fig.width=10}
+loadd(md_num_data)
+inspectdf::show_plot(md_num_data, col_palette = 3) + labs(title = "Distribution of sample characteristic values")
+rm(md_num_data)
+```
+
+```{r echo=FALSE}
+message(str_glue("{length(md$sample_name)} samples selected for analysis"))
+message(str_glue("{length(names(tx_files))} files found"))
+if (!all(names(tx_files) %in% md$sample_name)){
+  message("The following files do not have a matching metadata entry:")
+  print(names(tx_files)[(names(tx_files) %nin% md$sample_name)])
+} else {
+  message("All files match a metadata entry.")
+}
+
+if (!all(md$sample_name %in% names(tx_files))){
+  message("A count file was not found for the following selected samples:")
+  print(md$sample_name[(md$sample_name %nin% names(tx_files))])
+} else {
+  message("All expected files found.")
+}
+```
+
+## Sample QC filtering
+
+Samples with a PC1 > 2 (the red lines) and/or PC2 zscore > 2.5 (the green lines) were dropped from analysis.
+```{r, fig.width=6, fig.height=6}
+pca_qc %>% ggplot(aes(x = PC1,
+                      y = PC2)) +
+  geom_point(shape = 21,
+             colour = "black",
+             fill = "grey80",
+             size = 2,
+             stroke = 0.5,
+             alpha = 0.6) +
+  geom_vline(aes(xintercept = (pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
+             color = "red") +
+  geom_vline(aes(xintercept = -(pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
+             color = "red") +
+  geom_hline(aes(yintercept = (pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
+             color = "green") +
+  geom_hline(aes(yintercept = -(pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
+             color = "green")
+```
+
+```{r}
+if (length(removed_outliers) > 0) {
+  filter(md, sample_name %in% removed_outliers) %>%
+  kable(caption = "Removing the following samples:") %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE)
+}
+```
+
+### Overall correlation between samples
+```{r, fig.width=12, fig.height=9}
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows = sample_dists,
+         clustering_distance_cols = sample_dists, 
+         annotation_row = annotation_info,
+         show_rownames = FALSE,
+         show_colnames = TRUE,
+         annotation_colors = group_pal,
+         angle_col = 45)
+```
+
+# Data quality
+
+## MA-plot
+```{r echo=FALSE}
+loadd(res)
+for(m in seq_along(res)){
+  plotMA(res[[m]], ylim = c(-6,6), main = names(res)[[m]])
+}
+#plotMA(res[[1]], ylim = c(-4,4))
+```
+
+## Dispersion estimates
+```{r}
+loadd(disp_plot)
+disp_plot
+rm(disp_plot)
 ```
 
 # Sample Sanity check
