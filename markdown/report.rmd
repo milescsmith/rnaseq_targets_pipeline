@@ -1,5 +1,5 @@
 ---
-title: "MS dataset - comparison of subjects with MS-related conditions to Controls"
+title: "RNAseq analysis"
 author: "Miles Smith"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -85,7 +85,7 @@ res %>%
   footnote(paste(alt_summary(res[[1]])$total, "with nonzero total read count", "\nOutliers: ", alt_summary(res[[1]])$outlier))
 ```
 
-## 25 genes with largest negative log-fold change in MS-like disorders
+## 25 genes with largest negative log-fold change in experimental group
 ```{r echo = FALSE, results = "asis"}
 loadd(down_tables)
 for (i in seq_along(down_tables)){
@@ -123,7 +123,7 @@ for (i in seq_along(down_tables)){
 }
 ```
 
-## 25 genes with largest positive log-fold change in MS-like disorders
+## 25 genes with largest positive log-fold change in experimental group
 ```{r echo = FALSE, results = "asis"}
 loadd(up_tables)
 for (j in seq_along(up_tables)){
