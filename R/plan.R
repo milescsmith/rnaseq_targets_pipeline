@@ -543,7 +543,7 @@ analysis_plan = drake_plan(
     inner_join(leiden_res),
   
   report = rmarkdown::render(
-    knitr_in("report.rmd"),
+    knitr_in("markdown/report.rmd"),
     output_file = file_out("report.html"),
     quiet = TRUE),
 
