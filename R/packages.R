@@ -1,3 +1,4 @@
+reticulate::use_condaenv('reticulate', required = TRUE, conda = "~/conda/bin/conda")
 library(cowplot)
 library(DESeq2)
 library(drake)

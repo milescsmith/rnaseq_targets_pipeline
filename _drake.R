@@ -1,5 +1,4 @@
 options(future.globals.maxSize = +Inf)
-reticulate::use_condaenv('reticulate', required = TRUE, conda = "~/conda/bin/conda")
 source("R/packages.R")  # Load your packages, e.g. library(drake).
 source("R/functions.R") # Define your custom code as a bunch of functions.
 c5 <- read.gmt("external_data/c5.all.v6.2.symbols.gmt")
@@ -22,14 +21,14 @@ import_rda(file="references/kegerreis-ldg-modules.RData",
            data_source = "gcs")
 
 ### Setup project variables
-projects_to_include = c("General","MS")
+projects_to_include = NULL
 projects_to_exclude = c("ALE06", "Xencor", "BChong2019.1")
-disease_classes_to_include = c("Control", "RRMS", "MS", "MS-like", "NMO", "PPMS", "SPMS")
+disease_classes_to_include = c("Control", "SLE")
 disease_classes_to_exclude = NULL
 study_design = ~ sex + disease_class
 comparison_grouping_variable = "disease_class"
-control_group = "none"
-#experimental_group = "MS_group"
+control_group = "Control"
+experimental_group = "SLE"
 
 initial_concentration_threshold = 1.5
 pc1_zscore_threshold = 2
@@ -48,6 +47,6 @@ source("R/plan.R")
 # The arguments to drake_config() are basically the same as those to make().
 drake_config(plan = analysis_plan,
              verbose = 2,
-             parallelism = "future",
-             jobs = parallel::detectCores(),
+             #parallelism = "future",
+             #jobs = parallel::detectCores(),
              lock_envir = FALSE)
