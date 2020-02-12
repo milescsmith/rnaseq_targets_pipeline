@@ -1,8 +1,18 @@
-FROM bioconductor/bioconductor_docker:RELEASE_3_10
+BootStrap: docker
+From: bioconductor/bioconductor_docker:RELEASE_3_10
 
-LABEL maintainer="miles-smith@omrf.org"
+%labels
+    Author miles-smith@omrf.org
+    Version 0.0.9
 
-RUN export DEBIAN_FRONTEND=noninteractive; apt-get -y update && \
+%environment
+    export DEBIAN_FRONTEND=noninteractive
+
+%files
+    /home/milo/workspace/rnaseq_drake/containers/rnaseq-drake-rocker/packages.R /home/rstudio/packages.R
+
+%post
+    apt-get -y update
     apt-get install -y \
         curl \
         git-core \
@@ -29,26 +39,14 @@ RUN export DEBIAN_FRONTEND=noninteractive; apt-get -y update && \
         rclone \
         ssh \
         tzdata \
-        vim && \
-    cp /usr/share/zoneinfo/America/Chicago /etc/localtime && \
-    apt-get clean && \
-    rm -rf /tmp/downloaded_packages/* && \
+        vim
+    cp /usr/share/zoneinfo/America/Chicago /etc/localtime
+    apt-get clean
+    rm -rf /tmp/downloaded_packages/*
     rm -rf /var/lib/apt/lists/*
-
-RUN curl https://rclone.org/install.sh | sudo bash
-
-USER rstudio
-
-COPY packages.R /home/rstudio/packages.R
-RUN Rscript -e "install.packages('hdf5r', configure.args='--with-hdf5=/usr/bin/h5cc'); \
+    curl https://rclone.org/install.sh | sudo bash
+    Rscript -e "install.packages('hdf5r', configure.args='--with-hdf5=/usr/bin/h5cc'); \
         install.packages(c('remotes', 'devtools'), upgrade = TRUE, ask = FALSE); \
-        source('/home/rstudio/packages.R')" && \
-    rm -rf /tmp/downloaded_packages/ /tmp/*.rds && \
+        source('/home/rstudio/packages.R')"
+    rm -rf /tmp/downloaded_packages/ /tmp/*.rds
     rm /home/rstudio/packages.R
-
-WORKDIR /home/rstudio
-
-USER root
-
-EXPOSE 8787
-#CMD ["Rscript"]
