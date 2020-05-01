@@ -47,7 +47,7 @@ loadd(annotation_info,
   top_down,
   tx_files,
   umap_results,
-  viral_transcripts)
+  detected_viral_transcripts)
 ```
 
 
@@ -214,26 +214,8 @@ t(vsd_exprs)[,colnames(deg_means)] %>%
       )
 ```
 
-
-## Mean expression of disease class-specific genes
-
-Gene expression for each of the three disease classes - active relapse, recent recovery, and long term stable - were compared to those in controls.  Genes were considered differentially expressed if their log2 fold change was >= than 0.5 or <= -0.5 and had an adjusted p-value of < 0.05.
-
-```{r fig.height=15, fig.width=6}
-loadd(deg_class)
-pheatmap(
-  mat = t(deg_means),
-  scale = "row",
-  annotation_row = deg_class,
-  annotation_colors = group_pal,
-  angle_col = 45,
-  fontsize_col = 9,
-  fontsize_row = 6,
-  color = viridis(n = 100))
-```
-
 ## Volcano plot of gene expression
-```{r fig.height=6, fig.width=6}
+```{r fig.height=6, fig.width=9}
 
   for(k in seq_along(res)){
       volcano_data <- 
@@ -360,7 +342,7 @@ annotation_info %>%
 
 ### PCA, by disease classification
 ```{r, fig.width=12, fig.height=6}
-plot_grid(
+p1 <-
   ggplot(
     data = pca_results,
     aes(
@@ -380,7 +362,9 @@ plot_grid(
     ) +
     scale_fill_brewer(palette = "Set1") +
     theme_cowplot() +
-    theme(legend.position = "none"),
+    theme(legend.position = "none")
+
+p2 <-
   ggplot(
     data = pca_results,
     aes(
@@ -388,80 +372,58 @@ plot_grid(
       y = PC2,
       fill = disease_class,
       line = 1
-    ), shape = 1
-  ) +
-    geom_point(
-      shape = 21,
-      colour = "black",
-      size = 2,
-      stroke = 0.5,
-      alpha = 0.6
+      ), shape = 1
     ) +
-    scale_fill_brewer(palette = "Set1") +
-    scale_color_brewer(palette = "Set1") +
-    theme_cowplot() +
-    geom_mark_ellipse(aes(fill = disease_class,
-                          color = disease_class),
-                      alpha = 0.05
-    )
-)
-```
-
-### PCA, by disease class
-```{r, fig.width=12, fig.height=6}
-plot_grid(
-  ggplot(data = pca_results,
-         mapping = aes(x = PC1,
-                       y = PC2,
-                       fill = disease_class)) +
-    geom_point(shape = 21,
-               colour = "black",
-               size = 2,
-               stroke = 0.5,
-               alpha = 0.6) + 
-    scale_color_paletteer_d("ggthemes::calc") +
-    scale_fill_paletteer_d("ggthemes::calc") +
-    theme(legend.position = "none"),
-  ggplot(data = pca_results,
-         mapping = aes(x = PC1,
-                       y = PC2,
-                       fill = disease_class)) +
-    geom_point(shape = 21,
-               colour = "black",
-               size = 2,
-               stroke = 0.5,
-               alpha = 0.6) + 
-    scale_color_paletteer_d("ggthemes::calc") +
-    scale_fill_paletteer_d("ggthemes::calc") +
-    labs(color = "Group",
-         fill = "none") +
-    geom_mark_ellipse(aes(fill=disease_class,
-                          color=disease_class),
-                      alpha = 0.05)
-)
-```
-
-### PCA, by plate
-```{r, fig.width=12, fig.height=6}
-p1 <- ggplot(
-  data = pca_results,
-  mapping = aes(
-    x = PC1,
-    y = PC2,
-    fill = run_id
-  )
-) +
   geom_point(
     shape = 21,
     colour = "black",
     size = 2,
     stroke = 0.5,
     alpha = 0.6
+    ) +
+  scale_fill_brewer(palette = "Set1") +
+  scale_color_brewer(palette = "Set1") +
+  theme_cowplot() +
+  geom_mark_ellipse(aes(fill = disease_class,
+                        color = disease_class),
+                    alpha = 0.05
+                    ) +
+  theme(legend.position = "bottom")
+
+legend <- get_legend(p2)
+
+plot_grid(
+  plot_grid(
+    p1 + theme(legend.position = "none"),
+    p2 + theme(legend.position = "none")
+    ),
+  legend,
+  nrow = 2,
+  rel_heights = c(1, .2)
+)
+```
+
+
+### PCA, by plate
+```{r, fig.width=12, fig.height=7}
+p1 <- ggplot(
+  data = pca_results,
+  mapping = aes(
+    x = PC1,
+    y = PC2,
+    fill = run_id
+    )
   ) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.5,
+    alpha = 0.6
+    ) +
   labs(color = "run_id") +
   scale_color_paletteer_d("ggsci::default_igv") +
   scale_fill_paletteer_d("ggsci::default_igv")
-
 
 p2 <- ggplot(
   data = pca_results,
@@ -469,33 +431,37 @@ p2 <- ggplot(
     x = PC1,
     y = PC2,
     fill = run_id
-  )
-) +
+    )
+  ) +
   geom_point(
     shape = 21,
     colour = "black",
     size = 2,
     stroke = 0.5,
     alpha = 0.6
-  ) +
+    ) +
   labs(color = "run_id") +
   geom_mark_ellipse(aes(
     fill = run_id,
     color = run_id
-  ),
-  alpha = 0.05
-  ) +
+    ),
+    alpha = 0.05
+    ) +
   scale_color_paletteer_d("ggsci::default_igv") +
   scale_fill_paletteer_d("ggsci::default_igv") +
-  guides(color = guide_legend(ncol = 1))
+  guides(color = guide_legend(nrow = 4)) +
+  theme(legend.position = "bottom")
 
 legend <- get_legend(p2)
 
-plot_grid(p1 + theme(legend.position = "none"),
-  p2 + theme(legend.position = "none"),
+plot_grid(
+  plot_grid(
+    p1 + theme(legend.position = "none"),
+    p2 + theme(legend.position = "none")
+    ),
   legend,
-  nrow = 1,
-  rel_widths = c(1, 1, .25)
+  nrow = 2,
+  rel_heights = c(1, .2)
 )
 ```
 
@@ -524,23 +490,40 @@ ggplot(
 ```
 
 ### PCA, by Leiden cluster
-```{r, fig.width=8, fig.height=6}
-ggplot(
-  data = pca_results,
-  mapping = aes(
-    x = PC1,
-    y = PC2,
-    fill = cluster
-  )
-) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2,
-    stroke = 0.5,
-    alpha = 0.6
-  ) +
-  scale_fill_manual(values = group_pal$cluster)
+```{r, fig.width=7, fig.height=6}
+# ggplot(
+#   data = pca_results,
+#   mapping = aes(
+#     x = PC1,
+#     y = PC2,
+#     fill = cluster
+#   )
+# ) +
+#   geom_point(
+#     shape = 21,
+#     colour = "black",
+#     size = 2,
+#     stroke = 0.5,
+#     alpha = 0.6
+#   ) +
+#   scale_fill_manual(values = group_pal$cluster)
+pca_results %>%
+  plot_ly(x = ~PC1,
+          y = ~PC2,
+          color = ~cluster,
+          alpha = 0.75,
+          colors = group_pal$cluster,
+          text = ~paste('<br>Sample: ', sample_name,
+                        '<br>Classification: ', disease_class,
+                        '<br>Ethnicity ', race_code,
+                        '<br>Cluster: ', cluster,
+                        '<br>Sex: ', sex,
+                        '<br>Plate: ', run_id
+          )
+  ) %>%
+  add_markers(marker = list(size = 7.5,
+                            line = list(color = 'rgba(0, 0, 0, .8)',
+                                        width = 1)))
 ```
 
 ### 3D PCA, colored by Leiden cluster
@@ -570,8 +553,9 @@ pca_results %>%
 ## UMAP
 
 ### UMAP, by disease classification
-```{r, fig.width=12, fig.height=6}
-plot_grid(
+```{r, fig.width=12, fig.height=7}
+
+p1 <-
   ggplot(
     data = umap_results,
     aes(
@@ -591,7 +575,9 @@ plot_grid(
     ) +
     scale_fill_brewer(palette = "Set1") +
     theme_cowplot() +
-    theme(legend.position = "none"),
+    theme(legend.position = "none")
+
+p2 <-
   ggplot(
     data = umap_results,
     aes(
@@ -614,46 +600,25 @@ plot_grid(
     geom_mark_ellipse(aes(fill = disease_class,
                           color = disease_class),
                       alpha = 0.05
-    )
-)
-```
+    ) +
+  guides(color = guide_legend(nrow = 4)) +
+  theme(legend.position = "bottom")
 
-### UMAP, by disease group
-```{r, fig.width=12, fig.height=6}
+legend <- get_legend(p2)
+
 plot_grid(
-  ggplot(data = umap_results,
-         mapping = aes(x = umap_1,
-                       y = umap_2,
-                       fill = disease_class)) +
-    geom_point(shape = 21,
-               colour = "black",
-               size = 2,
-               stroke = 0.5,
-               alpha = 0.6) + 
-    scale_color_paletteer_d("ggthemes::calc") +
-    scale_fill_paletteer_d("ggthemes::calc") +
-    theme(legend.position = "none"),
-  ggplot(data = umap_results,
-         mapping = aes(x = umap_1,
-                       y = umap_2,
-                       fill = disease_class)) +
-    geom_point(shape = 21,
-               colour = "black",
-               size = 2,
-               stroke = 0.5,
-               alpha = 0.6) + 
-    scale_color_paletteer_d("ggthemes::calc") +
-    scale_fill_paletteer_d("ggthemes::calc") +
-    labs(color = "Group",
-         fill = "none") +
-    geom_mark_ellipse(aes(fill=disease_class,
-                          color=disease_class),
-                      alpha = 0.05)
+  plot_grid(
+    p1 + theme(legend.position = "none"),
+    p2 + theme(legend.position = "none")
+    ),
+  legend,
+  nrow = 2,
+  rel_heights = c(1, .2)
 )
 ```
 
 ### UMAP, by plate
-```{r, fig.width=12, fig.height=6}
+```{r, fig.width=12, fig.height=7}
 p1 <- ggplot(
   data = umap_results,
   mapping = aes(
@@ -680,35 +645,38 @@ p2 <- ggplot(
     x = umap_1,
     y = umap_2,
     fill = run_id
-  )
-) +
+    )
+  ) +
   geom_point(
     shape = 21,
     colour = "black",
     size = 2,
     stroke = 0.5,
     alpha = 0.6
-  ) +
+    ) +
   labs(color = "run_id") +
   geom_mark_ellipse(aes(
     fill = run_id,
     color = run_id
-  ),
-  alpha = 0.05
-  ) +
+    ),
+    alpha = 0.05
+    ) +
   scale_color_paletteer_d("ggsci::default_igv") +
   scale_fill_paletteer_d("ggsci::default_igv") +
-  guides(color = guide_legend(ncol = 1))
+  guides(color = guide_legend(nrow = 4)) +
+  theme(legend.position = "bottom")
 
 legend <- get_legend(p2)
 
-plot_grid(p1 + theme(legend.position = "none"),
-          p2 + theme(legend.position = "none"),
-          legend,
-          nrow = 1,
-          rel_widths = c(1, 1, .25)
+plot_grid(
+  plot_grid(
+    p1 + theme(legend.position = "none"),
+    p2 + theme(legend.position = "none")
+    ),
+  legend,
+  nrow = 2,
+  rel_heights = c(1, .2)
 )
-
 ```
 
 ### UMAP, by initial sample concentration
@@ -736,22 +704,40 @@ ggplot(
 
 ### UMAP, by Leiden cluster
 ```{r, fig.width=7, fig.height=6}
-ggplot(
-  data = umap_results,
-  mapping = aes(
-    x = umap_1,
-    y = umap_2,
-    fill = cluster
-  )
-) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2,
-    stroke = 0.5,
-    alpha = 0.6
-  ) +
-  scale_fill_manual(values = group_pal$cluster)
+# ggplot(
+#   data = umap_results,
+#   mapping = aes(
+#     x = umap_1,
+#     y = umap_2,
+#     fill = cluster
+#   )
+# ) +
+#   geom_point(
+#     shape = 21,
+#     colour = "black",
+#     size = 2,
+#     stroke = 0.5,
+#     alpha = 0.6
+#   ) +
+#   scale_fill_manual(values = group_pal$cluster)
+
+umap_results %>%
+  plot_ly(x = ~umap_1,
+          y = ~umap_2,
+          color = ~cluster,
+          alpha = 0.75,
+          colors = group_pal$cluster,
+          text = ~paste('<br>Sample: ', sample_name,
+                        '<br>Classification: ', disease_class,
+                        '<br>Ethnicity ', race_code,
+                        '<br>Cluster: ', cluster,
+                        '<br>Sex: ', sex,
+                        '<br>Plate: ', run_id
+          )
+  ) %>%
+  add_markers(marker = list(size = 7.5,
+                            line = list(color = 'rgba(0, 0, 0, .8)',
+                                        width = 1)))
 ```
 
 ### UMAP, in 3D, colored by Leiden cluster
@@ -903,7 +889,7 @@ zscore_range <- c(-range_bound:range_bound)
 module_scores_with_viral %>%
   select(sample_name,
          one_of(ifn_modules,
-                viral_transcripts)) %>%
+                detected_viral_transcripts)) %>%
   column_to_rownames("sample_name") %>%
   pheatmap(
     scale="column",
@@ -925,7 +911,7 @@ zscore_range <- c(-range_bound:range_bound)
 module_scores_with_viral %>%
   select(sample_name,
          one_of(inflame_modules,
-                viral_transcripts)) %>%
+                detected_viral_transcripts)) %>%
   column_to_rownames("sample_name") %>%
   pheatmap(scale = "column",
            annotation_colors = group_pal,
@@ -971,7 +957,7 @@ module_scores_with_viral %>%
              fill = cluster)) +
   geom_violin() +
   geom_jitter(size = 0.5, alpha = 0.25) +
-  scale_fill_paletteer_d("ggsci::alternating_igv") +
+  scale_fill_paletteer_d("ggsci::uniform_startrek") +
   facet_wrap(facets = vars(module),
              scales = "free_y") +
   theme_cowplot()
@@ -1144,22 +1130,75 @@ if (!all(md$sample_name %in% names(tx_files))){
 
 Samples with a PC1 > 2 (the red lines) and/or PC2 zscore > 2.5 (the green lines) were dropped from analysis.
 ```{r, fig.width=6, fig.height=6}
-pca_qc %>% ggplot(aes(x = PC1,
-                      y = PC2)) +
-  geom_point(shape = 21,
-             colour = "black",
-             fill = "grey80",
-             size = 2,
-             stroke = 0.5,
-             alpha = 0.6) +
-  geom_vline(aes(xintercept = (pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
-             color = "red") +
-  geom_vline(aes(xintercept = -(pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
-             color = "red") +
-  geom_hline(aes(yintercept = (pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
-             color = "green") +
-  geom_hline(aes(yintercept = -(pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
-             color = "green")
+vline <- function(x = 0, color = "red") {
+  list(
+    type = "line", 
+    y0 = 0, 
+    y1 = 1, 
+    yref = "paper",
+    x0 = x, 
+    x1 = x, 
+    line = list(color = color)
+  )
+}
+
+hline <- function(y = 0, color = "green") {
+  list(
+    type = "line", 
+    x0 = 0, 
+    x1 = 1, 
+    xref = "paper",
+    y0 = y, 
+    y1 = y, 
+    line = list(color = color)
+  )
+}
+
+pca_qc %>%
+  plot_ly(
+    type = "scattergl",
+    mode = "markers",
+    x = ~PC1,
+    y = ~PC2,
+    marker = list(size = 7.5,
+                  color = "#AAAAAA",
+                  line = list(color = 'rgba(0, 0, 0, .8)',
+                              width = 1)),
+    text = ~paste('<br>Subject: ', sample,
+                  '<br>Sex: ', sex,
+                  '<br>Ethnicity: ', race_code,
+                  '<br>Disease class: ', disease_class,
+                  '<br>Run: ', run_id),
+    hovertemplate = '%{text}',
+    showlegend = FALSE,
+    alpha = 0.5,
+    name = ""
+  ) %>%
+  layout(
+    shapes = list(
+      vline(pc1_zscore_threshold*sd(pca_qc$PC1) + mean(pca_qc$PC1)),
+      vline(-pc1_zscore_threshold*sd(pca_qc$PC1) + mean(pca_qc$PC1)),
+      
+      hline(pc2_zscore_threshold*sd(pca_qc$PC2) + mean(pca_qc$PC2)),
+      hline(-pc2_zscore_threshold*sd(pca_qc$PC2) + mean(pca_qc$PC2))
+      )
+    )
+# pca_qc %>% ggplot(aes(x = PC1,
+#                       y = PC2)) +
+#   geom_point(shape = 21,
+#              colour = "black",
+#              fill = "grey80",
+#              size = 2,
+#              stroke = 0.5,
+#              alpha = 0.6) +
+#   geom_vline(aes(xintercept = (pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
+#              color = "red") +
+#   geom_vline(aes(xintercept = -(pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
+#              color = "red") +
+#   geom_hline(aes(yintercept = (pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
+#              color = "green") +
+#   geom_hline(aes(yintercept = -(pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
+#              color = "green")
 ```
 
 ```{r}
@@ -1187,11 +1226,41 @@ pheatmap(sampleDistMatrix,
 # Data quality
 
 ## MA-plot
+
+This MA plot is of shrunken log2 fold changes (using the *apeglm* package), in which actual fold changes are adjusted to compensate for the high variablity of genes with few counts.
+
+Dots in red indicate a significant expression difference between Control and SLE.
 ```{r echo=FALSE}
 loadd(res)
+#l <- tagList()
 for(m in seq_along(res)){
   plotMA(res[[m]], ylim = c(-6,6), main = names(res)[[m]])
+  # l[[m]] <- res[[m]] %>%
+  # as_tibble(rownames = "gene") %>%
+  # mutate(
+  #   sig = case_when(
+  #     padj < 0.05 ~ TRUE,
+  #     padj >= 0.05 ~ FALSE,
+  #     is.na(padj) ~ FALSE
+  #     ),
+  # ) %>%
+  # plot_ly(
+  #   type = "scattergl",
+  #   x = ~baseMean,
+  #   y = ~log2FoldChange,
+  #   color = ~sig,
+  #   alpha = 0.75,
+  #   colors = c("grey30","red"),
+  #   text = ~paste('<br>Gene: ', gene,
+  #                 '<br>LFC: ', signif(log2FoldChange, digits = 2),
+  #                 '<br>p adjusted: ', scientific(padj, digits = 2))
+  #   ) %>%
+  #   add_markers(marker = list(size = 7.5,
+  #                             line = list(color = 'rgba(0, 0, 0, .8)',
+  #                                         width = 1))) %>%
+  #   layout(xaxis = list(type = "log"))
 }
+#l
 #plotMA(res[[1]], ylim = c(-4,4))
 ```
 
@@ -1200,6 +1269,14 @@ for(m in seq_along(res)){
 loadd(disp_plot)
 disp_plot
 rm(disp_plot)
+```
+
+## Cluster resolution optimization
+
+The samples are clustered using the Leiden algorithm on shared nearest neighbors calculated from sample distances.  Since the clustering resolution is an emperical value that has to be determined for each dataset, a range of resolutions were tested and then the silhouette coefficient was calculated at each resolution.  A higher coefficient means better intracluster simliarity and intercluster differences.
+```{r}
+loadd(cluster_res_scan)
+plot_resolution_silhouette_coeff(cluster_res_scan)
 ```
 
 # Sample Sanity check

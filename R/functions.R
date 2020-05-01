@@ -1,19 +1,19 @@
-`%nin%` <- compose(`!`, `%in%`)
+`%nin%` <- purrr::compose(`!`, `%in%`)
 
 deduplicate_samples <- function(md, samples){
   if (nrow(get_dupes(md, sample_name)) > 0){
-    deduplicated_md = md %>% 
+    deduplicated_md = md %>%
       filter(sample_name %in% names(samples)) %>%
-      mutate(sample_name = make_clean_names(string = sample_name, 
+      mutate(sample_name = make_clean_names(string = sample_name,
                                             case = "all_caps"))
     deduplicated_samples = `names<-`(samples, make_clean_names(string = names(samples),
-                                                                        case = "all_caps"))  
+                                                                        case = "all_caps"))
   } else {
     deduplicated_md = md %>%
       filter(sample_name %in% names(samples))
     deduplicated_samples = samples
   }
-  
+
   return(list(md = deduplicated_md,
               samples = deduplicated_samples))
 }
@@ -32,19 +32,19 @@ remove_outliers <- function(dds,
            pc1_zscore = abs((PC1 - mean(PC1))/sd(PC1)),
            pc2_zscore = abs((PC2 - mean(PC2))/sd(PC2))) %>%
     inner_join(as_tibble(colData(dds), rownames = "sample"))
-  
+
   pc1_outliers <- pca_res %>%
     filter(pc1_zscore >= pc1_zscore_cutoff) %>%
     pull(sample)
-  
+
   pc2_outliers <- pca_res %>%
     filter(pc2_zscore >= pc2_zscore_cutoff) %>%
     pull(sample)
-  
+
   outliers <- unique(c(pc1_outliers, pc2_outliers))
-  
+
   if (length(outliers > 0)){
-    dds <- dds[,colnames(dds) %nin% outliers] 
+    dds <- dds[,colnames(dds) %nin% outliers]
   }
   return(list(dds = dds, pca = pca_res, removed = outliers))
 }
@@ -68,24 +68,25 @@ optimize_cluster_resolution <- function(snn_graph,
                                         from = 0.2,
                                         to = 1,
                                         by = 0.1){
-  
-  cluster_opt <- furrr::future_map_dfc(seq(from = from,
+
+
+  cluster_opt <- future_map_dfc(seq(from = from,
                                            to = to,
                                            by = by),
                                        function(i){
-                                         leiden(as.matrix(snn_graph),
+                                         leiden(snn_graph,
                                                 n_iterations = 10,
                                                 resolution_parameter = i,
-                                                seed=as.numeric(Sys.time()),
+                                                seed = 8309,
                                                 partition_type = "RBConfigurationVertexPartition")
                                        })
-  
+
   cluster_opt <- cluster_opt %>%
     mutate(sample_name = rownames(snn_graph)) %>%
     select(sample_name, everything())
-  
-  cluster_silhouette <- 
-    furrr::future_map_dbl(names(select(cluster_opt, -sample_name)),
+
+  cluster_silhouette <-
+    future_map_dbl(names(select(cluster_opt, -sample_name)),
                           function(i){
                             sil <- silhouette(
                               deframe(
@@ -95,22 +96,58 @@ optimize_cluster_resolution <- function(snn_graph,
                               ),
                               dist_mat
                             )
-                            
+
                             if(!is.na(sil)){
                               return(summary(sil)[["si.summary"]][["Mean"]])
                             } else {
                               return(0)
                             }
-                            
+
                           })
-  
+
   cs <- tibble(res = seq(from = from,
                          to = to,
                          by = by),
                coeff = cluster_silhouette)
-  
+
   return(cs)
 }
+
+
+###--- kmeans version ---###
+# optimize_cluster_resolution <- function(dist_mat,
+#                                         from = 1,
+#                                         to = 10,
+#                                         by = 1){
+#
+#   kmeans_clusters <- furrr::future_map_dfc(seq(from = from,
+#                                            to = to,
+#                                            by = by),
+#                                        function(i){
+#                                            tibble(fastkmed(dist_mat,
+#                                                            ncluster = i)[['cluster']])
+#                                          }) %>% `names<-`(paste0("res", seq(from = from,
+#                                                               to = to,
+#                                                               by = by)))
+#
+#   cluster_silhouette <- future_map_dbl(seq_along(kmeans_clusters),
+#                         function(j){
+#                           sil <- silhouette(x = kmeans_clusters[[j]],
+#                                             dist = dist_mat)
+#                           if(!is.na(sil)){
+#                             return(summary(sil)[["si.summary"]][["Mean"]])
+#                             } else {
+#                               return(0)
+#                               }
+#                           })
+#
+#   cs <- tibble(res = seq(from = from,
+#                          to = to,
+#                          by = by),
+#                coeff = cluster_silhouette)
+#
+#   return(cs)
+# }
 
 # Use the output from cluster_silhouette()
 plot_resolution_silhouette_coeff <- function(cluster_silhouette){
@@ -119,7 +156,6 @@ plot_resolution_silhouette_coeff <- function(cluster_silhouette){
                y = coeff)) +
     geom_line() +
     theme_cowplot()
-  
 }
 
 plot_dispersion_estimate <- function(object, CV = FALSE){
@@ -128,16 +164,16 @@ plot_dispersion_estimate <- function(object, CV = FALSE){
   px <- px[sel]
   f <- ifelse(CV, sqrt, I)
   py <- f(mcols(object)$dispGeneEst[sel])
-  ymin <- 10^floor(log10(min(py[py > 0], na.rm = TRUE)) - 
+  ymin <- 10^floor(log10(min(py[py > 0], na.rm = TRUE)) -
                      0.1)
-  
-  outlier_shape <- ifelse(mcols(object)$dispOutlier[sel], 
+
+  outlier_shape <- ifelse(mcols(object)$dispOutlier[sel],
                           1, 16)
-  outlier_size <- ifelse(mcols(object)$dispOutlier[sel], 
+  outlier_size <- ifelse(mcols(object)$dispOutlier[sel],
                          2 * 0.45, 0.45)
-  outlier_halo <- ifelse(mcols(object)$dispOutlier[sel], 
+  outlier_halo <- ifelse(mcols(object)$dispOutlier[sel],
                          "final", "gene-est")
-  
+
   disp_data <- tibble(px = px,
                       py = pmax(py, ymin),
                       outlier_shape = as_factor(outlier_shape),
@@ -145,7 +181,7 @@ plot_dispersion_estimate <- function(object, CV = FALSE){
                       outlier_halo = as_factor(outlier_halo),
                       dispersions = f(dispersions(object)[sel]),
                       dispersions_fit = f(mcols(object)$dispFit[sel]))
-  
+
   disp_plot <- disp_data %>%
     ggplot(aes(x = px,
                y = py)) +
@@ -174,12 +210,12 @@ plot_dispersion_estimate <- function(object, CV = FALSE){
            shape = "none") +
     theme_cowplot() +
     theme(legend.justification=c(1,0), legend.position=c(1,0))
-  
+
   return(disp_plot)
 }
 
 fix_antibody_values <- function(i) {
-  recode(.x = i, 
+  recode(.x = i,
          Negative = "negative",
          POSITIVE = "positive",
          `no_val` = "no_val",
@@ -197,9 +233,9 @@ fix_antibody_values <- function(i) {
 #' @examples
 alt_summary <- function(object){
   notallzero <- sum(object$baseMean > 0)
-  up <- sum(object[["padj"]] < 0.05 & object$log2FoldChange > 
+  up <- sum(object[["padj"]] < 0.05 & object$log2FoldChange >
               metadata(object)$lfcThreshold, na.rm = TRUE)
-  down <- sum(object[["padj"]] < 0.05 & object$log2FoldChange < 
+  down <- sum(object[["padj"]] < 0.05 & object$log2FoldChange <
                 metadata(object)$lfcThreshold, na.rm = TRUE)
   outlier <- sum(object$baseMean > 0 & is.na(object$pvalue))
   if (is.null(metadata(object)$filterThreshold)) {
@@ -207,12 +243,12 @@ alt_summary <- function(object){
   } else {
     ft <- round(metadata(object)$filterThreshold)
   }
-  
+
   filt <- sum(!is.na(object$pvalue) & is.na(object$padj))
-  
+
   total <- nrow(object)
-  
-  
+
+
   tibble(
     up = up,
     down = down,
