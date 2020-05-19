@@ -11,8 +11,8 @@ analysis_plan = drake_plan(
                                       "text",
                                       "text"),
                         trim_ws = TRUE,
-                        na = "n/a",
-                        .name_repair = ~ make_clean_names) %>%
+                        na = "n/a") %>%
+    clean_names() %>%
     mutate(sample_name = make_clean_names(sample_name, case = "all_caps"),
            disease_class = str_remove(
              string = recode(disease_class, "Unaffected Control" = "Control"),
@@ -81,10 +81,11 @@ analysis_plan = drake_plan(
                  recursive = TRUE,
                  full.name = TRUE) %>%
     grep(pattern = "Undetermined|NONE", invert = TRUE, value = TRUE) %>%
-    `names<-`(tx_sample_names) %>%
+    set_names(tx_sample_names) %>%
     `[`(!is.na(match(names(.), md$sample_name))),
 
   final_md = md[which(md[['sample_name']] %in% names(tx_files)),] %>%
+    mutate(disease_class = fct_relevel(disease_class, {{control_group}})) %>%
     column_to_rownames('sample_name'),
 
   #Inspect the metadata:
@@ -159,11 +160,13 @@ analysis_plan = drake_plan(
     top_n(1, coeff) %>%
     pull(res),
 
+  # Not entirely sure using Leiden as a cluster detection algorithm is the best idea
+  # Need to explore other options here.  Maybe just go back to K-means?
    clusters = leiden(as.matrix(neighbors$snn),
           n_iterations = 10,
           resolution_parameter = sample(optimal_resolution, 1), # On the chance that we have multiple equally good resolutions
           partition_type = "RBConfigurationVertexPartition") %>%
-    `names<-`(rownames(neighbors$snn)) %>%
+    set_names(rownames(neighbors$snn)) %>%
     enframe(name = "sample_name", value = "cluster") %>%
     mutate(cluster = as_factor(cluster)),
 
@@ -176,7 +179,7 @@ analysis_plan = drake_plan(
   # leiden_res = tibble(sample_name = rownames(neighbors$snn),
   #                     cluster = as_factor(clusters)),
 
-  annotation_info = as.data.frame(colData(dds_processed))[,c("disease_class",
+  annotation_info = as.data.frame(colData(dds_with_scores))[,c("disease_class",
                                                              "sex")] %>%
     as_tibble(rownames = "sample_name") %>%
     left_join(clusters) %>%
@@ -197,9 +200,9 @@ analysis_plan = drake_plan(
                       verbose = TRUE,
                       n_components = 3) %>%
     as_tibble(.name_repair = "unique") %>%
-    `colnames<-`(c("umap_1",
-                   "umap_2",
-                   "umap_3")) %>%
+    set_names(c("umap_1",
+                "umap_2",
+                "umap_3")) %>%
     mutate(sample_name = colnames(vsd_exprs)) %>%
     inner_join(as_tibble(colData(dds_processed),
                          rownames="sample_name")) %>%
@@ -216,15 +219,15 @@ analysis_plan = drake_plan(
   #     alpha = 0.05,
   #     parallel = TRUE)
   #   }) %>%
-  #   `names<-`(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
+  #   set_names(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
 
-  res = map(seq(from = 3, to = length(resultsNames(dds_processed))), function(i){
+  res = map(seq(from = 2, to = length(resultsNames(dds_processed))), function(i){
     lfcShrink(dds_processed,
               coef = resultsNames(dds_processed)[[i]],
               parallel = TRUE,
               type = "apeglm")
   }) %>%
-  `names<-`(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
+  set_names(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
 
   down_tables = map(seq_along(res), function(i){
     res[[i]] %>%
@@ -235,7 +238,7 @@ analysis_plan = drake_plan(
       top_n(25, log2FoldChange) %>%
       arrange(desc(log2FoldChange))
   }) %>%
-    `names<-`(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
+    set_names(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
 
   up_tables = map(seq_along(res), function(i){
     res[[i]] %>%
@@ -245,7 +248,7 @@ analysis_plan = drake_plan(
     top_n(25, log2FoldChange) %>%
     arrange(desc(log2FoldChange))
   }) %>%
-    `names<-`(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
+    set_names(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
 
   degs = map(seq_along(res), function(i){
     res[[i]] %>%
@@ -254,7 +257,7 @@ analysis_plan = drake_plan(
       filter(abs(log2FoldChange) >= 0.5) %>%
       pull(gene)
   }) %>%
-    `names<-`(map_chr(disease_classes,
+    set_names(map_chr(disease_classes,
                       function(i){ paste0(i, "_vs_Control") })),
 
   deg_class = enframe(degs) %>%
@@ -266,7 +269,7 @@ analysis_plan = drake_plan(
     select(-count) %>%
     distinct() %>%
     column_to_rownames(var = "value") %>%
-    `names<-`("comparison"),
+    set_names("comparison"),
 
   deg_means = vsd_exprs %>%
     t() %>%
@@ -311,13 +314,48 @@ analysis_plan = drake_plan(
     arrange(module) %>%
     column_to_rownames("gene"),
 
+  sledai = read_xlsx(path = clinical_file,
+                     sheet = "SLEDAI",
+                     col_types = c("text",
+                                   "text",
+                                   "date",
+                                   rep("numeric",26),
+                                   "date",
+                                   rep("numeric",23))) %>%
+    clean_names() %>%
+    mutate_if(.predicate = is.integer,
+              .funs = replace_na,
+              0) %>%
+    select(-study,
+           -form_date) %>%
+    left_join(
+      read_xlsx(path = "metadata/SLEDAI_BPX.xlsx",
+                sheet = "search list",
+                .name_repair = janitor::make_clean_names,
+                col_types = c("text",
+                              "text"))
+    ),
+
+  coldata_with_clinical =
+    colData(dds_processed) %>%
+    as_tibble(rownames = "sample_name") %>%
+    left_join(sledai) %>%
+    column_to_rownames(var = "sample_name") %>%
+    as("DataFrame"),
+
+  # I don't know why and don't care enough to research it, but `colData<-` doesn't seem to return the SummarizedExperiment object
+  dds_with_sledai = target({colData(dds_processed) <- coldata_with_clinical; dds_processed}), # he knows this one weird trick...
+
   dds_with_scores =
-    moduleScoreR::scoreEigengenes(object = dds_processed,
-                                  module_list = module_list,
-                                  score_func = 'rsvd') %>%
-    moduleScoreR::scoreEigengenes(object = .,
-                                  module_list = ldg_modules,
-                                  score_func = 'rsvd'),
+    scoreEigengenes(object = dds_with_sledai,
+                    module_list = module_list,
+                    score_func = 'rsvd') %>%
+    scoreEigengenes(object = .,
+                    module_list = ldg_modules,
+                    score_func = 'rsvd') %>%
+    scoreEigengenes(object = .,
+                    module_list = metasignature_module,
+                    score_func = 'rsvd'),
 
   annotated_modules = module_annot %>%
     as_tibble(rownames="module") %>%
@@ -329,7 +367,7 @@ analysis_plan = drake_plan(
   type_pal = paletteer_d("ggsci::category20_d3",
                          n = length(unique(annotated_modules$type))) %>%
     as.character() %>%
-    `names<-`(unique(annotated_modules$type)),
+    set_names(unique(annotated_modules$type)),
 
   run_groups =
     colData(dds_with_scores) %>%
@@ -340,7 +378,7 @@ analysis_plan = drake_plan(
   run_id_color_set =
     colorRampPalette(
       brewer.pal(12, "Paired"))(length(run_groups)) %>%
-    `names<-`(run_groups),
+    set_names(run_groups),
 
   chr_pal = c("Y" = "#E41A1C",
               "X" = "#377EB8"),
@@ -353,25 +391,28 @@ analysis_plan = drake_plan(
     paletteer::paletteer_d(palette = "ggsci::uniform_startrek",
                            n = length(levels(clusters$cluster))) %>%
     as.character() %>%
-    `names<-`(levels(clusters$cluster)),
+    set_names(levels(clusters$cluster)),
 
   project_pal =
     colorRampPalette(
       brewer.pal(12, "Set1"))(length(levels(annotation_info$project))) %>%
-    `names<-`(levels(annotation_info$project)),
+    set_names(levels(annotation_info$project)),
 
   # disease_class_pal =
   #   paletteer::paletteer_d(palette = "ggthemes::colorblind",
   #                          n = length(unique(annotation_info$disease_class))) %>%
   #   as.character() %>%
-  #  `names<-`(unique(annotation_info$disease_class)),
+  #  set_names(unique(annotation_info$disease_class)),
   disease_class_pal =
-    c("black", "grey75") %>%
-    `names<-`(c("Control", "SLE")),
+    case_when(
+      length(unique(annotation_info$disease_class)) > 2 ~ paletteer_d("RColorBrewer::Set1")[seq_along(unique(annotation_info$disease_class))],
+      length(unique(annotation_info$disease_class)) == 2 ~ c("black", "grey75")
+      ) %>%
+    set_names(unique(annotation_info$disease_class),
 
   comparison_pal =
     oaColors::oaPalette(length(unique(deg_class$comparison))) %>%
-    `names<-`(unique(deg_class$comparison)),
+    set_names(unique(deg_class$comparison)),
 
   group_pal =
     list(
@@ -382,7 +423,7 @@ analysis_plan = drake_plan(
       project_pal,
       disease_class_pal,
       comparison_pal) %>%
-    `names<-`(c(
+    set_names(c(
       "type",
       "chr",
       "sex",
@@ -406,7 +447,7 @@ analysis_plan = drake_plan(
     column_to_rownames("sample_name"),
 
   top_vars = matrixStats::rowSds(vsd_exprs) %>%
-    `names<-`(rownames(vsd_exprs)) %>%
+    set_names(rownames(vsd_exprs)) %>%
     enframe() %>%
     top_n(20000, value) %>%
     pull(name),
@@ -448,10 +489,12 @@ analysis_plan = drake_plan(
                         rownames="sample_name")),
 
   wgcna_cluster_split = initial_split(data = wgcna_scores %>%
-                                select(cluster,
-                                       starts_with("ME")),
-                               prop = 0.75,
-                               strata = "cluster"),
+                                      # filter(disease_class != "LP") %>% # Need to add something that removes disease classes where there are too few samples to actually represent them in the split
+                                      mutate(disease_class = fct_drop(disease_class)) %>%
+                                      select(cluster,
+                                             starts_with("ME")),
+                                      prop = 0.75,
+                                      strata = "cluster"),
 
   wgcna_cluster_train = training(wgcna_cluster_split),
   wgcna_cluster_test = testing(wgcna_cluster_split),
@@ -471,8 +514,10 @@ analysis_plan = drake_plan(
                                       importance=TRUE),
 
   wgcna_disease_class_split = initial_split(data = wgcna_scores %>%
-                                              select(disease_class,
-                                                     starts_with("ME")),
+                                            # filter(disease_class != "LP") %>%
+                                            mutate(disease_class = fct_drop(disease_class)) %>%
+                                            select(disease_class,
+                                                   starts_with("ME")),
                                             prop = 0.75,
                                             strata = "disease_class"),
 
@@ -574,7 +619,8 @@ analysis_plan = drake_plan(
     select(sample_name,
            disease_class,
            matches("^M[[:digit:]]+"),
-           one_of(names(ldg_modules))) %>%
+           one_of(names(ldg_modules)),
+           mg) %>%
     inner_join(wgcna_scores) %>%
     inner_join(viral_exprs) %>%
     inner_join(clusters),

@@ -2,7 +2,6 @@ reticulate::use_condaenv('reticulate', required = TRUE, conda = "~/conda/bin/con
 library(cowplot)
 library(DESeq2)
 library(drake)
-library(flyio)
 library(ggforce)
 library(gtools)
 library(kableExtra)
