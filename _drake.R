@@ -44,14 +44,14 @@ metasignature_module <- list(mg = c("IFI44L", "EPSTI1", "HERC5",
                         "ABCB1", "NAP1L3", "EIF3L"))
 
 ### Setup project variables
-projects_to_include = "BChong2019.1"
-projects_to_exclude = c("ALE06", "Xencor")
-disease_classes_to_include = NULL
+projects_to_include = NULL # "BChong2019.1"
+projects_to_exclude = c("ALE06", "Xencor", "BChong2019.1")
+disease_classes_to_include = c("Control", "SLE")
 disease_classes_to_exclude = NULL
-study_design = ~ disease_class
+study_design = ~ sex + disease_class
 comparison_grouping_variable = "disease_class"
 control_group = "Control"
-experimental_group = "DLE"
+experimental_group = "SLE"
 
 initial_concentration_threshold = 1.5
 pc1_zscore_threshold = 2

@@ -160,6 +160,8 @@ analysis_plan = drake_plan(
     top_n(1, coeff) %>%
     pull(res),
 
+  # Not entirely sure using Leiden as a cluster detection algorithm is the best idea
+  # Need to explore other options here.  Maybe just go back to K-means?
    clusters = leiden(as.matrix(neighbors$snn),
           n_iterations = 10,
           resolution_parameter = sample(optimal_resolution, 1), # On the chance that we have multiple equally good resolutions
@@ -199,8 +201,8 @@ analysis_plan = drake_plan(
                       n_components = 3) %>%
     as_tibble(.name_repair = "unique") %>%
     set_names(c("umap_1",
-                   "umap_2",
-                   "umap_3")) %>%
+                "umap_2",
+                "umap_3")) %>%
     mutate(sample_name = colnames(vsd_exprs)) %>%
     inner_join(as_tibble(colData(dds_processed),
                          rownames="sample_name")) %>%
@@ -402,8 +404,11 @@ analysis_plan = drake_plan(
   #   as.character() %>%
   #  set_names(unique(annotation_info$disease_class)),
   disease_class_pal =
-    paletteer_d("RColorBrewer::Set1")[seq_along(unique(annotation_info$disease_class))] %>%
-    set_names(unique(annotation_info$disease_class)),
+    case_when(
+      length(unique(annotation_info$disease_class)) > 2 ~ paletteer_d("RColorBrewer::Set1")[seq_along(unique(annotation_info$disease_class))],
+      length(unique(annotation_info$disease_class)) == 2 ~ c("black", "grey75")
+      ) %>%
+    set_names(unique(annotation_info$disease_class),
 
   comparison_pal =
     oaColors::oaPalette(length(unique(deg_class$comparison))) %>%
@@ -484,10 +489,10 @@ analysis_plan = drake_plan(
                         rownames="sample_name")),
 
   wgcna_cluster_split = initial_split(data = wgcna_scores %>%
-                                        filter(disease_class != "LP") %>%
-                                        mutate(disease_class = fct_drop(disease_class)) %>%
-                                        select(cluster,
-                                               starts_with("ME")),
+                                      # filter(disease_class != "LP") %>% # Need to add something that removes disease classes where there are too few samples to actually represent them in the split
+                                      mutate(disease_class = fct_drop(disease_class)) %>%
+                                      select(cluster,
+                                             starts_with("ME")),
                                       prop = 0.75,
                                       strata = "cluster"),
 
@@ -509,10 +514,10 @@ analysis_plan = drake_plan(
                                       importance=TRUE),
 
   wgcna_disease_class_split = initial_split(data = wgcna_scores %>%
-                                              filter(disease_class != "LP") %>%
-                                              mutate(disease_class = fct_drop(disease_class)) %>%
-                                              select(disease_class,
-                                                     starts_with("ME")),
+                                            # filter(disease_class != "LP") %>%
+                                            mutate(disease_class = fct_drop(disease_class)) %>%
+                                            select(disease_class,
+                                                   starts_with("ME")),
                                             prop = 0.75,
                                             strata = "disease_class"),
 

@@ -1052,8 +1052,6 @@ The module eigengene scores were used to train a random forest model with repeat
 
 The model was trained with 75% of the dataset and tested on 25%.
 
-Note: Subjects with LP were excluded due to the small population size.
-
 ```{r}
 loadd(wgcna_cluster_rf_cv, wgcna_cluster_test)
 
