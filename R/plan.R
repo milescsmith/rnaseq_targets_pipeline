@@ -124,9 +124,6 @@ analysis_plan = drake_plan(
   pca_qc = outlier_qc$pca,
   removed_outliers = outlier_qc$removed,
 
-  # I would just use the DESeq() function, but running each contitutent separately makes it easier to recover from
-  # failure or to observe progress
-
   dds_processed =
     DESeq(dds_qc,
           parallel = TRUE),
@@ -144,31 +141,31 @@ analysis_plan = drake_plan(
   # to build an SNN graph off of a distance matrix, which we can then pass to the Leiden
   # algorithm to identify clusters.
 
-  neighbors = Seurat::FindNeighbors(object = sample_dists, nn.method = "annoy"),
+  # neighbors = Seurat::FindNeighbors(object = sample_dists, nn.method = "annoy"),
 
   # Test a range of resolutions and choose the one with the highest silhouette
   # coefficient
-  cluster_res_scan = optimize_cluster_resolution(
-    snn_graph = as.matrix(neighbors$snn),
-    dist_mat = sample_dists,
-    from = 0.1,
-    to = 1.5,
-    by = 0.1),
-
-  optimal_resolution =
-    cluster_res_scan %>%
-    top_n(1, coeff) %>%
-    pull(res),
-
-  # Not entirely sure using Leiden as a cluster detection algorithm is the best idea
-  # Need to explore other options here.  Maybe just go back to K-means?
-   clusters = leiden(as.matrix(neighbors$snn),
-          n_iterations = 10,
-          resolution_parameter = sample(optimal_resolution, 1), # On the chance that we have multiple equally good resolutions
-          partition_type = "RBConfigurationVertexPartition") %>%
-    set_names(rownames(neighbors$snn)) %>%
-    enframe(name = "sample_name", value = "cluster") %>%
-    mutate(cluster = as_factor(cluster)),
+  # cluster_res_scan = optimize_cluster_resolution(
+  #   snn_graph = as.matrix(neighbors$snn),
+  #   dist_mat = sample_dists,
+  #   from = 0.1,
+  #   to = 1.5,
+  #   by = 0.1),
+  #
+  # optimal_resolution =
+  #   cluster_res_scan %>%
+  #   top_n(1, coeff) %>%
+  #   pull(res),
+  #
+  # # Not entirely sure using Leiden as a cluster detection algorithm is the best idea
+  # # Need to explore other options here.  Maybe just go back to K-means?
+  #  clusters = leiden(as.matrix(neighbors$snn),
+  #         n_iterations = 10,
+  #         resolution_parameter = sample(optimal_resolution, 1), # On the chance that we have multiple equally good resolutions
+  #         partition_type = "RBConfigurationVertexPartition") %>%
+  #   set_names(rownames(neighbors$snn)) %>%
+  #   enframe(name = "sample_name", value = "cluster") %>%
+  #   mutate(cluster = as_factor(cluster)),
 
   #clusters = fastkmed(sampleDistMatrix,
   #                    ncluster = optimal_resolution)[['cluster']] %>%
@@ -179,8 +176,16 @@ analysis_plan = drake_plan(
   # leiden_res = tibble(sample_name = rownames(neighbors$snn),
   #                     cluster = as_factor(clusters)),
 
+  sample_cluster_info = sample_clustering(exprs_mat = t(vsd_exprs),
+                                          from = 3,
+                                          to = 12,
+                                          by = 1),
+
+  clusters = sample_cluster_info$clusters,
+
   annotation_info = as.data.frame(colData(dds_with_scores))[,c("disease_class",
-                                                             "sex")] %>%
+                                                             "sex",
+                                                             "sledai_total_score")] %>%
     as_tibble(rownames = "sample_name") %>%
     left_join(clusters) %>%
     column_to_rownames(var="sample_name"),
@@ -208,7 +213,11 @@ analysis_plan = drake_plan(
                          rownames="sample_name")) %>%
     inner_join(clusters),
 
-  disease_classes = final_md %>% filter(disease_class != "Control") %>% pull(disease_class) %>% as.character() %>% unique(),
+  disease_classes = final_md %>%
+    filter(disease_class != "Control") %>%
+    pull(disease_class) %>%
+    as.character() %>%
+    unique(),
 
   # res = map(disease_classes, function(i){
   #   results(
@@ -221,7 +230,9 @@ analysis_plan = drake_plan(
   #   }) %>%
   #   set_names(map_chr(disease_classes, function(i){ paste0(i, "_vs_Control")})),
 
-  res = map(seq(from = 2, to = length(resultsNames(dds_processed))), function(i){
+  res = map(which(str_detect(pattern = "disease_class",
+                             string = resultsNames(dds_processed))),
+  function(i){
     lfcShrink(dds_processed,
               coef = resultsNames(dds_processed)[[i]],
               parallel = TRUE,
@@ -387,9 +398,34 @@ analysis_plan = drake_plan(
               "Female" = "azure2",
               "unk" = "#333333"),
 
-  cluster_pal =
-    paletteer::paletteer_d(palette = "ggsci::uniform_startrek",
-                           n = length(levels(clusters$cluster))) %>%
+  cluster_pal = ifelse(
+    test = length(levels(clusters$cluster)) > 12,
+    yes = list(
+      colorRampPalette(
+        paletteer_d(
+          palette = "ggthemes::calc",
+          n = 12
+          )
+        )(
+          length(
+            levels(
+              clusters$cluster
+              )
+            )
+          )
+      ),
+    no = list(
+      paletteer_d(
+        palette = "ggthemes::calc",
+        n = length(
+          levels(
+            clusters$cluster
+            )
+          )
+        )
+      )
+    ) %>%
+    unlist() %>%
     as.character() %>%
     set_names(levels(clusters$cluster)),
 
@@ -403,12 +439,17 @@ analysis_plan = drake_plan(
   #                          n = length(unique(annotation_info$disease_class))) %>%
   #   as.character() %>%
   #  set_names(unique(annotation_info$disease_class)),
+
+  number_disease_classes = length(unique(annotation_info$disease_class)),
+
   disease_class_pal =
-    case_when(
-      length(unique(annotation_info$disease_class)) > 2 ~ paletteer_d("RColorBrewer::Set1")[seq_along(unique(annotation_info$disease_class))],
-      length(unique(annotation_info$disease_class)) == 2 ~ c("black", "grey75")
+    if_else(
+      number_disease_classes > 2,
+      list(RColorBrewer::brewer.pal(number_disease_classes, "Set1")),
+      list(c("black", "grey75"))
       ) %>%
-    set_names(unique(annotation_info$disease_class),
+    unlist() %>%
+    set_names(unique(annotation_info$disease_class)),
 
   comparison_pal =
     oaColors::oaPalette(length(unique(deg_class$comparison))) %>%
@@ -627,8 +668,8 @@ analysis_plan = drake_plan(
 
   report = rmarkdown::render(
     input = knitr_in("markdown/report.rmd"),
-    output_file = file_out("markdown/report.html"),
-    output_dir = "markdown",
+    output_file = file_out("reports/report.html"),
+    output_dir = "reports",
     quiet = TRUE),
 
   vsd_exprs %>%

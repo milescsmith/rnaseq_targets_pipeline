@@ -44,7 +44,7 @@ metasignature_module <- list(mg = c("IFI44L", "EPSTI1", "HERC5",
                         "ABCB1", "NAP1L3", "EIF3L"))
 
 ### Setup project variables
-projects_to_include = NULL # "BChong2019.1"
+projects_to_include = "BLAST" # "BChong2019.1"
 projects_to_exclude = c("ALE06", "Xencor", "BChong2019.1")
 disease_classes_to_include = c("Control", "SLE")
 disease_classes_to_exclude = NULL
