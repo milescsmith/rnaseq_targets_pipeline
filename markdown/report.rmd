@@ -728,7 +728,7 @@ umap_results %>%
           y = ~umap_2,
           color = ~cluster,
           alpha = 0.75,
-          colors = as.character(paletteer_d("ggthemes::calc")),
+          colors = group_pal$cluster,
           text = ~paste('<br>Sample: ', sample_name,
                         '<br>Classification: ', disease_class,
                         '<br>Ethnicity ', race_code,

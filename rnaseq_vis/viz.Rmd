@@ -1,0 +1,489 @@
+---
+title: "Combined General, DxTerity, ABC, MS, OCRD, MDFL, ORDRCC.13-19, ORDRCC, and BLAST RNAseq data"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  flexdashboard::flex_dashboard:
+  vertical_layout: fill
+runtime: shiny
+---
+  
+```{r setup, include=FALSE}
+options(width = 1200)
+library(here)
+library(plotly)
+library(tidyverse)
+library(shiny)
+library(flexdashboard)
+library(cowplot)
+library(ggforce)
+library(gtools)
+library(pheatmap)
+library(viridis)
+
+knitr::opts_chunk$set(echo = FALSE)
+theme_set(theme_cowplot())
+load("../data/for_shiny_vis.RData")
+#load("ica_res.RData")
+
+annotation_info <- annotation_info %>%
+  as_tibble(rownames="sample_name") %>%
+  left_join(
+    select(
+      as_tibble(final_md, rownames = "sample_name"),
+      sample_name, 
+      race_code)) %>%
+  mutate(race_code = as_factor(race_code)) %>%
+  column_to_rownames(var = "sample_name")
+
+plot_data <- pca_results %>%
+  inner_join(
+    select(umap_results, sample_name, umap_1, umap_2, umap_3)) %>%
+  inner_join(ifn_scores_with_viral) %>%
+  inner_join(
+    select(inflammation_scores_with_viral, sample_name, starts_with("M"))
+  ) %>%
+  left_join(as_tibble(annotation_info, rownames = "sample_name")) %>%
+  #inner_join(as_tibble(ica_results$S, rownames = "sample_name")) %>%
+  mutate(dim_1 = PC1,
+         dim_2 = PC2,
+         dim_3 = PC3)
+
+vsd_exprs <- t(vsd_exprs)
+
+vsd_exprs <- vsd_exprs %>%
+  as_tibble(rownames = "sample_name") %>%
+  left_join(
+    select(plot_data,
+           sample_name, starts_with("M"), starts_with("IC"))
+  ) %>%
+  column_to_rownames(var = "sample_name")
+
+
+normalize <- function(feature) {
+  return(
+    (feature - min(feature))/(max(feature)-min(feature))  
+  )
+}
+
+```
+
+Column
+------------------
+  
+### Dimensional Reduction
+  
+```{r}
+
+shinyApp(
+  
+  ui = fluidPage(
+    tabsetPanel(
+      tabPanel("Color by metadata",
+               fluidRow(
+                 column(2,
+                        sliderInput(inputId = 'md_opacity',
+                                    label = 'Point opacity',
+                                    min = 0, 
+                                    max = 100,
+                                    value = 100,
+                                    step = 1,
+                                    round = 0)
+                 ),
+                 column(3,
+                        selectInput(inputId = "md_ident",
+                                    label = "Display variable",
+                                    choices = colnames(plot_data),
+                                    selected = "cluster")
+                 ),
+                 column(2,
+                        selectInput(inputId = "md_reduction",
+                                    label = "Display projection",
+                                    choices = c("PCA", "UMAP"),
+                                    selected = "PCA")
+                 )
+               ),
+               hr(),
+               plotlyOutput(outputId = "md_dimplot",
+                            width = 900,
+                            height = 600)
+      ),
+    tabPanel("Color by expression",
+             fluidRow(
+               column(2,
+                      sliderInput(inputId = 'expr_opacity',
+                                  label = 'Point opacity',
+                                  min = 0,
+                                  max = 100,
+                                  value = 100,
+                                  step = 1,
+                                  round = 0)
+               ),
+               column(3,
+                      textInput(inputId = "expr_goi",
+                                label = "Display variable",
+                                value = "PML")
+               ),
+               column(2,
+                      selectInput(inputId = "expr_reduction",
+                                  label = "Display projection",
+                                  choices = c("PCA", "UMAP"),
+                                  selected = "PCA")
+               )
+             ),
+             hr(),
+             plotlyOutput(outputId = "expr_dimplot",
+                          width = 900,
+                          height = 600)
+    )
+    ),
+  ),
+  
+  server = function(input, output){
+    output$md_dimplot <- renderPlotly({
+      
+      if (input$md_reduction == "PCA"){
+        plot_data[['dim_1']] <- plot_data[['PC1']]
+        plot_data[['dim_2']] <- plot_data[['PC2']]
+        plot_data[['dim_3']] <- plot_data[['PC3']]
+      } else if (input$md_reduction == "UMAP") {
+        plot_data[['dim_1']] <- plot_data[['umap_1']]
+        plot_data[['dim_2']] <- plot_data[['umap_2']]
+        plot_data[['dim_3']] <- plot_data[['umap_3']]
+      }
+      
+      plot_data[['identity']] <- plot_data[[input$md_ident]]
+      
+      plot_data %>%
+        plot_ly(x = ~dim_1,
+                y = ~dim_2,
+                z = ~dim_3,
+                color = ~identity,
+                size = 1.5,
+                alpha = input$md_opacity/100,
+                text = ~paste('<br>Sample: ', sample_name,
+                              '<br>Classification: ', disease_class,
+                              '<br>Ethnicity ', race_code,
+                              '<br>Cluster: ', cluster,
+                              '<br>Sex: ', sex,
+                              '<br>Plate: ', run_id,
+                              paste0('<br>',input$md_ident,': '), identity
+                )
+        ) %>%
+        add_markers() %>%
+        layout(
+          xaxis = list(
+            title = paste0(input$md_reduction, "2")
+          ),
+          yaxis = list(
+            title = paste0(input$md_reduction, "2")
+          ),
+          zaxis = list(
+            title = paste0(input$md_reduction, "3")
+          )
+        ) %>%
+        toWebGL()
+    })
+    
+    output$expr_dimplot <- renderPlotly({
+
+      if (input$expr_reduction == "PCA"){
+        plot_data[['dim_1']] <- plot_data[['PC1']]
+        plot_data[['dim_2']] <- plot_data[['PC2']]
+        plot_data[['dim_3']] <- plot_data[['PC3']]
+      } else if (input$expr_reduction == "UMAP") {
+        plot_data[['dim_1']] <- plot_data[['umap_1']]
+        plot_data[['dim_2']] <- plot_data[['umap_2']]
+        plot_data[['dim_3']] <- plot_data[['umap_3']]
+      }
+
+
+      plot_data <- plot_data %>% left_join(
+        vsd_exprs %>%
+          as_tibble(rownames = "sample_name") %>%
+          select_at(vars("sample_name", input$expr_goi))
+      )
+      
+      plot_data[['expr']] <- normalize(plot_data[[input$expr_goi]])
+
+      plot_data %>%
+        plot_ly(x = ~dim_1,
+                y = ~dim_2,
+                z = ~dim_3,
+                color = ~expr,
+                size = 1.5,
+                alpha = input$expr_opacity/100,
+                text = ~paste('<br>Sample: ', sample_name,
+                              '<br>Classification: ', disease_class,
+                              '<br>Ethnicity ', race_code,
+                              '<br>Cluster: ', cluster,
+                              '<br>Sex: ', sex,
+                              '<br>Plate: ', run_id,
+                              paste0('<br>',input$md_ident,': '), identity,
+                              paste0('<br>',input$expr_goi,': '), expr
+                )
+        ) %>%
+        add_markers() %>%
+        layout(
+          xaxis = list(
+            title = paste0(input$expr_reduction, "2")
+          ),
+          yaxis = list(
+            title = paste0(input$expr_reduction, "2")
+          ),
+          zaxis = list(
+            title = paste0(input$expr_reduction, "3")
+          )
+        ) %>%
+        toWebGL()
+    })
+  },
+  
+  options = list(width = 1200,
+                 height = 900)
+)
+
+```
+
+Column
+------------------
+  
+### Gene Expression
+  
+```{r}
+shinyApp(
+  
+  ui = fluidPage(
+    tabsetPanel(
+      tabPanel("Heatmap",
+        fluidRow(
+          column(5,
+                 textAreaInput(inputId = "heatmap_goi",
+                               label = "Gene(s) to display",
+                               value = str_flatten(ISGs, collapse = ", "),
+                               width = "500px"
+                 ),
+          ),
+          column(3,
+                 checkboxInput(inputId = "hierarchical_sort",
+                               label = "Sort rows by hierarchical clustering",
+                               value = TRUE),
+          )
+        ),
+        fluidRow(
+          column(3,
+                 selectInput(inputId = "sorting_var",
+                             label = "Sort by",
+                             choices = colnames(annotation_info),
+                             selected = "disease_class"),  
+          ),
+          column(3,
+                 sliderInput(inputId = 'breaks',
+                             label = 'Color scale breaks',
+                             min = 0, 
+                             max = 10,
+                             value = 4,
+                             step = 1,
+                             round = 0)
+          )
+        ),
+        
+        hr(),
+        
+        plotOutput(outputId = "sorted_heatmap",
+                   width = 900,
+                   height = 900)
+      ),
+      tabPanel("Violin plots",
+        fluidRow(
+          column(4,
+            textInput(inputId = "violin_goi",
+                                    label = "Feature to display",
+                                    value = "M1.2")
+          ),
+          column(4,
+            selectInput(inputId = "violin_grouping",
+                                      label = "Sort by",
+                                      choices = names(select_if(annotation_info,
+                                                                function(col){
+                                                                  !is.numeric(col)
+                                                                  } 
+                                                                )
+                                                      ),
+                                      selected = "disease_class")
+          )
+        ),
+        
+        hr(),
+        
+        plotlyOutput(outputId = "violins",
+                   width = 750,
+                   height = 600)
+      ),
+      tabPanel("Gene-gene plots",
+        fluidRow(
+          column(2,
+            textInput(inputId = "feature_1",
+                      label = "Feature for x-axis",
+                      value = "IFI44L")
+          ),
+          column(2,
+            textInput(inputId = "feature_2",
+                      label = "Feature for y-axis",
+                      value = "IFI27")
+          ),
+          column(4,
+            selectInput(inputId = "scatter_grouping",
+                                      label = "Color by",
+                                      choices = names(select_if(annotation_info,
+                                                                function(col){
+                                                                  !is.numeric(col)
+                                                                  } 
+                                                                )
+                                                      ),
+                                      selected = "disease_class")
+          )
+        ),
+        
+        hr(),
+        
+        plotlyOutput(outputId = "correlation",
+                   width = 750,
+                   height = 600)
+      )
+    )
+  ),
+  
+  server = function(input, output){
+    
+    sort_order = reactive({
+      annotation_info %>% 
+        as_tibble(rownames = "sample_name") %>%
+        filter(sample_name %in% rownames(vsd_exprs)) %>%
+        arrange_at(input$sorting_var) %>%
+        pull(sample_name)
+    })
+    
+    zscore_range <- reactive({c(-input$breaks:input$breaks)})
+  
+    output$sorted_heatmap <- renderPlot({
+      goi <- str_split(input$heatmap_goi, ",") %>%
+        unlist() %>%
+        str_trim() %>%
+        intersect(colnames(vsd_exprs))
+      
+      vsd_exprs[sort_order(),goi] %>% 
+        pheatmap(
+          scale = 'column',
+          fontsize_row = 6, 
+          fontsize_col = 9, 
+          annotation_row = annotation_info,
+          annotation_colors = group_pal,
+          cluster_rows = input$hierarchical_sort,
+          angle_col = 315,
+          breaks = zscore_range(),
+          color = viridis(n = length(zscore_range())-1, option = "D"),
+          border_color = NA
+        )
+    })
+    
+    output$violins <- renderPlotly({
+      
+      plot_data[["goi"]] <- vsd_exprs %>%
+        as_tibble(rownames = "sample_name") %>%
+        select_at(vars("sample_name", input$violin_goi)) %>%
+        mutate(goi = normalize(.[[input$violin_goi]])) %>%
+        `[[`("goi")
+        
+      
+      plot_data %>%
+        plot_ly(
+          y = ~goi,
+          x = ~get(input$violin_grouping),
+          split = ~get(input$violin_grouping),
+          type = 'violin',
+          box = list(
+            visible = T
+          ),
+          meanline = list(
+            visible = T
+          )
+        ) %>% 
+        layout(
+          yaxis = list(
+            title = "",
+            zeroline = F
+          ),
+          xaxis = list(
+            title = input$violin_grouping
+          )
+        ) %>%
+        toWebGL()
+    })
+  
+    output$correlation <- renderPlotly({
+        
+      plot_data[["feature_1"]] <- vsd_exprs %>%
+        as_tibble(rownames = "sample_name") %>%
+        select_at(vars("sample_name", input$feature_1)) %>%
+        mutate(feature_1 = normalize(.[[input$feature_1]])) %>%
+        `[[`("feature_1")
+
+      plot_data[["feature_2"]] <- vsd_exprs %>%
+        as_tibble(rownames = "sample_name") %>%
+        select_at(vars("sample_name", input$feature_2)) %>%
+        mutate(feature_2 = normalize(.[[input$feature_2]])) %>%
+        `[[`("feature_2")
+  
+  
+      plot_data <- plot_data %>%
+        filter(!is.na(feature_1),
+               !is.na(feature_2))
+      
+      fit <- glm(feature_1 ~ feature_2,
+                 data = plot_data)
+  
+      goodness_of_fit <- signif(1-(fit$deviance/fit$null.deviance), 3)
+      
+      plot_ly(plot_data,
+          x = ~feature_1) %>%
+        add_trace(y = ~feature_2,
+                  color = ~get(input$scatter_grouping),
+                  colors = "Set1",
+                  text = ~paste('<br>Sample: ', sample_name,
+                                '<br>Classification: ', disease_class,
+                                '<br>Ethnicity ', race_code,
+                                '<br>Cluster: ', cluster,
+                                '<br>Sex: ', sex,
+                                '<br>Plate: ', run_id,
+                                paste0('<br>', input$feature_1, ': '), signif(feature_1, 3),
+                                paste0('<br>', input$feature_2, ': '), signif(feature_2, 3)
+                                )
+                  ) %>%
+        add_trace(y = fitted(glm(feature_2 ~ feature_1,
+                                 data = plot_data)),
+                  mode = "lines",
+                  name = "GLM fit") %>%
+        add_annotations(
+          x = max(plot_data$feature_1)+0.05,
+          y = max(plot_data$feature_2)+0.05,
+          text = paste0("<b>R2: ", goodness_of_fit, "</b>"),
+          showarrow = F,
+          font = list()
+        ) %>%
+        layout(
+          yaxis = list(
+            title = input$feature_2
+          ),
+          xaxis = list(
+            title = input$feature_1
+          )
+        ) %>%
+        toWebGL()
+
+    })
+  },
+  
+  options = list(width = 1200,
+                 height = 900)
+)
+```

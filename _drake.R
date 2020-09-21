@@ -58,7 +58,7 @@ pc1_zscore_threshold = 2
 pc2_zscore_threshold = NULL
 
 ### Setup file locations
-seq_file_directory = "/home/rstudio/workspace/datasets/rnaseq/novaseq"
+seq_file_directory = "/home/rstudio/datasets/rnaseq/novaseq"
 metadata_file = "metadata/NovaSeq_Sample_List.xlsx"
 clinical_file = "metadata/SLEDAI_BPX.xlsx"
 
