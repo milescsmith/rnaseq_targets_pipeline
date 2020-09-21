@@ -7,7 +7,7 @@ deduplicate_samples <- function(md, samples){
       mutate(sample_name = make_clean_names(string = sample_name,
                                             case = "all_caps"))
     deduplicated_samples = `names<-`(samples, make_clean_names(string = names(samples),
-                                                                        case = "all_caps"))
+                                                               case = "all_caps"))
   } else {
     deduplicated_md = md %>%
       filter(sample_name %in% names(samples))
@@ -54,123 +54,62 @@ remove_outliers <- function(dds,
 }
 
 
-#' #' optimize_cluster_resolution
-#' #'
-#' #' @param snn_graph SNN graph output from \code{Seurat::FindNeighbors}
-#' #' @param dist_mat Distance matrix from \code{dist()}
-#' #' @param from Starting resolution to test
-#' #' @param to Final resolution to test
-#' #' @param by Amount to increase the resolution each iteration
-#' #'
-#' #' @return tibble with the silhouette coefficient
-#' #' for each resolution tested.
-#' #' @export
-#' #'
-#' #' @examples
-#' optimize_cluster_resolution <- function(snn_graph,
-#'                                         dist_mat,
-#'                                         from = 0.2,
-#'                                         to = 1,
-#'                                         by = 0.1){
-#'
-#'
-#'   cluster_opt <- future_map_dfc(seq(from = from,
-#'                                            to = to,
-#'                                            by = by),
-#'                                        function(i){
-#'                                          leiden(snn_graph,
-#'                                                 n_iterations = 10,
-#'                                                 resolution_parameter = i,
-#'                                                 seed = 8309,
-#'                                                 partition_type = "RBConfigurationVertexPartition")
-#'                                        })
-#'
-#' @examples
-optimize_cluster_resolution <- function(snn_graph,
-                                        dist_mat,
-                                        from = 0.2,
-                                        to = 1,
-                                        by = 0.1){
-
-
-  cluster_opt <- future_map_dfc(seq(from = from,
-                                           to = to,
-                                           by = by),
-                                       function(i){
-                                         leiden(snn_graph,
-                                                n_iterations = 10,
-                                                resolution_parameter = i,
-                                                seed = 8309,
-                                                partition_type = "RBConfigurationVertexPartition")
-                                       })
-
-  cluster_opt <- cluster_opt %>%
-    mutate(sample_name = rownames(snn_graph)) %>%
-    select(sample_name, everything())
-
-  cluster_silhouette <-
-    future_map_dbl(names(select(cluster_opt, -sample_name)),
-                          function(i){
-                            sil <- silhouette(
-                              deframe(
-                                select_at(
-                                  cluster_opt,
-                                  vars("sample_name", i))
-                              ),
-                              dist_mat
-                            )
-
-                            if(!is.na(sil)){
-                              return(summary(sil)[["si.summary"]][["Mean"]])
-                            } else {
-                              return(0)
-                            }
-
-                          })
-
-  cs <- tibble(res = seq(from = from,
-                         to = to,
-                         by = by),
-               coeff = cluster_silhouette)
-
-  return(cs)
-}
-
-
 ###--- kmeans version ---###
-# optimize_cluster_resolution <- function(dist_mat,
-#                                         from = 1,
-#                                         to = 10,
-#                                         by = 1){
-#
-#   kmeans_clusters <- furrr::future_map_dfc(seq(from = from,
-#                                            to = to,
-#                                            by = by),
-#                                        function(i){
-#                                            tibble(fastkmed(dist_mat,
-#                                                            ncluster = i)[['cluster']])
-#                                          }) %>% `names<-`(paste0("res", seq(from = from,
-#                                                               to = to,
-#                                                               by = by)))
-#
-#   cluster_silhouette <- future_map_dbl(seq_along(kmeans_clusters),
-#                         function(j){
-#                           sil <- silhouette(x = kmeans_clusters[[j]],
-#                                             dist = dist_mat)
-#                           if(!is.na(sil)){
-#                             return(summary(sil)[["si.summary"]][["Mean"]])
-#                             } else {
-#                               return(0)
-#                               }
-#                           })
-#
-#   cs <- tibble(res = seq(from = from,
-#                          to = to,
-#                          by = by),
-#                coeff = cluster_silhouette)
-#
-#   return(cs)
-# }
+sample_clustering <- function(
+  exprs_mat,
+  from = 2,
+  to = 20,
+  by = 1){
+
+  kmeans_clusters <-
+    future_map(seq(from = from,
+                   to = to,
+                   by = by),
+               function(i){
+                 clara(
+                   x = exprs_mat,
+                   k = i,
+                   metric = "jaccard",
+                   stand = TRUE,
+                   samples = 50,
+                   pamLike = TRUE
+                 )
+               }
+    ) %>%
+    set_names(seq(from = from,
+                  to = to,
+                  by = by))
+
+  sils <- map(kmeans_clusters, function(j){
+    silhouette(j)
+  })
+
+  avg_sils <- map_dbl(sils, function(k){
+    mean(k[,3])
+  }) %>%
+    set_names(seq(from = from,
+                  to = to,
+                  by = by)) %>%
+    enframe() %>%
+    mutate(name = as.integer(name))
+
+  optimal_k =
+    avg_sils %>%
+    filter(name > 2) %>%
+    top_n(
+      n = 1,
+      wt = value
+    )
+
+  clusters <- kmeans_clusters[[as.character(optimal_k[["name"]])]][["clustering"]] %>%
+    enframe(name = "sample_name",
+            value = "cluster") %>%
+    mutate(cluster = as_factor(cluster))
+
+  return(list(avg_sils = avg_sils,
+              optimal_k = optimal_k,
+              clusters = clusters))
+}
 
 # Use the output from cluster_silhouette()
 plot_resolution_silhouette_coeff <- function(cluster_silhouette){
@@ -179,6 +118,65 @@ plot_resolution_silhouette_coeff <- function(cluster_silhouette){
                y = coeff)) +
     geom_line() +
     theme_cowplot()
+}
+
+ident_clusters <- function(expr_mat,
+                           optimal_k_method = "Tibs2001SEmax",
+                           nstart = 25,
+                           K.max = 50,
+                           B = 100,
+                           d.power = 2){
+
+  module_rf <-
+    randomForest(
+      x = expr_mat,
+      y = NULL,
+      prox = T)
+
+  rf_distance_mat <-
+    dist(1 - module_rf$proximity) %>%
+    as.matrix()
+
+  kmeans_gap_stat <-
+    clusGap(
+      x = rf_distance_mat,
+      FUNcluster = kmeans,
+      nstart = nstart,
+      K.max = K.max,
+      B = B,
+      d.power = d.power
+    )
+
+  new_optimal_k <-
+    with(
+      data = kmeans_gap_stat,
+      expr = maxSE(Tab[,"gap"],
+                   Tab[,"SE.sim"],
+                   method=optimal_k_method
+      )
+    )
+
+  k_clusters <-
+    kmeans(
+      x = rf_distance_mat,
+      centers = new_optimal_k,
+      nstart = 25
+    )
+
+  sample_clusters <-
+    enframe(x = k_clusters[["cluster"]],
+            name = "sample_name",
+            value = "cluster")
+
+  ret_values <-
+    list(
+      kmeans_res = k_clusters,
+      rf_distance = rf_distance_mat,
+      clusters = sample_clusters,
+      gap_stat = kmeans_gap_stat
+    )
+
+  return(ret_values)
 }
 
 plot_dispersion_estimate <- function(object, CV = FALSE){
@@ -280,4 +278,219 @@ alt_summary <- function(object){
     lowcounts = filt,
     total = total
   )
+}
+
+calc_sva <- function(dds, model_design = NULL, n.sva = NULL){
+  model_design_factors <-
+    model_design %||% as.character(design(dds))[[2]] %>%
+    str_remove(pattern = "~")
+
+  n.sva <- n.sva %||% 2
+
+  dat  <- counts(dds, normalized = TRUE)
+
+  dat  <- dat[rowMeans(dat) > 1, ]
+
+  model_design <-
+    as.formula(
+      paste("~",
+            paste(
+              unlist(model_design_factors),
+              collapse = " + "),
+            collapse = " ")
+      )
+
+  mod  <- model.matrix(design(dds), colData(dds))
+
+  mod0 <- model.matrix(~ 1, colData(dds))
+
+  svseq <- svaseq(dat, mod, mod0, n.sv = n.sva)
+
+  colnames(svseq$sv) <- paste0("SV", seq(ncol(svseq$sv)))
+
+  for (i in seq(ncol(svseq$sv))){
+      dds[[paste0("SV",i)]] <- svseq$sv[,i]
+  }
+
+  design(dds) <-
+    as.formula(
+      paste("~",
+            paste(model_design_factors,
+                  paste(colnames(svseq$sv),
+                        collapse = " + "),
+                  sep = " + "),
+            collapse = " "))
+
+  dds <- DESeq(dds, parallel = TRUE)
+
+  ret_vals = list(
+    dds = dds,
+    sva = svseq
+  )
+
+  return(ret_vals)
+}
+
+plot_sva <- function(sva_graph_data){
+  sva_graph_data %>%
+    as_tibble(rownames = "sample_name") %>%
+    select(
+      sample_name,
+      starts_with("SV")
+    ) %>%
+    pivot_longer(
+      -sample_name,
+      names_to = "covar"
+    ) %>%
+    ggplot(
+      aes(
+        x = sample_name,
+        y = value
+      )
+    ) +
+    geom_point() +
+    geom_hline(
+      yintercept = 0,
+      color = "red"
+    ) +
+    facet_grid(
+      rows = vars(covar)
+    ) +
+    theme_cowplot() +
+    theme(
+      axis.text.x =
+        element_text(
+          angle = 45,
+          size = 9,
+          hjust = 1,
+          vjust = 1
+        )
+    )
+}
+
+drake_recode <- function(target_list, thing_to_unquote_splice){
+  dplyr::recode(.x = target_list, !!! {{thing_to_unquote_splice}})
+}
+
+# An improved version of rstatix::add_y_position
+# doesn't take 30 minutes to run either
+grouped_add_xy_positions <- function(stats_tbl,
+                                     data_tbl,
+                                     group_var,
+                                     compare_value,
+                                     cutoff = 0.05,
+                                     step_increase = 0.1){
+
+  unique_groups <- stats_tbl %>% pull({{group_var}}) %>% unique()
+
+  data_min_max <-
+    data_tbl %>%
+    select({{group_var}}, {{compare_value}}) %>%
+    group_by({{group_var}}) %>%
+    summarise(max = max({{compare_value}}),
+              min = min({{compare_value}}),
+              span = max-min,
+              step = span * step_increase)
+
+  tbl_with_positions <- map_dfr(unique_groups, function(x){
+    stats_subset <- stats_tbl %>% filter({{group_var}} == x) %>% add_x_position()
+
+    stats_subset <- if ("p.adj" %in% names(stats_subset)){
+      stats_subset %>% filter(p.adj <= cutoff)
+    } else {
+      stats_subset %>% filter(p <= cutoff)
+    }
+
+    min_max_subset <- data_min_max %>% filter({{group_var}} == x)
+    if (nrow(stats_subset) > 1){
+      positions <-
+        seq(
+          from = min_max_subset[['max']],
+          by = min_max_subset[['step']],
+          to = min_max_subset[['max']] + nrow(stats_subset)*min_max_subset[['step']])
+      stats_subset[['y.position']] <- positions[2:length(positions)]
+    }
+    stats_subset
+  })
+  return(tbl_with_positions)
+}
+
+convert_nuID_to_probeID <- function(object, rename_list){
+  featureNames(object) <-
+    featureNames(object) %>%
+    recode(!!!rename_list)
+
+  return(object)
+}
+
+# Adapted from Seurat::AddModuleScore, which in turn took it from Tirosh (2006)
+tirosh_score_modules <- function(expr_obj, module_list, breaks = 25, num_ctrls = 100) {
+
+  features <- module_list
+  name <- "module"
+  cluster_length <- length(x = features)
+
+  data_avg <- Matrix::rowMeans(x = expr_obj)
+  data_avg <- data_avg[order(data_avg)]
+  data_cut <-
+    cut_number(
+      x = data_avg + rnorm(n = length(data_avg)) / 1e30,
+      n = num_ctrls,
+      labels = FALSE,
+      right = FALSE
+    )
+
+  names(x = data_cut) <- names(x = data_avg)
+  ctrl_use <- vector(mode = "list", length = cluster_length)
+
+  # for each module
+  for (i in seq(cluster_length)) {
+    # use only the module genes that are present in our dataset
+    features_use <- features[[i]][which(features[[i]] %in% rownames(expr_obj))]
+
+    # for each module gene
+    for (j in seq_along(features_use)) {
+      ctrl_use[[i]] <-
+        c(
+          ctrl_use[[i]],
+          names(
+            x = sample(
+              x = data_cut[which(x = data_cut == data_cut[features_use[j]])],
+              size = num_ctrls,
+              replace = FALSE
+            )
+          )
+        )
+    }
+  }
+
+  ctrl_use <- lapply(X = ctrl_use, FUN = unique)
+  ctrl_scores <- matrix(
+    data = numeric(length = 1L),
+    nrow = length(x = ctrl_use),
+    ncol = ncol(x = expr_obj)
+  )
+
+  for (i in 1:length(ctrl_use)) {
+    features_use <- ctrl_use[[i]]
+    ctrl_scores[i, ] <- Matrix::colMeans(x = expr_obj[features_use, ])
+  }
+
+  features_scores <- matrix(
+    data = numeric(length = 1L),
+    nrow = cluster_length,
+    ncol = ncol(x = expr_obj)
+  )
+
+  for (i in 1:cluster_length) {
+    features_use <- features[[i]][which(features[[i]] %in% rownames(expr_obj))]
+    data_use <- expr_obj[features_use, , drop = FALSE]
+    features_scores[i, ] <- Matrix::colMeans(x = data_use)
+  }
+
+  features_scores_use <- features_scores - ctrl_scores
+  rownames(x = features_scores_use) <- names(module_list)
+  features_scores_use <- as.data.frame(x = t(x = features_scores_use))
+  rownames(x = features_scores_use) <- colnames(x = expr_obj)
+  return(features_scores_use)
 }

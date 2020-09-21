@@ -3,7 +3,8 @@ title: "RNAseq analysis"
 author: "Miles Smith"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
-  pdf_document
+  html_document
+# always_allow_html: true
 ---
 
 ```{css, echo=FALSE}
@@ -22,6 +23,106 @@ output:
 ```
 
 ```{r setup, include=FALSE}
+load(file="/home/rstudio/workspace/analysis/rnaseq/cle/external_data/gencode_v32_virus_tx2gene_v1.2.RData") #generated from rtracklayer::readGFF()
+
+load(file="/home/rstudio/workspace/analysis/rnaseq/cle/external_data/banchereau-modules.RData")
+
+load(file="/home/rstudio/workspace/analysis/rnaseq/cle/external_data/kegerreis-ldg-modules.RData")
+
+metasignature_module <- list(mg = c("IFI44L", "EPSTI1", "HERC5",
+                        "IFI44", "IFI27", "RSAD2",
+                        "ISG15", "OASL", "IFIT3",
+                        "CMPK2", "IFIT1", "USP18",
+                        "SIGLEC1", "MX2", "MX1",
+                        "LY6E", "PLSCR1", "OAS2",
+                        "SPATS2L", "OAS1", "OAS3",
+                        "PARP12", "SCO2", "IFIH1",
+                        "IFITM3", "IFITM1", "DDX60",
+                        "TRIM22", "RTP4", "SAMD9L",
+                        "XAF1", "IFI35", "TNFAIP6",
+                        "MT2A", "LAP3", "HERC6",
+                        "FBXO6", "TDRD7", "IFIT5",
+                        "PHF11", "IFIT2", "TAP1",
+                        "TOR1B", "TNFSF13B", "ELANE",
+                        "IRF7", "DHX58", "ZBP1",
+                        "TYMP", "GRN", "LAMP3",
+                        "IFI6", "NTNG2", "SAT1",
+                        "SERPING1", "DEFA4", "DDX58",
+                        "SAMD9", "PARP9", "MT1E",
+                        "IRF9", "TCN2", "MT1HL1",
+                        "HSH2D", "ISG20", "ZCCHC2",
+                        "SP100", "LMO2", "GBP1",
+                        "IFITM2", "LGALS3BP", "REM2",
+                        "TNFSF10", "HESX1", "MT1A",
+                        "CCR1", "CEACAM1", "MYD88",
+                        "BST2", "LHFPL2", "FFAR2",
+                        "MT1F", "RPL10A", "CD1C",
+                        "VSIG1", "GPR183", "DSC1",
+                        "KLRB1", "FBL", "EIF3E",
+                        "ABCB1", "NAP1L3", "EIF3L"))
+
+cytokine_names <- c("baff" = "BAFF",
+                    "blc_cxcl13" = "BCL-CXCL13",
+                    "gm_csf" = "GM-CSF",
+                    "gro_alpha" = "GROalpha",
+                    "ifn_alpha" = "IFNalpha",
+                    "ifn_gamma" = "IFNgamma",
+                    "il1alpha" = "IL1alpha",
+                    "il1beta" = "IL1beta",
+                    "il_1ra" = "IL1RA",
+                    "il_10" = "IL10",
+                    "il_12p70" = "IL12p70",
+                    "il_13" = "IL13",
+                    "il_15" = "IL15",
+                    "il_17a" = "IL17a",
+                    "il_18" = "IL18",
+                    "il_2" = "IL2",
+                    "il_21" = "IL21",
+                    "il22" = "IL22",
+                    "il_23" = "IL23",
+                    "il_27" = "IL27",
+                    "il_31" = "IL31",
+                    "il_4" = "IL4",
+                    "il5" = "IL5",
+                    "il_7" = "IL7",
+                    "il_8" = "IL8",
+                    "il_9" = "IL9",
+                    "ip_10" = "IP10",
+                    "mcp1" = "MCP1",
+                    "mip1alpha" = "MIP1alpha",
+                    "mip_1beta" = "MIP1beta",
+                    "rantes" = "RANTES",
+                    "s_cd40l" = "sCD40L",
+                    "scf" = "SCF",
+                    "sdf_1alpha" = "SDF1alpha",
+                    "s_icam_1" = "sICAM1",
+                    "tnf_alpha" = "TNFalpha",
+                    "tnf_beta" = "TNFbeta")
+
+### Setup project variables
+projects_to_include = "BChong2019.1"
+projects_to_exclude = c("ALE06", "Xencor")
+disease_classes_to_include = NULL
+disease_classes_to_exclude = NULL
+samples_to_remove = c("UTSW-BC02","UTSW-BC29","UTSW-BC48", "UTSW_BC38")
+study_design = ~ disease_class
+comparison_grouping_variable = "disease_class"
+control_group = "Control"
+experimental_group = "DLE"
+batch_variable = "run_id"
+num_sva = 3
+
+initial_concentration_threshold = 1.5
+pc1_zscore_threshold = 2
+pc2_zscore_threshold = 2.5
+
+### Setup file locations
+seq_file_directory = "/home/rstudio/workspace/datasets/rnaseq/novaseq"
+metadata_file = "/home/rstudio/workspace/analysis/rnaseq/cle/metadata/NovaSeq_Sample_List.xlsx"
+clinical_file = "/home/rstudio/workspace/analysis/rnaseq/cle/metadata/study_data.csv"
+sledai_bpx_file = "/home/rstudio/workspace/analysis/rnaseq/cle/metadata/SLEDAI_BPX.xlsx"
+source("/home/rstudio/workspace/analysis/rnaseq/cle/R/packages.R")
+source("/home/rstudio/workspace/analysis/rnaseq/cle/R/functions.R")
 options(width = 1200)
 knitr::opts_chunk$set(echo = FALSE)
 theme_set(theme_pubr())
@@ -31,6 +132,7 @@ theme_set(theme_pubr())
 loadd(dds_with_scores, md, res)
 ```
 
+# Disease classification
 ```{r disease_class table}
 md <- colData(dds_with_scores) %>% as_tibble(rownames = "sample_name") %>% select(one_of(colnames(md)))
 md %>%
@@ -51,7 +153,7 @@ md %>%
   # column_spec(3, border_right = FALSE, width = "10em")
 ```
 
-# Differential Gene Expression {.tabset .tabset-fade .tabset-pills}
+# Differential gene expression
 ```{r DE table}
 res %>% 
   map(alt_summary) %>%
@@ -78,7 +180,7 @@ res %>%
     `# Low\ncounts` = lowcounts,
     `% Low\ncounts` = `low counts %`
     ) %>%
-  qflextable() %>%
+  flextable() %>%
   set_formatter(
     `% Up\nregulated` = function(x) sprintf("%.02f", x),
     `% Down\nregulated` = function(x) sprintf("%.02f", x),
@@ -89,7 +191,7 @@ res %>%
   align(align = "left", part = "body", j = 1)
 ```
 
-## 25 genes with largest negative log-fold change in experimental group {.tabset .tabset-fade .tabset-pills}
+## 25 genes with largest negative log-fold change in experimental group
 ```{r 25 top down DE, echo = FALSE, results = "asis"}
 loadd(down_tables)
 ```
@@ -133,13 +235,11 @@ for (i in seq_along(down_tables)){
         "-fold change"
         )
       )
-
-    
-  print(dtbl)
+  knitr::knit_print(dtbl)
 }
 ```
 
-## 25 genes with largest positive log-fold change in experimental group {.tabset .tabset-fade .tabset-pills}
+## 25 genes with largest positive log-fold change in experimental group
 ```{r 25 top up DE, echo = FALSE, results = "asis"}
 loadd(up_tables)
 ```
@@ -184,11 +284,11 @@ for (j in seq_along(up_tables)){
         )
       )
 
-  print(utbl)
+  knitr::knit_print(utbl)
   }
 ```
 
-## Expression of top class DE genes by class {.tabset .tabset-fade .tabset-pills}
+## Expression of top class DE genes by class
 
 ### Sorted by disease classification
 ```{r top class DE disease sort, fig.width=12, fig.height=9}
@@ -361,7 +461,7 @@ for (i in comparison_names){
   }
 ```
 
-## Expression of all top DE genes {.tabset .tabset-fade .tabset-pills}
+## Expression of all top DE genes
 ```{r Expression of all top DE genes, fig.width=12, fig.height=9}
 loadd(deg_means)
 
@@ -573,7 +673,7 @@ for(k in seq_along(res)){
 }
 ```
 
-## Expression of selected interferon-stimulated genes {.tabset .tabset-fade .tabset-pills}
+## Expression of selected interferon-stimulated genes
 ```{r Expression of selected interferon-stimulated genes, fig.height=6, fig.width=9}
 loadd(ISGs)
 ```
@@ -636,7 +736,7 @@ t(vsd_exprs)[,ISGs] %>%
       border_color = NA)
 ```
 
-## Expression of individual genes in the M1.2, M3.4, and M5.12 gene modules {.tabset .tabset-fade .tabset-pills}
+## Expression of individual genes in the M1.2, M3.4, and M5.12 gene modules
 ```{r Expression of individual genes in the M1.2, M3.4, and M5.12 gene modules, fig.height=6, fig.width=9}
 loadd(module_ISGs)
 ```
@@ -710,7 +810,6 @@ The eigenvales for the annotated Banchereau modules were used to calculate an ad
 
 ```{r Sample Clustering chart}
 annotation_info %>%
-  mutate(cluster = as_factor(cluster)) %>%
   group_by(disease_class,
            cluster) %>%
   summarise(n = n()) %>%
@@ -719,7 +818,6 @@ annotation_info %>%
   DT::datatable()
 
 annotation_info %>%
-  mutate(cluster = as_factor(cluster)) %>%
   select(disease_class, cluster) %>%
   group_by(disease_class) %>%
   mutate(total_disease = n()) %>%
@@ -741,9 +839,9 @@ annotation_info %>%
   theme_pubr()
 ```
 
-# Clustering and variation of samples in reduced dimensional space {.tabset .tabset-fade .tabset-pills}
+# Clustering and variation of samples in reduced dimensional space
 
-## PCA {.tabset .tabset-fade .tabset-pills}
+## PCA
 
 ### PCA by disease classification
 ```{r PCA by disease classification, fig.width=12, fig.height=6}
@@ -1007,7 +1105,7 @@ pca_results %>%
 <!--   ) -->
 <!-- ``` -->
 
-## UMAP {.tabset .tabset-fade .tabset-pills}
+## UMAP
 
 ### UMAP by disease classification
 ```{r UMAP by disease classification, fig.width=12, fig.height=7}
@@ -1270,9 +1368,9 @@ umap_results %>%
 <!--   ) -->
 <!-- ``` -->
 
-# Module scores {.tabset .tabset-fade .tabset-pills}
+# Module scores
 
-## SLE Interferon module scores {.tabset .tabset-fade .tabset-pills}
+## SLE Interferon module scores
 ```{r SLE Interferon module scores}
 loadd(module_scores_with_viral, ifn_modules)
 range_bound = 4
@@ -1337,7 +1435,7 @@ module_scores_with_viral %>%
     border_color = NA)
 ```
 
-## SLE Inflammatory module scores {.tabset .tabset-fade .tabset-pills}
+## SLE Inflammatory module scores
 ```{r SLE Inflammatory module scores, fig.height=9, fig.width=6}
 loadd(inflame_modules)
 range_bound = 4
@@ -1402,7 +1500,7 @@ module_scores_with_viral %>%
     border_color = NA)
 ```
 
-## Low-density granulocyte module scores {.tabset .tabset-fade .tabset-pills}
+## Low-density granulocyte module scores
 ```{r Low-density granulocyte module scores}
 range_bound = 3
 zscore_range <- c(-range_bound:range_bound)
@@ -1469,7 +1567,7 @@ module_scores_with_viral %>%
     border_color = NA)
 ```
 
-## SLE Modules with an annotated associated pathway {.tabset .tabset-fade .tabset-pills}
+## SLE Modules with an annotated associated pathway
 ```{r SLE Modules with an annotated associated pathway, fig.height=9, fig.width=11}
 loadd(annotated_modules, annotated_mod_list)
 
@@ -1641,7 +1739,7 @@ module_scores_with_viral %>%
     border_color = NA)
 ```
 
-## All SLE modules {.tabset .tabset-fade .tabset-pills}
+## All SLE modules
 ```{r All SLE modules, fig.height=9, fig.width=11}
 #loadd(module_annot)
 range_bound = 3
@@ -1734,7 +1832,7 @@ module_scores_with_viral %>%
   )
 ```
 
-## Expression of the annotated Banchereau modules {.tabset .tabset-fade .tabset-pills}
+## Expression of the annotated Banchereau modules
 ```{r}
 loadd(
   module_scores_with_viral,
@@ -1860,7 +1958,7 @@ plotDendroAndColors(dendro = wgcna_modules$dendrograms[[1]],
                     guideHang = 0.05)
 ```
 
-## Expression of identified modules {.tabset .tabset-fade .tabset-pills}
+## Expression of identified modules
 ```{r include=FALSE}
 loadd(
   module_scores_with_viral_by_cluster,
@@ -1960,7 +2058,7 @@ for(i in seq(number_of_pages)){
 }
 ```
 
-## WGCNA eigenvalues {.tabset .tabset-fade .tabset-pills}
+## WGCNA eigenvalues
 ```{r wgcna eigenvalues, fig.height=9, fig.width=11}
 range_bound = 4
 zscore_range <- c(-range_bound:range_bound)
@@ -2106,8 +2204,13 @@ The relative importance of each eigengene in classification:
 
 ```{r wgcna cluster importance}
 loadd(wgcna_cluster_rf_cv_varImp)
+```
 
-wgcna_cluster_rf_cv_varImp
+```{r}
+as_tibble(wgcna_cluster_rf_cv_varImp$importance, rownames = "Module") %>%
+  arrange(desc(`1`),desc(`2`),desc(`3`),desc(`4`),desc(`5`)) %>%
+  slice(1:10) %>%
+  qflextable()
 ```
 
 ## Use of WGCNA modules in labeling disease class.
@@ -2154,8 +2257,13 @@ The relative importance of each eigengene in classification:
 
 ```{r Banchereau cluster importance}
 loadd(module_cluster_rf_cv_varImp)
+```
 
-module_cluster_rf_cv_varImp
+```{r}
+as_tibble(module_cluster_rf_cv_varImp$importance, rownames = "Module") %>%
+  arrange(desc(`1`),desc(`2`),desc(`3`),desc(`4`),desc(`5`)) %>%
+  slice(1:10) %>%
+  qflextable()
 ```
 
 ## Use of module modules in labeling disease class.
@@ -2177,8 +2285,13 @@ The relative importance of each eigengene in classification:
 
 ```{r Banchereau disease importance}
 loadd(module_disease_class_rf_cv_varImp)
+```
 
-module_disease_class_rf_cv_varImp
+```{r}
+as_tibble(module_disease_class_rf_cv_varImp$importance, rownames = "Module") %>%
+  arrange(desc(Control),desc(SCLE),desc(DLE),desc(TLE)) %>%
+  slice(1:10) %>%
+  qflextable()
 ```
 
 ```{r}
