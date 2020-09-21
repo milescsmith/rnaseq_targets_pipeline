@@ -41,6 +41,7 @@ inspectdf::show_plot(md_cat_data, high_cardinality=1, col_palette = 3) +
   labs(title = "Frequency of categorical levels")
 ```
 
+
 ```{r echo=FALSE}
 loadd(md, tx_files)
 message(str_glue("{length(md$sample_name)} samples selected for analysis"))

@@ -19,21 +19,6 @@ analysis_plan = drake_plan(
     ) %>%
     filter(initial_concentration_ng_ul > initial_concentration_threshold),
 
-  # non_project_controls =
-  #   study_metadata %>%
-  #   filter(disease_class == "Control") %>%
-  #   #Select the portions of the metadata that are useful:
-  #   select(sample_name,
-  #          disease_class,
-  #          project,
-  #          run_id,
-  #          sample_alias,
-  #          sex,
-  #          race_code,
-  #          initial_concentration_ng_ul,
-  #          final_concentration_ng_ul,
-  #          rin),
-
   clinical_metadata =
     read_csv(file = clinical_file) %>%
     clean_names() %>%
@@ -41,6 +26,112 @@ analysis_plan = drake_plan(
            -starts_with("LDG")) %>%
     mutate(sample_name = str_replace(string = sample_name, pattern = "\\-", "_")) %>%
     set_names(recode(names(.), !!!cytokine_names)),
+             pattern = " Patient"),
+           mess = replace_na(data = mess, replace = FALSE),
+           abc_or_mess_or_control = replace_na(data = abc_or_mess_or_control, replace = FALSE)
+    ) %>%
+    filter(initial_concentration_ng_ul > initial_concentration_threshold),
+
+  non_project_controls =
+    study_metadata %>%
+    filter(disease_class == "Control") %>%
+    #Select the portions of the metadata that are useful:
+    select(sample_name,
+           disease_class,
+           project,
+           run_id,
+           sample_alias,
+           sex,
+           race_code,
+           initial_concentration_ng_ul,
+           final_concentration_ng_ul,
+           rin,
+           subject_ref,
+           visit_ref),
+
+  abc_mess_samples =
+    study_metadata %>%
+    filter(
+      abc_or_mess_or_control == TRUE,
+      project %nin% projects_to_exclude
+    ) %>%
+    # Select the portions of the metadata that are useful:
+    select(
+      sample_name,
+      disease_class,
+      project,
+      run_id,
+      sample_alias,
+      sex,
+      race_code,
+      initial_concentration_ng_ul,
+      final_concentration_ng_ul,
+      rin,
+      subject_ref,
+      visit_ref
+      ),
+
+  medication_md =
+    read_excel(
+      path = "metadata/abcmess.xlsx",
+      sheet = "ABCmed",
+      col_types = c(
+        rep("text",5),
+        "date",
+        "numeric",
+        "text",
+        rep("numeric", 5),
+        rep("text", 2),
+        "logical",
+        rep("text",5)
+      ),
+      .name_repair = janitor::make_clean_names) %>%
+    set_names(str_remove_all(string = names(.), pattern = "_mg_[[:graph:]]+")) %>%
+    mutate(milestone =
+             tolower(milestone) %>%
+             str_replace(
+               pattern = " ",
+               replacement = "_"
+             ) %>%
+             as_factor(),
+           sledai_group =
+             tolower(sledai_group) %>%
+             as_factor(),
+           abatacept =
+             replace_na(
+               data = abatacept,
+               replace = FALSE),
+           treatment_status =
+             tolower(treatment_status) %>%
+             as_factor(),
+           depomedrol_methylprednisone =
+             recode(depomedrol_methlyprednisone,
+                    "40 not for SLE" = "40",
+                    "160 10/24/16" = "160",
+                    "depo dose pack 6/22-6/27/17" = "NA",
+                    "160 7/19/17" = "160",
+                    "24-4mg medrol dose pack 9/2/17-9/7/17" = "24",
+                    "160  (540mg  4/19/18 to 4/26/18)" = "160",
+                    "120 7/2/18" = "120") %>%
+             as.integer(),
+           prednisone =
+             recode(prednisone,
+                    "5-7.5 EOD" = "5",
+                    "5  3/7/16" = "5",
+                    "30-10mg 9/1/16-9/14/16" = "10"
+             ) %>%
+             as.integer(),
+           other_medications =
+             replace_na(
+               data = other_medications,
+               replace = "none"
+             ) %>%
+             as_factor(),
+           responders =
+             tolower(responders) %>%
+             as_factor()
+    ) %>%
+    select(-id_2, -treatment_status_2, -id_3, -note, -depomedrol_methlyprednisone),
 
   md =
     study_metadata %>%
@@ -58,9 +149,12 @@ analysis_plan = drake_plan(
            race_code,
            initial_concentration_ng_ul,
            final_concentration_ng_ul,
-           rin) %>%
-    left_join(clinical_metadata, by = c("sample_name" = "sample_name")) %>%
-    # bind_rows(non_project_controls) %>%
+           rin,
+           subject_ref,
+           visit_ref) %>%
+    bind_rows(non_project_controls) %>%
+    bind_rows(abc_mess_samples) %>%
+    rename(ethnicity = race_code) %>%
     mutate(
       project = as_factor(project),
       disease_class = as_factor(disease_class),
@@ -68,10 +162,12 @@ analysis_plan = drake_plan(
       initial_concentration_ng_ul = replace_na(initial_concentration_ng_ul, 200),
       disease_class = as_factor(disease_class),
       sex = as_factor(sex),
-      ethnicity = as_factor(ethnicity)
-    ) %>%
-    filter(sample_name %nin% samples_to_remove) %>%
-    distinct(),
+      ethnicity = as_factor(ethnicity)) %>%
+    filter(
+      disease_class %in% (disease_classes_to_include %||% unique(.data$disease_class)),
+      disease_class %nin% disease_classes_to_exclude) %>%
+    distinct() %>%
+    left_join(medication_md),
 
   tx_sample_names = dir(path = seq_file_directory,
                         pattern = "quant.sf.gz",
@@ -132,7 +228,19 @@ analysis_plan = drake_plan(
                                         colData = final_md,
                                         design = study_design),
 
-  dds_filtered = dds_import %>%
+  corrected_counts = ComBat_seq(counts = counts(dds_import),
+                                batch = fct_drop(colData(dds_import)[[batch_variable]]),
+                                group = colData(dds_import)[[comparison_grouping_variable]]) %>%
+    `storage.mode<-`("integer"),
+
+  dds_import_combat =
+    DESeqDataSetFromMatrix(
+      countData = corrected_counts,
+      colData = colData(dds_import),
+      design = study_design
+    ),
+
+  dds_filtered = dds_import_combat %>%
     `[`(rowSums(counts(.)) > 1, ) %>%
     `[`(grep(pattern = "^RNA5",
              x = rownames(.),
@@ -274,11 +382,14 @@ analysis_plan = drake_plan(
                          rownames="sample_name")) %>%
     inner_join(clusters),
 
-  umap_results = uwot::umap(t(vsd_exprs),
-                            n_threads = detectCores(),
-                            n_sgd_threads = detectCores(),
-                            verbose = TRUE,
-                            n_components = 3) %>%
+  umap_results =
+    umap(
+      t(vsd_exprs),
+      n_threads = detectCores(),
+      n_sgd_threads = detectCores(),
+      verbose = TRUE,
+      n_components = 3
+    ) %>%
     as_tibble(.name_repair = "unique") %>%
     set_names(c("umap_1",
                 "umap_2",
@@ -483,6 +594,26 @@ analysis_plan = drake_plan(
 
   dds_with_scores =
     scoreEigengenes(object = dds_with_sledai,
+  banchereau_gene_module_tbl =
+    module_list %>%
+    enframe(name = "module",
+            value = "gene") %>%
+    unnest(cols = "gene"),
+
+  ldg_gene_module_tbl =
+    ldg_modules %>%
+    enframe(name = "module",
+            value = "gene") %>%
+    unnest(cols = "gene"),
+
+  mg_gene_module_tbl =
+    metasignature_module %>%
+    enframe(name = "module",
+            value = "gene") %>%
+    unnest(cols = "gene"),
+
+  dds_with_scores =
+    scoreEigengenes(object = dds_processed,
                     module_list = module_list,
                     score_func = 'rsvd') %>%
     scoreEigengenes(object = .,
@@ -558,11 +689,6 @@ analysis_plan = drake_plan(
     set_names(levels(annotation_info$project)),
 
   number_disease_classes = length(unique(annotation_info$disease_class)),
-  # disease_class_pal =
-  #   paletteer::paletteer_d(palette = "ggthemes::colorblind",
-  #                          n = length(unique(annotation_info$disease_class))) %>%
-  #   as.character() %>%
-  #  set_names(unique(annotation_info$disease_class)),
   disease_class_pal =
     if_else(
       number_disease_classes > 2,
@@ -594,6 +720,20 @@ analysis_plan = drake_plan(
       "disease_class",
       "comparison")),
 
+  module_scores =
+    colData(dds_with_scores) %>%
+    as_tibble(rownames="sample_name") %>%
+    select(sample_name,
+           matches("^M[[:digit:]]+\\.")) %>%
+    column_to_rownames("sample_name"),
+
+  annotated_module_scores =
+    colData(dds_with_scores) %>%
+    as_tibble(rownames="sample_name") %>%
+    select(sample_name,
+           one_of(annotated_modules$module)) %>%
+    column_to_rownames("sample_name"),
+
   top_vars = matrixStats::rowSds(vsd_exprs) %>%
     set_names(rownames(vsd_exprs)) %>%
     enframe() %>%
@@ -608,18 +748,21 @@ analysis_plan = drake_plan(
                           verbose = 5),
 
   ###--- WGCNA ---###
-  wgcna_modules = blockwiseModules(datExpr = vsd_top,
-                                   power = sft$powerEstimate,
-                                   maxBlockSize = 20000,
-                                   mergeCutHeight = 0.2,
-                                   minModuleSize = 20,
-                                   pamRespectsDendro = FALSE,
-                                   saveTOMs = FALSE,
-                                   verbose = 3,
-                                   detectCutHeight = 0.995,
-                                   TOMDenom = "min",
-                                   networkType = "signed hybrid",
-                                   reassignThreshold = 1e-6),
+  wgcna_modules =
+    blockwiseModules(
+      datExpr = vsd_top,
+      power = sft$powerEstimate,
+      maxBlockSize = 20000,
+      mergeCutHeight = 0.2,
+      minModuleSize = 20,
+      pamRespectsDendro = FALSE,
+      saveTOMs = FALSE,
+      verbose = 3,
+      detectCutHeight = 0.995,
+      TOMDenom = "min",
+      networkType = "signed hybrid",
+      reassignThreshold = 1e-6
+    ),
 
   wgcna_module_genes = wgcna_modules$colors %>%
     enframe(name = "gene",
@@ -636,27 +779,31 @@ analysis_plan = drake_plan(
     left_join(as_tibble(annotation_info,
                         rownames="sample_name")),
 
-  ###---WGCNA-classification---###
   wgcna_cluster_split = initial_split(data = wgcna_scores %>%
-                                      # filter(disease_class != "LP") %>% # Need to add something that removes disease classes where there are too few samples to actually represent them in the split
-                                      mutate(disease_class = fct_drop(disease_class)) %>%
-                                      select(cluster,
-                                             starts_with("ME")),
+                                        mutate(disease_class = fct_drop(disease_class)) %>%
+                                        select(cluster,
+                                               starts_with("ME")),
                                       prop = 0.75,
                                       strata = "cluster"),
 
   wgcna_cluster_train = training(wgcna_cluster_split),
   wgcna_cluster_test = testing(wgcna_cluster_split),
 
-  wgcna_cluster_rf_cv = train(cluster ~ .,
-                              method = "parRF",
-                              data = wgcna_cluster_train,
-                              trControl = trainControl(method = "repeatedcv",
-                                                       number = 10,
-                                                       repeats = 10,
-                                                       search = "grid",
-                                                       allowParallel = TRUE),
-                              importance=T),
+  wgcna_cluster_rf_cv =
+    train(
+      cluster ~ .,
+      method = "parRF",
+      data = wgcna_cluster_train,
+      trControl =
+        trainControl(
+          method = "repeatedcv",
+          number = 10,
+          repeats = 10,
+          search = "grid",
+          allowParallel = TRUE
+        ),
+      importance=T
+    ),
 
   wgcna_cluster_rf_cv_varImp = varImp(object = wgcna_cluster_rf_cv,
                                       scale = FALSE,
@@ -741,7 +888,7 @@ analysis_plan = drake_plan(
   module_disease_class_rf_cv_varImp = varImp(object = module_disease_class_rf_cv,
                                              scale = FALSE,
                                              importance=TRUE),
-
+                                             
   ###--- WGCNA-based GSEA ---###
   filtered_wgcna_module_genes =
     wgcna_module_genes %>%
@@ -973,6 +1120,43 @@ analysis_plan = drake_plan(
       group_var = module,
       compare_value = score
     ),
+
+  cd72_and_steroids = final_md %>%
+    filter(sample_name %in% colnames(vsd_exprs)) %>%
+    left_join(t(vsd_exprs)[,"CD72", drop = FALSE] %>%
+                as_tibble(rownames = "sample_name")) %>%
+    select(prednisone, depomedrol_methylprednisone, disease_class, CD72, sample_name) %>%
+    mutate(prednisone = replace_na(prednisone, 0),
+           depomedrol_methylprednisone = replace_na(depomedrol_methylprednisone, 0)),
+
+  cd72_prednisone_correlation =
+    cd72_and_steroids %>%
+    group_by(disease_class) %>%
+    cor_test(vars = CD72, vars2 = prednisone),
+
+  cd72_depomedrol_correlation =
+    cd72_and_steroids %>%
+    group_by(disease_class) %>%
+    cor_test(vars = CD72, vars2 = depomedrol_methylprednisone),
+
+
+  report = rmarkdown::render(
+    input = knitr_in("markdown/report.rmd"),
+    output_file = file_out("results/report.html"),
+    output_dir = "results",
+    quiet = TRUE),
+
+  qc_report = rmarkdown::render(
+    input = knitr_in("markdown/qc_report.rmd"),
+    output_file = file_out("results/qc_report.html"),
+    output_dir = "results",
+    quiet = TRUE),
+
+  supplemental_report = rmarkdown::render(
+    input = knitr_in("markdown/supplemental_report.rmd"),
+    output_file = file_out("results/supplemental_report.html"),
+    output_dir = "results",
+    quiet = TRUE),
 
   vsd_exprs %>%
     as.data.frame() %>%

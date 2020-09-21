@@ -1,4 +1,5 @@
 `%nin%` <- purrr::compose(`!`, `%in%`)
+select <- dplyr::select
 
 deduplicate_samples <- function(md, samples){
   if (nrow(get_dupes(md, sample_name)) > 0){
@@ -6,8 +7,13 @@ deduplicate_samples <- function(md, samples){
       filter(sample_name %in% names(samples)) %>%
       mutate(sample_name = make_clean_names(string = sample_name,
                                             case = "all_caps"))
-    deduplicated_samples = `names<-`(samples, make_clean_names(string = names(samples),
-                                                               case = "all_caps"))
+    deduplicated_samples = set_names(
+      x = samples,
+      nm = make_clean_names(
+        string = names(samples),
+        case = "all_caps"
+      )
+    )
   } else {
     deduplicated_md = md %>%
       filter(sample_name %in% names(samples))
@@ -287,9 +293,10 @@ calc_sva <- function(dds, model_design = NULL, n.sva = NULL){
 
   n.sva <- n.sva %||% 2
 
-  dat  <- counts(dds, normalized = TRUE)
+  dat <- counts(dds, normalized = TRUE) %>%
+    purrr::keep(.p = ~ rowMeans(.x) > 1)
 
-  dat  <- dat[rowMeans(dat) > 1, ]
+  # dat <- dat[rowMeans(dat) > 1, ]
 
   model_design <-
     as.formula(
@@ -327,7 +334,6 @@ calc_sva <- function(dds, model_design = NULL, n.sva = NULL){
     dds = dds,
     sva = svseq
   )
-
   return(ret_vals)
 }
 
@@ -493,4 +499,17 @@ tirosh_score_modules <- function(expr_obj, module_list, breaks = 25, num_ctrls =
   features_scores_use <- as.data.frame(x = t(x = features_scores_use))
   rownames(x = features_scores_use) <- colnames(x = expr_obj)
   return(features_scores_use)
+}
+
+score_modules <- function(res, modules){
+  res %>%
+    as_tibble(rownames = "gene") %>%
+    inner_join(gene_module_tbl) %>%
+    filter(padj < 0.05) %>%
+    group_by(module) %>%
+    summarise(percent_pos = sum(log2FoldChange > 0) / n(),
+              percent_neg = sum(log2FoldChange < 0) / n(),
+              percent_diff = percent_pos - percent_neg) %>%
+    dplyr::select(module, percent_diff) %>%
+    rename({{compare_class}} := percent_diff)
 }

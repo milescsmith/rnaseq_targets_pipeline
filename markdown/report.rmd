@@ -1,5 +1,5 @@
 ---
-title: "RNAseq analysis"
+title: "ABC-MESS RNAseq analysis"
 author: "Miles Smith"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -476,7 +476,7 @@ inverse_format <- function() {
 }
 
 for(k in seq_along(res)){
- 
+
     volcano_data <- 
       res[[k]] %>%
       as_tibble(rownames = "gene") %>%
@@ -487,7 +487,7 @@ for(k in seq_along(res)){
         padj < 0.01 & between(log2FoldChange, -1, 1) ~ "ignore",
         is.na(padj) ~ "insig")
       )
-    
+
     volcano_data_up =
       top_n(
         x = filter(
@@ -520,7 +520,7 @@ for(k in seq_along(res)){
             "Down-regulated" = "down"
             )
         )
-    
+
   vp <-
     volcano_data %>%
       mutate(
@@ -567,9 +567,8 @@ for(k in seq_along(res)){
       labs(x = "Log 2 fold change",
            y = "Adjusted p-value",
            title = names(res)[[k]])
-  
-  print(vp)
 
+  print(vp)
 }
 ```
 
@@ -706,7 +705,9 @@ t(vsd_exprs)[sample_disease_order,(arrange(as_tibble(module_ISGs, rownames = "ge
 
 # Sample Clustering
 
-The eigenvales for the annotated Banchereau modules were used to calculate an adjacentcy matrix, which was in turn used to calculate the gap statistic to determine the optimal *k*-clusters.
+The eigenvales for the annotated Banchereau modules were used to calculate an
+adjacentcy matrix, which was in turn used to calculate the gap statistic to
+determine the optimal *k*-clusters.
 
 ```{r Sample Clustering chart}
 annotation_info %>%
@@ -2138,8 +2139,6 @@ wgcna_disease_class_rf_cv_varImp
 The module eigengene scores were used to train a random forest model with repeated cross validation to predict cluster identity.
 
 The model was trained with 75% of the dataset and tested on 25%.
-
-Note: Subjects with LP were excluded due to the small population size.
 
 ```{r Banchereau cluster confusion}
 loadd(module_cluster_rf_cv, module_cluster_test)
