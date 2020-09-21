@@ -1,0 +1,180 @@
+---
+title: "CLE RNAseq supplemental analysis"
+author: "Miles Smith"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{css, echo=FALSE}
+    body .main-container {
+      max-width: 1500px !important;
+      width: 1500px !important;
+    }
+    body {
+      max-width: 1500px !important;
+    }
+    caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+```
+
+```{r setup, include=FALSE}
+options(width = 1200)
+knitr::opts_chunk$set(echo = FALSE)
+theme_set(theme_cowplot())
+```
+
+# Expression of the all of the Banchereau modules {.tabset .tabset-fade .tabset-pills}
+
+## By cluster
+```{r echo=FALSE, fig.height=8, fig.width=12, warning=FALSE}
+loadd(module_scores_with_viral)
+
+module_scores <- 
+  module_scores_with_viral %>%
+  mutate(cluster = as_factor(cluster)) %>%
+  select(cluster,
+         disease_class,
+         starts_with("M"),
+         starts_with("ldg"),
+         mg)
+
+number_of_modules <-
+  ncol(module_scores) - 1
+
+number_of_pages <-
+  ceiling(number_of_modules/9)
+
+module_scores_pivot <-
+    module_scores %>%
+    pivot_longer(
+        cols = c(starts_with("M"), contains("ldg"), starts_with("mg")),
+        names_to = "module",
+        values_to = "score"
+    )
+
+module_stats_by_cluster <-
+  module_scores_pivot %>%
+  group_by(module) %>%
+  wilcox_test(
+    score ~ cluster,
+    p.adjust.method = "BH"
+  )
+
+module_stats_by_cluster_with_spacing <-
+  filter(module_stats_by_cluster,
+         p.adj.signif != "ns") %>%
+  add_xy_position(step.increase = 0.05)
+  
+module_cluster_graphs <-
+  module_scores_pivot %>%
+  select(-disease_class) %>%
+  mutate(cluster = as_factor(cluster)) %>%
+  ggviolin(x = "cluster",
+           y = "score",
+           fill = "cluster",
+           draw_quantiles = c(0.25, 0.5, 0.75)) +
+  scale_fill_paletteer_d("ggsci::uniform_startrek") +
+  geom_jitter(size = 1, alpha = 0.5) +
+  stat_pvalue_manual(
+    data = module_stats_by_cluster_with_spacing,
+    label = "p.adj.signif",
+    hide.ns = TRUE,
+    bracket.size = 0.1,
+    tip.length = 0.01,
+    size = 3
+  ) +
+  theme_cowplot() +
+  theme(
+    axis.text.x =
+      element_text(
+        angle = 45,
+        hjust = 1,
+        vjust = 1,
+        size = 9
+        ),
+    axis.text.y =
+      element_text(size = 9)
+    )
+
+for(i in seq(number_of_pages)){
+  print(
+    module_cluster_graphs +
+      facet_wrap_paginate(
+        facets = vars(module),
+        scales = "free_y",
+        nrow = 2,
+        ncol = 3,
+        page = i)
+  )
+}
+```
+
+## By disease classification
+```{r echo=FALSE, fig.height=8, fig.width=12, warning=FALSE}
+module_stats_by_disease_class <-
+  module_scores_pivot %>%
+  group_by(module) %>%
+  wilcox_test(
+    score ~ disease_class,
+    p.adjust.method = "BH"
+  )
+
+module_stats_by_disease_class_with_spacing <-
+  filter(module_stats_by_disease_class,
+         p.adj.signif != "ns") %>%
+  add_xy_position(step.increase = 0.05)
+  
+module_disease_class_graphs <-
+  module_scores_pivot %>%
+  select(-cluster) %>%
+  mutate(disease_class = as_factor(disease_class)) %>%
+  ggviolin(x = "disease_class",
+           y = "score",
+           fill = "disease_class",
+           draw_quantiles = c(0.25, 0.5, 0.75)) +
+  scale_fill_paletteer_d("ggsci::uniform_startrek") +
+  geom_jitter(size = 1, alpha = 0.5) +
+  stat_pvalue_manual(
+    data = module_stats_by_disease_class_with_spacing,
+    label = "p.adj.signif",
+    hide.ns = TRUE,
+    bracket.size = 0.1,
+    tip.length = 0.01,
+    size = 3
+  ) +
+  theme_cowplot() +
+  theme(
+    axis.text.x =
+      element_text(
+        angle = 45,
+        hjust = 1,
+        vjust = 1,
+        size = 9
+        ),
+    axis.text.y =
+      element_text(size = 9)
+    )
+
+for(i in seq(number_of_pages)){
+  print(
+    module_disease_class_graphs +
+      facet_wrap_paginate(
+        facets = vars(module),
+        scales = "free_y",
+        nrow = 2,
+        ncol = 3,
+        page = i)
+  )
+}
+```
+
+```{r}
+sessioninfo::session_info()
+```

@@ -1,5 +1,5 @@
 ---
-title: "RNAseq analysis"
+title: "ABC-MESS RNAseq analysis"
 author: "Miles Smith"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
@@ -28,31 +28,12 @@ output:
 options(width = 1200)
 knitr::opts_chunk$set(echo = FALSE)
 theme_set(theme_cowplot())
-loadd(annotation_info,
-  group_pal,
-  module_scores_with_viral,
-  ifn_modules,
-  inflame_modules,
-  module_ISGs,
-  pca_qc,
-  pca_results,
-  removed_outliers,
-  res,
-  sample_dendrogram,
-  sample_dists,
-  sampleDistMatrix,
-  up_table,
-  down_table,
-  top_up,
-  top_down,
-  tx_files,
-  umap_results,
-  viral_transcripts)
 ```
 
 
-```{r}
-loadd(md)
+```{r disease_class table}
+loadd(dds_with_scores, md)
+md <- colData(dds_with_scores) %>% as_tibble(rownames = "sample_name") %>% select(one_of(colnames(md)))
 md %>%
   tabyl(disease_class) %>%
   adorn_pct_formatting(digits = 2) %>%
@@ -61,11 +42,11 @@ md %>%
   column_spec(1, bold = TRUE, border_right = TRUE, width = "10em") %>%
   column_spec(2, border_right = TRUE, width = "10em") %>%
   column_spec(3, border_right = FALSE, width = "10em")
-
 ```
 
 # Differential Gene Expression {.tabset .tabset-fade .tabset-pills}
-```{r}
+```{r DE table}
+loadd(res)
 res %>% 
   map(alt_summary) %>%
   enframe() %>%
@@ -86,7 +67,7 @@ res %>%
 ```
 
 ## 25 genes with largest negative log-fold change in experimental group
-```{r echo = FALSE, results = "asis"}
+```{r 25 top up DE, echo = FALSE, results = "asis"}
 loadd(down_tables)
 for (i in seq_along(down_tables)){
   down_tables[[i]] %>%
@@ -124,7 +105,7 @@ for (i in seq_along(down_tables)){
 ```
 
 ## 25 genes with largest positive log-fold change in experimental group
-```{r echo = FALSE, results = "asis"}
+```{r 25 top down DE, echo = FALSE, results = "asis"}
 loadd(up_tables)
 for (j in seq_along(up_tables)){
   up_tables[[j]] %>%
@@ -145,9 +126,9 @@ for (j in seq_along(up_tables)){
            !!paste0("padj", footnote_marker_symbol(2)) := padj,
            "lfc standard error" = lfcSE) %>%
     kable(escape = FALSE,
-          caption = paste0("<b>", names(up_tables)[[i]],
+          caption = paste0("<b>", names(up_tables)[[j]],
           ": upregulated in ",
-          str_split(string = names(up_tables)[[i]],
+          str_split(string = names(up_tables)[[j]],
                     pattern = "_vs_",
                     simplify = TRUE)[[1]], "</b>")) %>%
     kable_styling(
@@ -161,8 +142,8 @@ for (j in seq_along(up_tables)){
 ```
 
 ## Expression of top class DE genes by class
-```{r, fig.width=12, fig.height=9}
-loadd(deg_class, final_md, vsd_exprs)
+```{r top class DE, fig.width=12, fig.height=9}
+loadd(deg_class, final_md, vsd_exprs, annotation_info, group_pal)
 
 deg_class_tbl <- as_tibble(deg_class, rownames = "gene")
 comparisons = unique(deg_class_tbl$comparison)
@@ -194,8 +175,8 @@ for (i in names(up_tables)){
 ```
 
 ## Expression of all top DE genes
-```{r, fig.width=12, fig.height=9}
-loadd(vsd_exprs, deg_means)
+```{r Expression of all top DE genes, fig.width=12, fig.height=9}
+loadd(deg_means)
 range_bound = 4
 zscore_range <- c(-range_bound:range_bound)
 t(vsd_exprs)[,colnames(deg_means)] %>% 
@@ -214,66 +195,77 @@ t(vsd_exprs)[,colnames(deg_means)] %>%
       )
 ```
 
-
-## Mean expression of disease class-specific genes
-
-Gene expression for each of the three disease classes - active relapse, recent recovery, and long term stable - were compared to those in controls.  Genes were considered differentially expressed if their log2 fold change was >= than 0.5 or <= -0.5 and had an adjusted p-value of < 0.05.
-
-```{r fig.height=15, fig.width=6}
-loadd(deg_class)
-pheatmap(
-  mat = t(deg_means),
-  scale = "row",
-  annotation_row = deg_class,
-  annotation_colors = group_pal,
-  angle_col = 45,
-  fontsize_col = 9,
-  fontsize_row = 6,
-  color = viridis(n = 100))
-```
-
 ## Volcano plot of gene expression
-```{r fig.height=6, fig.width=6}
+```{r Volcano plot of gene expression, fig.height=6, fig.width=9}
 
-  for(k in seq_along(res)){
-      volcano_data <- 
-        res[[k]] %>%
-        as_tibble(rownames = "gene") %>%
-        mutate(sig = case_when(
-          padj > 0.01 ~ "insig",
-          padj < 0.01 & log2FoldChange <= -0.25 ~ "down",
-          padj < 0.01 & log2FoldChange >= 0.25 ~ "up",
-          padj < 0.01 & between(log2FoldChange, -1, 1) ~ "ignore",
-          is.na(padj) ~ "insig")
-          )
-      
+l <- htmltools::tagList()
 
-  top_volcano_data =
-    rbind(
-      top_n(filter(volcano_data, sig == "up"), n = 20, log2FoldChange),
-      top_n(filter(volcano_data, sig == "down"), n = -20, log2FoldChange)
-    )
+for(k in seq_along(res)){
+ 
+    volcano_data <- 
+      res[[k]] %>%
+      as_tibble(rownames = "gene") %>%
+      mutate(sig = case_when(
+        padj > 0.01 ~ "insig",
+        padj < 0.01 & log2FoldChange <= -0.25 ~ "down",
+        padj < 0.01 & log2FoldChange >= 0.25 ~ "up",
+        padj < 0.01 & between(log2FoldChange, -1, 1) ~ "ignore",
+        is.na(padj) ~ "insig")
+      )
     
-  print(ggplot(data = volcano_data,
-         mapping = aes(x = log2FoldChange,
-                       y = 1/padj,
-                       color = sig)) +
-    geom_point(alpha = 0.25) +
-    scale_y_log10() +
-    theme_cowplot() +
-    scale_color_manual(values = c("down" = 'red',
-                                  "up" = "blue",
-                                  "insig" = "black",
-                                  "ignore" = 'grey')) +
-    geom_text_repel(data = top_volcano_data,
-                    aes(label = gene)) +
-    guides(color = "none") +
-    labs(title = names(res)[[k]]))
-  }
+    volcano_data_up =
+      top_n(filter(volcano_data, sig == "up"), n = 20, log2FoldChange)
+    volcano_data_down = 
+        top_n(filter(volcano_data, sig == "down"), n = -20, log2FoldChange)
+    
+  l[[k]] <-
+    volcano_data %>%
+      plot_ly(
+        x = ~log2FoldChange,
+        y = ~(1/padj),
+        color = ~sig,
+        colors = c(
+          "down" = 'red',
+          "up" = "blue",
+          "insig" = "black",
+          "ignore" = 'grey'
+          ),
+        alpha = 0.25
+      ) %>%
+      add_markers(
+        type = "scattergl",
+        mode = "markers",
+        text = c(volcano_data$gene),
+        hovertemplate = 'Gene: <i>%{text}</i><br>log<sub>2</sub>Fold Change: %{x:.2f}<br>Adjusted p value: %{y:.2e}'
+        ) %>%
+      add_text(
+        data = volcano_data_up,
+        x = ~log2FoldChange,
+        y = ~1/padj,
+        text = ~gene,
+        textposition = "top right",
+        alpha = 1
+        ) %>%
+      add_text(
+        data = volcano_data_down,
+        x = ~log2FoldChange,
+        y = ~1/padj,
+        text = ~gene,
+        textposition = "top left",
+        alpha = 1
+      ) %>%
+      layout(
+        title = str_replace_all(string = names(res)[[k]], pattern = "_", replacement = " "),
+        yaxis = list(type = "log", title = "1/adjusted <i>p</i> value", exponentformat = "E"),
+        xaxis = list(title = "log<sub>2</sub> fold change"),
+        showlegend = FALSE
+      )
+}
+l
 ```
 
 ## Expression of selected interferon-stimulated genes
-```{r, fig.width=9, fig.height=6}
+```{r Expression of selected interferon-stimulated genes, fig.height=6, fig.width=9}
 loadd(ISGs)
 
 range_bound = 4
@@ -295,7 +287,8 @@ rm(ISGs)
 ```
 
 ## Expression of individual genes in the M1.2, M3.4, and M5.12 gene modules
-```{r fig.height=6, fig.width=9}
+```{r Expression of individual genes in the M1.2, M3.4, and M5.12 gene modules, fig.height=6, fig.width=9}
+loadd(module_ISGs)
 range_bound = 4
 zscore_range <- c(-range_bound:range_bound)
 vsd_exprs %>%
@@ -321,9 +314,9 @@ vsd_exprs %>%
 
 # Sample Clustering
 
-Using gene expression distance, a sample adjacency matrix was calculated from a shared nearest neighbor graph.  This, in turn, was used to cluster the samples, with the optimal clustering resolution being determined by silhouette width at multiple resolutions.
+The eigenvales for the annotated Banchereau modules were used to calculate an adjacentcy matrix, which was in turn used to calculate the gap statistic to determine the optimal *k*-clusters.
 
-```{r}
+```{r Sample Clustering chart}
 annotation_info %>%
   group_by(disease_class,
            cluster) %>%
@@ -339,7 +332,8 @@ annotation_info %>%
   ungroup() %>%
   group_by(disease_class, cluster) %>%
   mutate(total_cluster_disease = n(),
-         freq = total_cluster_disease/total_disease) %>%
+         freq = total_cluster_disease/total_disease,
+         cluster = as_factor(cluster)) %>%
   distinct() %>%
   ggplot(aes(
     x = disease_class,
@@ -353,14 +347,14 @@ annotation_info %>%
   theme_cowplot()
 ```
 
-
 # Clustering and variation of samples in reduced dimensional space {.tabset .tabset-fade .tabset-pills}
 
 ## PCA
 
-### PCA, by disease classification
-```{r, fig.width=12, fig.height=6}
-plot_grid(
+### PCA by disease classification
+```{r PCA by disease classification, fig.width=12, fig.height=6}
+loadd(pca_results)
+p1 <-
   ggplot(
     data = pca_results,
     aes(
@@ -380,7 +374,9 @@ plot_grid(
     ) +
     scale_fill_brewer(palette = "Set1") +
     theme_cowplot() +
-    theme(legend.position = "none"),
+    theme(legend.position = "none")
+
+p2 <-
   ggplot(
     data = pca_results,
     aes(
@@ -388,7 +384,113 @@ plot_grid(
       y = PC2,
       fill = disease_class,
       line = 1
-    ), shape = 1
+      ), shape = 1
+    ) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.5,
+    alpha = 0.6
+    ) +
+  scale_fill_brewer(palette = "Set1") +
+  scale_color_brewer(palette = "Set1") +
+  theme_cowplot() +
+  geom_mark_ellipse(aes(fill = disease_class,
+                        color = disease_class),
+                    alpha = 0.05
+                    ) +
+  theme(legend.position = "bottom")
+
+legend <- get_legend(p2)
+
+plot_grid(
+  plot_grid(
+    p1 + theme(legend.position = "none"),
+    p2 + theme(legend.position = "none")
+    ),
+  legend,
+  nrow = 2,
+  rel_heights = c(1, .2)
+)
+```
+
+
+### PCA by plate
+```{r PCA by plate, fig.width=12, fig.height=7}
+p1 <- ggplot(
+  data = pca_results,
+  mapping = aes(
+    x = PC1,
+    y = PC2,
+    fill = run_id
+    )
+  ) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.5,
+    alpha = 0.6
+    ) +
+  labs(color = "run_id") +
+  scale_color_paletteer_d("ggsci::default_igv") +
+  scale_fill_paletteer_d("ggsci::default_igv")
+
+p2 <- ggplot(
+  data = pca_results,
+  mapping = aes(
+    x = PC1,
+    y = PC2,
+    fill = run_id
+    )
+  ) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.5,
+    alpha = 0.6
+    ) +
+  labs(color = "run_id") +
+  geom_mark_ellipse(aes(
+    fill = run_id,
+    color = run_id
+    ),
+    alpha = 0.05
+    ) +
+  scale_color_paletteer_d("ggsci::default_igv") +
+  scale_fill_paletteer_d("ggsci::default_igv") +
+  guides(color = guide_legend(nrow = 4)) +
+  theme(legend.position = "bottom")
+
+legend <- get_legend(p2)
+
+plot_grid(
+  plot_grid(
+    p1 + theme(legend.position = "none"),
+    p2 + theme(legend.position = "none")
+    ),
+  legend,
+  nrow = 2,
+  rel_heights = c(1, .2)
+)
+```
+
+### PCA by ethnicity
+```{r PCA by ethnicity, fig.width=12, fig.height=6}
+p1 <-
+  pca_results %>%
+  select(PC1, PC2, sample_name, ethnicity) %>%
+  mutate(ethnicity = as_factor(ethnicity)) %>%
+  ggplot(
+    aes(
+      x = PC1,
+      y = PC2,
+      fill = ethnicity,
+      line = 1
+    ),
+    shape = 1
   ) +
     geom_point(
       shape = 21,
@@ -397,109 +499,52 @@ plot_grid(
       stroke = 0.5,
       alpha = 0.6
     ) +
-    scale_fill_brewer(palette = "Set1") +
-    scale_color_brewer(palette = "Set1") +
+    scale_fill_paletteer_d(palette = "ggthemes::calc") +
     theme_cowplot() +
-    geom_mark_ellipse(aes(fill = disease_class,
-                          color = disease_class),
-                      alpha = 0.05
-    )
-)
-```
+    theme(legend.position = "none")
 
-### PCA, by disease class
-```{r, fig.width=12, fig.height=6}
-plot_grid(
-  ggplot(data = pca_results,
-         mapping = aes(x = PC1,
-                       y = PC2,
-                       fill = disease_class)) +
-    geom_point(shape = 21,
-               colour = "black",
-               size = 2,
-               stroke = 0.5,
-               alpha = 0.6) + 
-    scale_color_paletteer_d("ggthemes::calc") +
-    scale_fill_paletteer_d("ggthemes::calc") +
-    theme(legend.position = "none"),
-  ggplot(data = pca_results,
-         mapping = aes(x = PC1,
-                       y = PC2,
-                       fill = disease_class)) +
-    geom_point(shape = 21,
-               colour = "black",
-               size = 2,
-               stroke = 0.5,
-               alpha = 0.6) + 
-    scale_color_paletteer_d("ggthemes::calc") +
-    scale_fill_paletteer_d("ggthemes::calc") +
-    labs(color = "Group",
-         fill = "none") +
-    geom_mark_ellipse(aes(fill=disease_class,
-                          color=disease_class),
-                      alpha = 0.05)
-)
-```
-
-### PCA, by plate
-```{r, fig.width=12, fig.height=6}
-p1 <- ggplot(
-  data = pca_results,
-  mapping = aes(
-    x = PC1,
-    y = PC2,
-    fill = run_id
-  )
-) +
+p2 <-
+  pca_results %>%
+  select(PC1, PC2, sample_name, ethnicity) %>%
+  mutate(ethnicity = as_factor(ethnicity)) %>%
+  ggplot(
+    aes(
+      x = PC1,
+      y = PC2,
+      fill = ethnicity,
+      line = 1
+      ), shape = 1
+    ) +
   geom_point(
     shape = 21,
     colour = "black",
     size = 2,
     stroke = 0.5,
     alpha = 0.6
-  ) +
-  labs(color = "run_id") +
-  scale_color_paletteer_d("ggsci::default_igv") +
-  scale_fill_paletteer_d("ggsci::default_igv")
-
-
-p2 <- ggplot(
-  data = pca_results,
-  mapping = aes(
-    x = PC1,
-    y = PC2,
-    fill = run_id
-  )
-) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2,
-    stroke = 0.5,
-    alpha = 0.6
-  ) +
-  labs(color = "run_id") +
-  geom_mark_ellipse(aes(
-    fill = run_id,
-    color = run_id
-  ),
-  alpha = 0.05
-  ) +
-  scale_color_paletteer_d("ggsci::default_igv") +
-  scale_fill_paletteer_d("ggsci::default_igv") +
-  guides(color = guide_legend(ncol = 1))
+    ) +
+  scale_fill_paletteer_d(palette = "ggthemes::calc") +
+  scale_color_paletteer_d(palette = "ggthemes::calc") +
+  theme_cowplot() +
+  geom_mark_ellipse(aes(fill = ethnicity,
+                        color = ethnicity),
+                    alpha = 0.05
+                    ) +
+  theme(legend.position = "bottom")
 
 legend <- get_legend(p2)
 
-plot_grid(p1 + theme(legend.position = "none"),
-  p2 + theme(legend.position = "none"),
+plot_grid(
+  plot_grid(
+    p1 + theme(legend.position = "none"),
+    p2 + theme(legend.position = "none")
+    ),
   legend,
-  nrow = 1,
-  rel_widths = c(1, 1, .25)
+  nrow = 2,
+  rel_heights = c(1, .2)
 )
 ```
 
-### PCA, by initial sample concentration
+### PCA by initial sample concentration
 ```{r, fig.width=8, fig.height=6}
 ggplot(
   data = pca_results,
@@ -516,62 +561,72 @@ ggplot(
     stroke = 0.5,
     alpha = 0.6
   ) +
-  scale_fill_gradient2(low = "blue",
-                       mid = "grey90",
-                       high = "red",
-                       midpoint = 10)
-
+  scale_fill_gradient2(
+    low = "blue",
+    mid = "grey90",
+    high = "red",
+    midpoint = 10
+    ) +
+  theme_cowplot()
 ```
 
-### PCA, by Leiden cluster
-```{r, fig.width=8, fig.height=6}
-ggplot(
-  data = pca_results,
-  mapping = aes(
-    x = PC1,
-    y = PC2,
-    fill = cluster
-  )
-) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2,
-    stroke = 0.5,
-    alpha = 0.6
-  ) +
-  scale_fill_manual(values = group_pal$cluster)
-```
-
-### 3D PCA, colored by Leiden cluster
-```{r}
+### PCA by K-means cluster
+```{r PCA by K-means cluster, fig.width=7, fig.height=6}
 pca_results %>%
-  plot_ly(x = ~PC1,
-          y = ~PC2,
-          z = ~PC3,
-          color = ~cluster,
-          size = 2.5,
-          alpha = 0.9,
-          colors = group_pal$cluster,
-          text = ~paste('<br>Sample: ', sample_name,
-                        '<br>Classification: ', disease_class,
-                        '<br>Ethnicity ', race_code,
-                        '<br>Cluster: ', cluster,
-                        '<br>Sex: ', sex,
-                        '<br>Plate: ', run_id
-          )
+  plot_ly(
+    x = ~PC1,
+    y = ~PC2,
+    text = str_glue("Sample: {.$sample_name}<br>Classification: {.$disease_class}<br>Ethnicity {.$ethnicity}<br>Cluster: {.$cluster}<br>Sex: {.$sex}")
   ) %>%
-  add_markers(marker = list(size = 3,
-                            line = list(color = 'rgba(0, 0, 0, .8)',
-                                        width = 1.5)))
+  add_markers(
+    color = ~cluster,
+    type = "scattergl",
+    alpha = 0.75,
+    mode = "markers",
+    colors = group_pal$cluster,
+    marker = list(
+      size = 7.5,
+      line = list(
+        color = 'rgba(0, 0, 0, .8)',
+        width = 1
+      )
+    ),
+    hovertemplate = "%{text}"
+  )
+```
+
+### 3D PCA colored by K-means cluster
+```{r 3D PCA colored by K-means cluster}
+pca_results %>%
+  plot_ly(
+    x = ~PC1,
+    y = ~PC2,
+    z = ~PC3,
+    colors = group_pal$cluster
+  ) %>%
+  add_markers(
+    text = str_glue("Sample: {pca_results$sample_name}<br>Classification: {pca_results$disease_class}<br>Ethnicity {pca_results$ethnicity}<br>Cluster: {pca_results$cluster}<br>Sex: {pca_results$sex}<br>Plate: {pca_results$run_id}"),
+    color = ~cluster,
+    size = 2.5,
+    alpha = 0.9,
+    hovertemplate = "%{text}",
+    marker = list(
+      size = 3,
+      line = list(
+        color = 'rgba(0, 0, 0, .8)',
+        width = 1.5
+      )
+    )
+  )
 ```
 
 
 ## UMAP
 
-### UMAP, by disease classification
-```{r, fig.width=12, fig.height=6}
-plot_grid(
+### UMAP by disease classification
+```{r UMAP by disease classification, fig.width=12, fig.height=7}
+loadd(umap_results)
+p1 <-
   ggplot(
     data = umap_results,
     aes(
@@ -591,7 +646,9 @@ plot_grid(
     ) +
     scale_fill_brewer(palette = "Set1") +
     theme_cowplot() +
-    theme(legend.position = "none"),
+    theme(legend.position = "none")
+
+p2 <-
   ggplot(
     data = umap_results,
     aes(
@@ -614,46 +671,25 @@ plot_grid(
     geom_mark_ellipse(aes(fill = disease_class,
                           color = disease_class),
                       alpha = 0.05
-    )
-)
-```
+    ) +
+  guides(color = guide_legend(nrow = 4)) +
+  theme(legend.position = "bottom")
 
-### UMAP, by disease group
-```{r, fig.width=12, fig.height=6}
+legend <- get_legend(p2)
+
 plot_grid(
-  ggplot(data = umap_results,
-         mapping = aes(x = umap_1,
-                       y = umap_2,
-                       fill = disease_class)) +
-    geom_point(shape = 21,
-               colour = "black",
-               size = 2,
-               stroke = 0.5,
-               alpha = 0.6) + 
-    scale_color_paletteer_d("ggthemes::calc") +
-    scale_fill_paletteer_d("ggthemes::calc") +
-    theme(legend.position = "none"),
-  ggplot(data = umap_results,
-         mapping = aes(x = umap_1,
-                       y = umap_2,
-                       fill = disease_class)) +
-    geom_point(shape = 21,
-               colour = "black",
-               size = 2,
-               stroke = 0.5,
-               alpha = 0.6) + 
-    scale_color_paletteer_d("ggthemes::calc") +
-    scale_fill_paletteer_d("ggthemes::calc") +
-    labs(color = "Group",
-         fill = "none") +
-    geom_mark_ellipse(aes(fill=disease_class,
-                          color=disease_class),
-                      alpha = 0.05)
+  plot_grid(
+    p1 + theme(legend.position = "none"),
+    p2 + theme(legend.position = "none")
+    ),
+  legend,
+  nrow = 2,
+  rel_heights = c(1, .2)
 )
 ```
 
-### UMAP, by plate
-```{r, fig.width=12, fig.height=6}
+### UMAP by plate
+```{r UMAP by plate, fig.width=12, fig.height=7}
 p1 <- ggplot(
   data = umap_results,
   mapping = aes(
@@ -680,35 +716,105 @@ p2 <- ggplot(
     x = umap_1,
     y = umap_2,
     fill = run_id
-  )
-) +
+    )
+  ) +
   geom_point(
     shape = 21,
     colour = "black",
     size = 2,
     stroke = 0.5,
     alpha = 0.6
-  ) +
+    ) +
   labs(color = "run_id") +
   geom_mark_ellipse(aes(
     fill = run_id,
     color = run_id
-  ),
-  alpha = 0.05
-  ) +
+    ),
+    alpha = 0.05
+    ) +
   scale_color_paletteer_d("ggsci::default_igv") +
   scale_fill_paletteer_d("ggsci::default_igv") +
-  guides(color = guide_legend(ncol = 1))
+  guides(color = guide_legend(nrow = 4)) +
+  theme(legend.position = "bottom")
 
 legend <- get_legend(p2)
 
-plot_grid(p1 + theme(legend.position = "none"),
-          p2 + theme(legend.position = "none"),
-          legend,
-          nrow = 1,
-          rel_widths = c(1, 1, .25)
+plot_grid(
+  plot_grid(
+    p1 + theme(legend.position = "none"),
+    p2 + theme(legend.position = "none")
+    ),
+  legend,
+  nrow = 2,
+  rel_heights = c(1, .2)
 )
+```
 
+### UMAP by ethnicity
+```{r UMAP by ethnicity, fig.width=12, fig.height=6}
+p1 <-
+  umap_results %>%
+  select(umap_1, umap_2, sample_name, ethnicity) %>%
+  mutate(ethnicity = as_factor(ethnicity)) %>%
+  ggplot(
+    aes(
+      x = umap_1,
+      y = umap_2,
+      fill = ethnicity,
+      line = 1
+    ),
+    shape = 1
+  ) +
+    geom_point(
+      shape = 21,
+      colour = "black",
+      size = 2,
+      stroke = 0.5,
+      alpha = 0.6
+    ) +
+    scale_fill_paletteer_d(palette = "ggthemes::calc") +
+    theme_cowplot() +
+    theme(legend.position = "none")
+
+p2 <-
+  umap_results %>%
+  select(umap_1, umap_2, sample_name, ethnicity) %>%
+  mutate(ethnicity = as_factor(ethnicity)) %>%
+  ggplot(
+    aes(
+      x = umap_1,
+      y = umap_2,
+      fill = ethnicity,
+      color = ethnicity,
+      line = 1
+      ), shape = 1
+    ) +
+  geom_point(
+    shape = 21,
+    colour = "black",
+    size = 2,
+    stroke = 0.5,
+    alpha = 0.6
+    ) +
+  scale_fill_paletteer_d(palette = "ggthemes::calc") +
+  scale_color_paletteer_d(palette = "ggthemes::calc") +
+  theme_cowplot() +
+  geom_mark_ellipse(
+    alpha = 0.05
+    ) +
+  theme(legend.position = "bottom")
+
+legend <- get_legend(p2)
+
+plot_grid(
+  plot_grid(
+    p1 + theme(legend.position = "none"),
+    p2 + theme(legend.position = "none")
+    ),
+  legend,
+  nrow = 2,
+  rel_heights = c(1, .2)
+)
 ```
 
 ### UMAP, by initial sample concentration
@@ -734,53 +840,64 @@ ggplot(
                        midpoint = 10)
 ```
 
-### UMAP, by Leiden cluster
-```{r, fig.width=7, fig.height=6}
-ggplot(
-  data = umap_results,
-  mapping = aes(
-    x = umap_1,
-    y = umap_2,
-    fill = cluster
+### UMAP by K-means cluster
+```{r UMAP by K-means cluster, fig.height=6, fig.width=7}
+umap_results %>%
+  plot_ly(
+    x = ~umap_1,
+    y = ~umap_2,
+    color = ~cluster,
+    alpha = 0.75,
+    
+    colors = group_pal$cluster,
+    text = str_glue("Sample: {umap_results$sample_name}<br>Classification: {umap_results$disease_class}<br>Ethnicity {umap_results$ethnicity}<br>Cluster: {umap_results$cluster}<br>Sex: {umap_results$sex}<br>Plate: {umap_results$run_id}")
+  ) %>%
+  add_markers(
+    text = str_glue("Sample: {umap_results$sample_name}<br>Classification: {umap_results$disease_class}<br>Ethnicity {umap_results$ethnicity}<br>Cluster: {umap_results$cluster}<br>Sex: {umap_results$sex}<br>Plate: {umap_results$run_id}"),
+    color = ~cluster,
+    size = 2.5,
+    alpha = 0.9,
+    hovertemplate = "%{text}",
+    marker = list(
+      size = 10,
+      line = list(
+        color = 'rgba(0, 0, 0, .8)',
+        width = 1.5
+      )
+    )
   )
-) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2,
-    stroke = 0.5,
-    alpha = 0.6
-  ) +
-  scale_fill_manual(values = group_pal$cluster)
 ```
 
-### UMAP, in 3D, colored by Leiden cluster
-```{r}
+### UMAP in 3D by K-means cluster
+```{r UMAP in 3D by K-means cluster}
 umap_results %>%
-  plot_ly(x = ~umap_1,
-          y = ~umap_2,
-          z = ~umap_3,
-          color = ~cluster,
-          size = 2.5,
-          alpha = 0.9,
-          colors = group_pal$cluster,
-          text = ~paste('<br>Sample: ', sample_name,
-                        '<br>Classification: ', disease_class,
-                        '<br>Ethnicity ', race_code,
-                        '<br>Cluster: ', cluster,
-                        '<br>Sex: ', sex,
-                        '<br>Plate: ', run_id
-          )
+  plot_ly(
+    x = ~umap_1,
+    y = ~umap_2,
+    z = ~umap_3,
+    colors = group_pal$cluster
   ) %>%
-  add_markers(marker = list(size = 3,
-                            line = list(color = 'rgba(0, 0, 0, .8)',
-                                        width = 1.5)))
+  add_markers(
+    text = str_glue("Sample: {umap_results$sample_name}<br>Classification: {umap_results$disease_class}<br>Ethnicity {umap_results$ethnicity}<br>Cluster: {umap_results$cluster}<br>Sex: {umap_results$sex}<br>Plate: {umap_results$run_id}"),
+    color = ~cluster,
+    size = 2.5,
+    alpha = 0.9,
+    hovertemplate = "%{text}",
+    marker = list(
+      size = 5,
+      line = list(
+        color = 'rgba(0, 0, 0, .8)',
+        width = 1.5
+      )
+    )
+  )
 ```
 
 # Module scores {.tabset .tabset-fade .tabset-pills}
 
 ## SLE Interferon module scores
-```{r fig.height=9, fig.width=4}
+```{r SLE Interferon module scores, fig.height=9, fig.width=4}
+loadd(module_scores_with_viral, ifn_modules)
 range_bound = 4
 zscore_range <- c(-range_bound:range_bound)
 
@@ -800,7 +917,8 @@ module_scores_with_viral %>%
 ```
 
 ## SLE Inflammatory module scores
-```{r fig.height=9, fig.width=6}
+```{r SLE Inflammatory module scores, fig.height=9, fig.width=6}
+loadd(inflame_modules)
 range_bound = 4
 zscore_range <- c(-range_bound:range_bound)
 
@@ -820,7 +938,8 @@ module_scores_with_viral %>%
 ```
 
 ## Low-density granulocyte module scores
-```{r fig.height=9, fig.width=5}
+```{r Low-density granulocyte module scores, fig.height=9, fig.width=5}
+loadd(ldg_modules)
 range_bound = 3
 zscore_range <- c(-range_bound:range_bound)
 
@@ -841,7 +960,7 @@ module_scores_with_viral %>%
 ```
 
 ## SLE Modules with an annotated associated pathway
-```{r fig.height=9, fig.width=11}
+```{r SLE Modules with an annotated associated pathway, fig.height=9, fig.width=11}
 loadd(annotated_modules)
 
 range_bound = 4
@@ -866,7 +985,8 @@ module_scores_with_viral %>%
 ```
 
 ## All SLE modules
-```{r fig.height=9, fig.width=11}
+```{r All SLE modules, fig.height=9, fig.width=11}
+loadd(module_annot)
 range_bound = 3
 zscore_range <- c(-range_bound:range_bound)
 
@@ -890,20 +1010,175 @@ module_scores_with_viral %>%
   border_color = NA)
 ```
 
-# Viral trancription {.tabset .tabset-fade .tabset-pills}
+## Expression of the annotated Banchereau modules {.tabset .tabset-fade .tabset-pills}
+
+### By cluster
+```{r Banchereau modules by cluster, echo=FALSE, fig.height=8, fig.width=12, warning=FALSE}
+loadd(module_scores_with_viral)
+
+annotated_module_scores <- 
+  module_scores_with_viral %>%
+  mutate(cluster = as_factor(cluster)) %>%
+  select(cluster,
+         disease_class,
+         one_of(annotated_modules$module))
+
+annotated_mod_list <-
+  annotated_modules %>%
+  mutate(
+    module_type = paste(module,
+                        type,
+                        sep=" - ")
+  ) %>%
+  select(-type) %>%
+  deframe()
+
+annotated_module_scores <-
+  names(annotated_module_scores) %>%
+  recode(!!!annotated_mod_list) %>%
+  setNames(nm = .,
+           object = annotated_module_scores)
+
+number_of_modules <-
+  ncol(annotated_module_scores) - 1
+
+number_of_pages <-
+  ceiling(number_of_modules/9)
+
+
+annotated_module_scores_pivot <-
+  annotated_module_scores %>%
+  pivot_longer(
+    cols = starts_with("M"),
+    names_to = "module",
+    values_to = "score"
+  )
+
+annotated_module_stats_by_cluster <-
+  annotated_module_scores_pivot %>%
+  group_by(module) %>%
+  wilcox_test(
+    score ~ cluster,
+    p.adjust.method = "BH"
+  )
+
+annotated_module_stats_by_cluster_with_spacing <-
+  filter(annotated_module_stats_by_cluster,
+         p.adj.signif != "ns") %>%
+  add_xy_position(step.increase = 0.05)
+  
+annotated_module_cluster_graphs <-
+  annotated_module_scores_pivot %>%
+  select(-disease_class) %>%
+  mutate(cluster = as_factor(cluster)) %>%
+  ggviolin(x = "cluster",
+           y = "score",
+           fill = "cluster",
+           draw_quantiles = c(0.25, 0.5, 0.75)) +
+  scale_fill_paletteer_d("ggsci::uniform_startrek") +
+  geom_jitter(size = 1, alpha = 0.5) +
+  stat_pvalue_manual(
+    data = annotated_module_stats_by_cluster_with_spacing,
+    label = "p.adj.signif",
+    hide.ns = TRUE,
+    bracket.size = 0.1,
+    tip.length = 0.01,
+    size = 3
+  ) +
+  theme_cowplot() +
+  theme(
+    axis.text.x =
+      element_text(
+        angle = 45,
+        hjust = 1,
+        vjust = 1,
+        size = 9
+        ),
+    axis.text.y =
+      element_text(size = 9)
+    )
+  
+
+for(i in seq(number_of_pages)){
+  print(
+    annotated_module_cluster_graphs +
+      facet_wrap_paginate(
+        facets = vars(module),
+        scales = "free_y",
+        nrow = 2,
+        ncol = 3,
+        page = i)
+  )
+}
+```
+
+### By disease classification
+```{r Banchereau modules by disease, echo=FALSE, fig.height=8, fig.width=12, warning=FALSE}
+
+annotated_module_stats_by_disease <-
+  annotated_module_scores_pivot %>%
+  group_by(module) %>%
+  wilcox_test(
+    score ~ disease_class,
+    p.adjust.method = "BH"
+  )
+
+annotated_module_stats_by_disease_class_with_spacing <-
+  filter(annotated_module_stats_by_disease,
+         p.adj.signif != "ns") %>%
+  add_xy_position(step.increase = 0.05)
+  
+annotated_module_disease_class_graphs <-
+  annotated_module_scores_pivot %>%
+  select(-cluster) %>%
+  mutate(disease_class = as_factor(disease_class)) %>%
+  ggviolin(x = "disease_class",
+           y = "score",
+           fill = "disease_class",
+           draw_quantiles = c(0.25, 0.5, 0.75)
+           ) +
+  geom_jitter(size = 1, alpha = 0.5) +
+  scale_fill_paletteer_d("ggsci::uniform_startrek") +
+  stat_pvalue_manual(
+    data = annotated_module_stats_by_disease_class_with_spacing,
+    label = "p.adj.signif",
+    hide.ns = TRUE,
+    bracket.size = 0.1,
+    tip.length = 0.01,
+    size = 3
+  ) +
+  theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 9),
+        axis.text.y = element_text(size = 9))
+  
+for(i in seq(number_of_pages)){
+  print(
+    annotated_module_disease_class_graphs +
+      facet_wrap_paginate(
+        facets = vars(module),
+        scales = "free_y",
+        nrow = 2,
+        ncol = 3,
+        page = i)
+  )
+}
+```
+
+# Viral transcription {.tabset .tabset-fade .tabset-pills}
 
 Samples were examined for transcripts from the following viruses:
 HSV-1, HSV-2, VZV, EBV, EBV-2, HCMV, HHV7, KSHV, Adenovirus 2, B19, HIV-1, HBV, HPV-2, HPV-16, JCV, and MCV-1
 
 ## Detected viral transcription and Interferon module scores
 ```{r fig.height=10, fig.width=10}
+loadd(detected_viral_transcripts)
 range_bound = 5
 zscore_range <- c(-range_bound:range_bound)
 
 module_scores_with_viral %>%
   select(sample_name,
          one_of(ifn_modules,
-                viral_transcripts)) %>%
+                detected_viral_transcripts)) %>%
   column_to_rownames("sample_name") %>%
   pheatmap(
     scale="column",
@@ -925,7 +1200,7 @@ zscore_range <- c(-range_bound:range_bound)
 module_scores_with_viral %>%
   select(sample_name,
          one_of(inflame_modules,
-                viral_transcripts)) %>%
+                detected_viral_transcripts)) %>%
   column_to_rownames("sample_name") %>%
   pheatmap(scale = "column",
            annotation_colors = group_pal,
@@ -941,7 +1216,7 @@ module_scores_with_viral %>%
 # WGCNA
 
 ## Expression similarity dendrogram
-```{r echo=FALSE, fig.height=6, fig.width=10}
+```{r WGCNA Expression similarity dendrogram, echo=FALSE, fig.height=6, fig.width=10}
 loadd(wgcna_modules)
 plotDendroAndColors(dendro = wgcna_modules$dendrograms[[1]],
                     colors = wgcna_modules$colors[wgcna_modules$blockGenes[[1]]],
@@ -956,12 +1231,28 @@ plotDendroAndColors(dendro = wgcna_modules$dendrograms[[1]],
 ## Expression of identified modules {.tabset .tabset-fade .tabset-pills}
 
 ### By cluster
-```{r echo=FALSE, fig.height=8, fig.width=12}
-loadd(wgcna_scores)
+```{r wgcna modules by cluster, echo=FALSE, fig.height=8, fig.width=12}
+number_of_modules <-
+  module_scores_with_viral %>%
+  select(matches("^ME"))%>%
+  ncol()
 
-module_scores_with_viral %>%
+number_of_pages <-
+  ceiling(number_of_modules/9)
+
+comparisons <- unlist(
+  apply(
+    X = combinations(n = length(levels(module_scores_with_viral$cluster)),
+                     r = 2,
+                     v =  levels(module_scores_with_viral$cluster)),
+    MARGIN = 1,
+    FUN =  list),
+  recursive = FALSE)
+
+module_cluster_graphs <-
+  module_scores_with_viral %>%
   select(cluster,
-         starts_with("ME")) %>%
+         matches("^ME")) %>%
   pivot_longer(-cluster,
                names_to = "module",
                values_to = "score") %>%
@@ -971,17 +1262,45 @@ module_scores_with_viral %>%
              fill = cluster)) +
   geom_violin() +
   geom_jitter(size = 0.5, alpha = 0.25) +
-  scale_fill_paletteer_d("ggsci::alternating_igv") +
-  facet_wrap(facets = vars(module),
-             scales = "free_y") +
-  theme_cowplot()
+  scale_fill_paletteer_d("ggsci::uniform_startrek") +
+  stat_compare_means(
+    comparisons = comparisons,
+    hide.ns = TRUE,
+    method = "wilcox",
+    label= "p.adj",
+    size = 3,
+    vjust=0.2
+  )
+
+for(i in seq(number_of_pages)){
+  print(
+    module_cluster_graphs +
+      facet_wrap_paginate(
+        facets = vars(module),
+        scales = "free_y",
+        nrow = 3,
+        ncol = 3,
+        page = i) +
+      theme_cowplot()
+  )
+}
 ```
 
 ### By disease classification
-```{r echo=FALSE, fig.height=8, fig.width=12}
-module_scores_with_viral %>%
+```{r wgcna by disease, echo=FALSE, fig.height=8, fig.width=12}
+comparisons <- unlist(
+  apply(
+    X = combinations(n = length(levels(module_scores_with_viral$disease_class)),
+                     r = 2,
+                     v = levels(module_scores_with_viral$disease_class)),
+    MARGIN = 1,
+    FUN =  list),
+  recursive = FALSE)
+
+module_cluster_graphs <-
+  module_scores_with_viral %>%
   select(disease_class,
-         starts_with("ME")) %>%
+         matches("^ME")) %>%
   pivot_longer(-disease_class,
                names_to = "module",
                values_to = "score") %>%
@@ -992,25 +1311,59 @@ module_scores_with_viral %>%
   geom_violin() +
   geom_jitter(size = 0.5, alpha = 0.25) +
   scale_fill_paletteer_d("ggsci::uniform_startrek") +
-  facet_wrap(facets = vars(module),
-             scales = "free_y") +
-  theme_cowplot() +
-  theme(axis.text.x = element_text(angle = 45,
-                                   hjust = 1,
-                                   vjust = 1))
+  stat_compare_means(
+    comparisons = comparisons,
+    hide.ns = TRUE,
+    method = "wilcox",
+    label= "p.adj",
+    size = 3,
+    vjust=0.2
+  )
+
+for(i in seq(number_of_pages)){
+  print(
+    module_cluster_graphs +
+      facet_wrap_paginate(
+        facets = vars(module),
+        scales = "free_y",
+        nrow = 3,
+        ncol = 3,
+        page = i) +
+      theme_cowplot()
+  )
+}
 ```
 
 ## WGCNA eigenvalues
-```{r fig.height=9, fig.width=11}
+```{r wgcna eigenvalues, fig.height=9, fig.width=11}
 range_bound = 3
 zscore_range <- c(-range_bound:range_bound)
 
-module_scores_with_viral %>%
+tmp <-
+  module_scores_with_viral %>%
   select(sample_name,
          matches("^ME")) %>%
-  column_to_rownames("sample_name") %>%
+  column_to_rownames("sample_name")
+  
+cluster_counts <-
+  annotation_info %>%
+  group_by(cluster) %>%
+  tally() %>%
+  pull(n) %>%
+  purrr::accumulate(.f = sum)
+
+cluster_sample_order <-
+  annotation_info %>%
+  as_tibble(rownames = "sample_name") %>%
+  arrange(cluster) %>%
+  pull(sample_name)
+
+
+tmp[cluster_sample_order,] %>%
   pheatmap(scale = 'column',
            fontsize = 9,
+           cluster_rows = FALSE,
+           gaps_row = cluster_counts,
            annotation_row = annotation_info,
            annotation_colors = group_pal %>%
              `$<-`(type,
@@ -1020,17 +1373,18 @@ module_scores_with_viral %>%
            show_colnames = TRUE,
            angle_col = 315,
            breaks = zscore_range,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-  border_color = NA)
+           color = viridis(n = length(zscore_range)-1, option = "D"),
+           border_color = NA)
 ```
 
 ## Gene ontology GSEA of WGCNA modules
-```{r fig.height=11, fig.width=12}
+```{r wgcna gsea, fig.height=11, fig.width=12}
 loadd(MEplotting)
 
 for(i in 1:ceiling(length(unique(MEplotting$module))/6)){
     
-      plots <- ggplot(data = MEplotting,
+      plots <-
+        ggplot(data = MEplotting,
                mapping = aes(
                  y = GeneRatio,
                  x = order,
@@ -1066,7 +1420,9 @@ The module eigengene scores were used to train a random forest model with repeat
 
 The model was trained with 75% of the dataset and tested on 25%.
 
-```{r}
+Note: Subjects with LP were excluded due to the small population size.
+
+```{r wgcna cluster confusion}
 loadd(wgcna_cluster_rf_cv, wgcna_cluster_test)
 
 caret::confusionMatrix(
@@ -1077,7 +1433,7 @@ caret::confusionMatrix(
 
 The relative importance of each eigengene in classification:
 
-```{r}
+```{r wgcna cluster importance}
 loadd(wgcna_cluster_rf_cv_varImp)
 
 wgcna_cluster_rf_cv_varImp
@@ -1089,7 +1445,7 @@ The module eigengene scores were used to train a random forest model with repeat
 
 The model was trained with 75% of the dataset and tested on 25%.
 
-```{r}
+```{r wgcna disease confusion}
 loadd(wgcna_disease_class_rf_cv, wgcna_disease_class_test)
 
 caret::confusionMatrix(
@@ -1100,144 +1456,78 @@ caret::confusionMatrix(
 
 The relative importance of each eigengene in classification:
 
-```{r}
+```{r wgcna disease importance}
 loadd(wgcna_disease_class_rf_cv_varImp)
 
 wgcna_disease_class_rf_cv_varImp
 ```
 
-# Data processing of RNAseq data
+## Use of module modules in classifying clusters.
 
-## Overview of sample characteristics:
+The module eigengene scores were used to train a random forest model with repeated cross validation to predict cluster identity.
 
-```{r fig.height=4, fig.width=10}
-loadd(md_cat_data)
-inspectdf::show_plot(md_cat_data, high_cardinality=1, col_palette = 3) +
-  labs(title = "Frequency of categorical levels")
+The model was trained with 75% of the dataset and tested on 25%.
+
+```{r Banchereau cluster confusion}
+loadd(module_cluster_rf_cv, module_cluster_test)
+
+caret::confusionMatrix(
+  data = predict(module_cluster_rf_cv, module_cluster_test),
+  reference = as_factor(module_cluster_test$cluster)
+)
 ```
 
-```{r fig.height=4, fig.width=10}
-loadd(md_num_data)
-inspectdf::show_plot(md_num_data, col_palette = 3) + labs(title = "Distribution of sample characteristic values")
-rm(md_num_data)
+The relative importance of each eigengene in classification:
+
+```{r Banchereau cluster importance}
+loadd(module_cluster_rf_cv_varImp)
+
+module_cluster_rf_cv_varImp
 ```
 
-```{r echo=FALSE}
-message(str_glue("{length(md$sample_name)} samples selected for analysis"))
-message(str_glue("{length(names(tx_files))} files found"))
-if (!all(names(tx_files) %in% md$sample_name)){
-  message("The following files do not have a matching metadata entry:")
-  print(names(tx_files)[(names(tx_files) %nin% md$sample_name)])
-} else {
-  message("All files match a metadata entry.")
-}
+## Use of module modules in labeling disease class.
 
-if (!all(md$sample_name %in% names(tx_files))){
-  message("A count file was not found for the following selected samples:")
-  print(md$sample_name[(md$sample_name %nin% names(tx_files))])
-} else {
-  message("All expected files found.")
-}
+The module eigengene scores were used to train a random forest model with repeated cross validation to predict cluster identity.
+
+The model was trained with 75% of the dataset and tested on 25%.
+
+```{r Banchereau disease confusion}
+loadd(module_disease_class_rf_cv, module_disease_class_test)
+
+caret::confusionMatrix(
+  data = predict(module_disease_class_rf_cv, module_disease_class_test),
+  reference = as_factor(module_disease_class_test$disease_class)
+)
 ```
 
-## Sample QC filtering
+The relative importance of each eigengene in classification:
 
-Samples with a PC1 > 2 (the red lines) and/or PC2 zscore > 2.5 (the green lines) were dropped from analysis.
-```{r, fig.width=6, fig.height=6}
-pca_qc %>% ggplot(aes(x = PC1,
-                      y = PC2)) +
-  geom_point(shape = 21,
-             colour = "black",
-             fill = "grey80",
-             size = 2,
-             stroke = 0.5,
-             alpha = 0.6) +
-  geom_vline(aes(xintercept = (pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
-             color = "red") +
-  geom_vline(aes(xintercept = -(pc1_zscore_threshold*sd(.data$PC1)) + mean(.data$PC1)),
-             color = "red") +
-  geom_hline(aes(yintercept = (pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
-             color = "green") +
-  geom_hline(aes(yintercept = -(pc2_zscore_threshold*sd(.data$PC2)) + mean(.data$PC2)),
-             color = "green")
+```{r Banchereau disease importance}
+loadd(module_disease_class_rf_cv_varImp)
+
+module_disease_class_rf_cv_varImp
 ```
 
-```{r}
-if (length(removed_outliers) > 0) {
-  filter(md, sample_name %in% removed_outliers) %>%
-  kable(caption = "Removing the following samples:") %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-    full_width = FALSE)
-}
+```{r steroid-use correlation}
+loadd(cd72_and_steroids, cd72_prednisone_correlation, cd72_depomedrol_correlation)
 ```
 
-### Overall correlation between samples
-```{r, fig.width=12, fig.height=9}
-pheatmap(sampleDistMatrix,
-         clustering_distance_rows = sample_dists,
-         clustering_distance_cols = sample_dists, 
-         annotation_row = annotation_info,
-         show_rownames = FALSE,
-         show_colnames = TRUE,
-         annotation_colors = group_pal,
-         angle_col = 45)
+```{r cd72/prednisone}
+cd72_and_steroids %>%
+  ggplot(aes(x = prednisone, y = CD72, color = disease_class)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = lm) +
+  stat_cor() +
+  theme_pubr()
 ```
 
-# Data quality
-
-## MA-plot
-```{r echo=FALSE}
-loadd(res)
-for(m in seq_along(res)){
-  plotMA(res[[m]], ylim = c(-6,6), main = names(res)[[m]])
-}
-#plotMA(res[[1]], ylim = c(-4,4))
-```
-
-## Dispersion estimates
-```{r}
-loadd(disp_plot)
-disp_plot
-rm(disp_plot)
-```
-
-# Sample Sanity check
-
-To determine if there is a gross mixup of samples, examine the expression of sex-specific transcripts to ensure that only female-subject samples express "XIST" and male-subject samples "DDX3Y:
-
-```{r}
-sex_specific_genes <- tibble(chr = c(rep("Y",16), rep("X",2)),
-                             symbol = c("DDX3Y","EIF1AY",
-                                       "KDM5D","NLGN4Y",
-                                       "PCDH11Y","PRORY",
-                                       "PRY","PRY2",
-                                       "RPS4Y1","RPS4Y2",
-                                       "TBL1Y","TMSB4Y",
-                                       "USP9Y","UTY",
-                                       "VCY","ZFY",
-                                       "XIST","ZFX")) %>%
-  filter(symbol %in% rownames(vsd_exprs))
-
-range_bound = 5
-zscore_range <- c(-range_bound:range_bound)
-
-t(vsd_exprs)[,c(sex_specific_genes[['symbol']])] %>%
-  pheatmap(
-    scale='column',
-    fontsize = 6,
-    show_rownames = FALSE,
-    annotation_row = annotation_info[,c("sex", "disease_class")],
-    annotation_colors = group_pal,
-    annotation_col = column_to_rownames(sex_specific_genes, "symbol"),
-    cluster_cols = FALSE,
-    breaks = zscore_range,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    border_color = NA,
-    angle=315)
-```
-
-These appear to be correct.
+```{r cd72/depomedrol}
+cd72_and_steroids %>%
+  ggplot(aes(x = depomedrol_methylprednisone, y = CD72, color = disease_class)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = lm) +
+  stat_cor() +
+  theme_pubr()
 
 ```{r}
 sessioninfo::session_info()

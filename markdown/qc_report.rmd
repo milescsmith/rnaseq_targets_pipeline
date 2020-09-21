@@ -1,0 +1,292 @@
+---
+title: "ABC-MESS RNAseq analysis QC"
+author: "Miles Smith"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{css, echo=FALSE}
+    body .main-container {
+      max-width: 1500px !important;
+      width: 1500px !important;
+    }
+    body {
+      max-width: 1500px !important;
+    }
+    caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+```
+
+```{r setup, include=FALSE}
+options(width = 1200)
+knitr::opts_chunk$set(echo = FALSE)
+theme_set(theme_cowplot())
+```
+
+
+# Data processing of RNAseq data
+
+## Overview of sample characteristics:
+
+```{r sample characteristics, fig.height=15, fig.width=10}
+loadd(md_cat_data)
+inspectdf::show_plot(md_cat_data, high_cardinality=1, col_palette = 3) +
+  labs(title = "Frequency of categorical levels")
+```
+
+```{r Distribution of sample characteristic values, fig.height=4, fig.width=10}
+loadd(md_num_data)
+inspectdf::show_plot(md_num_data, col_palette = 3) + labs(title = "Distribution of sample characteristic values")
+rm(md_num_data)
+```
+
+```{r echo=FALSE}
+loadd(md, tx_files)
+message(str_glue("{length(md$sample_name)} samples selected for analysis"))
+message(str_glue("{length(names(tx_files))} files found"))
+if (!all(names(tx_files) %in% md$sample_name)){
+  message("The following files do not have a matching metadata entry:")
+  print(setdiff(names(tx_files), md$sample_name))
+} else {
+  message("All files match a metadata entry.")
+}
+
+if (!all(md$sample_name %in% names(tx_files))){
+  message("A count file was not found for the following selected samples:")
+  print(setdiff(md$sample_name, names(tx_files)))
+} else {
+  message("All expected files found.")
+}
+```
+
+## Sample QC filtering
+
+Samples with a PC1 > 2 (the red lines) and/or PC2 zscore > 2.5 (the green lines) were dropped from analysis.  Points in red represent samples that were dropped.
+```{r QC PCA, fig.width=6, fig.height=6}
+loadd(pca_qc)
+vline <- function(x = 0, color = "red") {
+  list(
+    type = "line", 
+    y0 = 0, 
+    y1 = 1, 
+    yref = "paper",
+    x0 = x, 
+    x1 = x, 
+    line = list(color = color)
+  )
+}
+
+hline <- function(y = 0, color = "green") {
+  list(
+    type = "line", 
+    x0 = 0, 
+    x1 = 1, 
+    xref = "paper",
+    y0 = y, 
+    y1 = y, 
+    line = list(color = color)
+  )
+}
+
+pca_qc %>%
+  mutate(
+    kept = as_factor(
+      if_else(
+        condition = sample %in% setdiff(names(tx_files), md$sample_name),
+        true = "no",
+        false = "yes"
+        )
+      )
+    ) %>%
+  plot_ly(
+    type = "scattergl",
+    mode = "markers",
+    x = ~PC1,
+    y = ~PC2,
+    color = ~kept,
+    colors = c("blue","red"),
+    marker = list(size = 7.5,
+                  line = list(color = 'rgba(0, 0, 0, .8)',
+                              width = 1)),
+    text = ~paste('<br>Subject: ', sample,
+                  '<br>Sex: ', sex,
+                  '<br>Ethnicity: ', ethnicity,
+                  '<br>Disease class: ', disease_class,
+                  '<br>Run: ', run_id,
+                  '<br>In dataset? ', kept),
+    hovertemplate = '%{text}',
+    showlegend = FALSE,
+    alpha = 0.5,
+    name = ""
+  ) %>%
+  layout(
+    shapes = list(
+      vline(pc1_zscore_threshold*sd(pca_qc$PC1) + mean(pca_qc$PC1)),
+      vline(-pc1_zscore_threshold*sd(pca_qc$PC1) + mean(pca_qc$PC1)),
+      
+      hline(pc2_zscore_threshold*sd(pca_qc$PC2) + mean(pca_qc$PC2)),
+      hline(-pc2_zscore_threshold*sd(pca_qc$PC2) + mean(pca_qc$PC2))
+      )
+    )
+```
+
+```{r removed in PCA qc}
+loadd(removed_outliers)
+if (length(removed_outliers) > 0) {
+  filter(md, sample_name %in% removed_outliers) %>%
+  kable(caption = "Removing the following samples:") %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE)
+}
+```
+
+### Overall correlation between samples
+```{r overall correlation, fig.width=12, fig.height=9}
+loadd(sampleDistMatrix, sample_dists, annotation_info, group_pal)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows = sample_dists,
+         clustering_distance_cols = sample_dists, 
+         annotation_row = annotation_info,
+         show_rownames = FALSE,
+         show_colnames = TRUE,
+         annotation_colors = group_pal, fontsize_col = 6,
+         angle_col = 45)
+```
+
+# Data quality
+
+## MA-plot
+
+This MA plot is of shrunken log2 fold changes (using the *apeglm* package), in which actual fold changes are adjusted to compensate for the high variablity of genes with few counts.
+
+Dots in red indicate a significant expression difference between Control and SLE.
+```{r MA plot, echo=FALSE}
+loadd(res)
+l <- htmltools::tagList()
+for(m in seq_along(res)){
+  #plotMA(res[[m]], ylim = c(-6,6), main = names(res)[[m]])
+  l[[m]] <- res[[m]] %>%
+  as_tibble(rownames = "gene") %>%
+  mutate(
+    sig = case_when(
+      padj < 0.05 ~ "Significant",
+      padj >= 0.05 ~ "Not significant",
+      is.na(padj) ~ "Not significant"
+      ) %>% as_factor(),
+  ) %>%
+  filter(log2FoldChange >= 0.00001 | log2FoldChange <= -0.00001) %>%
+  plot_ly(
+    mode = "markers",
+    x = ~baseMean,
+    y = ~log2FoldChange,
+    colors = c("grey30","red")
+    ) %>%
+    add_markers(
+      color = ~sig,
+      alpha = 0.75,
+      text = ~paste('<br>Gene: ', gene,
+                    '<br>LFC: ', signif(log2FoldChange, digits = 2),
+                    '<br>p adjusted: ', scientific(padj, digits = 2)),
+      hovertemplate = "%{text}",
+      type = "scattergl",
+      marker = list(size = 7.5,
+                    line = list(color = 'rgba(0, 0, 0, .8)',
+                                width = 1
+                                )
+                    )
+    ) %>%
+    layout(xaxis = list(type = "log"))
+}
+l
+#plotMA(res[[1]], ylim = c(-4,4))
+```
+
+## Dispersion estimates
+```{r dispersion}
+loadd(disp_plot)
+disp_plot
+rm(disp_plot)
+```
+
+## Surrogate Variable Analysis
+
+Surrogate variables are unknown, unmodeled, or latent sources of noise hidden in the data.  The `sva` package was used to estimate the first two surrogate variables which were then introduced into the DESeq design formula to control for their effects.
+
+```{r sva}
+loadd(dds_with_scores)
+plot_sva(colData(dds_with_scores))
+```
+
+## K-means clustering optimization
+
+To determine the optimal *k*, the gap statistic was calculated for *k* = (3,20) (*k* = 2 was ignored because it just returns the two disease clusters).  A higher coefficient means better intracluster simliarity and intercluster differences.
+
+```{r kmeans optimization}
+loadd(sample_cluster_info)
+
+k_clusters <- sample_cluster_info$kmeans_res
+rf_distance_mat <- sample_cluster_info$rf_distance
+gap_stat <- sample_cluster_info$gap_stat
+
+fviz_gap_stat(gap_stat, maxSE = list(method = "Tibs2001SEmax", SE.factor = 1))
+
+fviz_cluster(k_clusters,
+               data = rf_distance_mat,
+               ellipse.type = "convex",
+               geom = "point",
+               pointsize = 1,
+               ggtheme = theme_cowplot(),
+               main = "K-mean cluster for determined modules"
+  )
+
+```
+
+# Sample Sanity check
+
+To determine if there is a gross mixup of samples, examine the expression of sex-specific transcripts to ensure that only female-subject samples express "XIST" and male-subject samples "DDX3Y:
+
+```{r sex-specific gene expression}
+loadd(vsd_exprs)
+sex_specific_genes <- tibble(chr = c(rep("Y",16), rep("X",2)),
+                             symbol = c("DDX3Y","EIF1AY",
+                                       "KDM5D","NLGN4Y",
+                                       "PCDH11Y","PRORY",
+                                       "PRY","PRY2",
+                                       "RPS4Y1","RPS4Y2",
+                                       "TBL1Y","TMSB4Y",
+                                       "USP9Y","UTY",
+                                       "VCY","ZFY",
+                                       "XIST","ZFX")) %>%
+  filter(symbol %in% rownames(vsd_exprs))
+
+range_bound = 5
+zscore_range <- c(-range_bound:range_bound)
+
+t(vsd_exprs)[,c(sex_specific_genes[['symbol']])] %>%
+  pheatmap(
+    scale='column',
+    fontsize = 6,
+    show_rownames = FALSE,
+    annotation_row = annotation_info[,c("sex", "disease_class")],
+    annotation_colors = group_pal,
+    annotation_col = column_to_rownames(sex_specific_genes, "symbol"),
+    cluster_cols = FALSE,
+    breaks = zscore_range,
+    color = viridis(n = length(zscore_range)-1, option = "D"),
+    border_color = NA,
+    angle=315)
+```
+
+These appear to be correct.
+
+```{r}
+sessioninfo::session_info()
+```
