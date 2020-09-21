@@ -48,21 +48,21 @@ projects_to_include = "BLAST" # "BChong2019.1"
 projects_to_exclude = c("ALE06", "Xencor", "BChong2019.1")
 disease_classes_to_include = c("Control", "SLE")
 disease_classes_to_exclude = NULL
-study_design = ~ sex + disease_class
+study_design = ~ disease_class
 comparison_grouping_variable = "disease_class"
 control_group = "Control"
 experimental_group = "SLE"
 
 initial_concentration_threshold = 1.5
 pc1_zscore_threshold = 2
-pc2_zscore_threshold = 2.5
+pc2_zscore_threshold = NULL
 
 ### Setup file locations
 seq_file_directory = "/home/rstudio/workspace/datasets/rnaseq/novaseq"
 metadata_file = "metadata/NovaSeq_Sample_List.xlsx"
 clinical_file = "metadata/SLEDAI_BPX.xlsx"
 
-BPPARAM = BiocParallel::SnowParam(workers=parallel::detectCores(), type = "SOCK")
+BPPARAM = BiocParallel::SnowParam(workers=48, type = "SOCK")
 BiocParallel::register(BPPARAM)
 future::plan(future::multisession)
 
@@ -72,5 +72,6 @@ source("R/plan.R")
 drake_config(plan = analysis_plan,
              verbose = 2,
              parallelism = "future",
-             jobs = parallel::detectCores(),
+             log_progress = TRUE,
+             jobs = 48,
              lock_envir = FALSE)

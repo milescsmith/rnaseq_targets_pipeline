@@ -21,7 +21,7 @@ deduplicate_samples <- function(md, samples){
 
 remove_outliers <- function(dds,
                             pc1_zscore_cutoff,
-                            pc2_zscore_cutoff){
+                            pc2_zscore_cutoff = NULL){
   dds  <- estimateSizeFactors(dds,
                               locfun = genefilter::shorth,
                               type = "poscounts")
@@ -37,9 +37,13 @@ remove_outliers <- function(dds,
     filter(pc1_zscore >= pc1_zscore_cutoff) %>%
     pull(sample)
 
-  pc2_outliers <- pca_res %>%
-    filter(pc2_zscore >= pc2_zscore_cutoff) %>%
-    pull(sample)
+  if (!is.null(pc2_zscore_cutoff)){
+    pc2_outliers <- pca_res %>%
+      filter(pc2_zscore >= pc2_zscore_cutoff) %>%
+      pull(sample)
+  } else {
+    pc2_outliers <- NULL
+  }
 
   outliers <- unique(c(pc1_outliers, pc2_outliers))
 
@@ -81,95 +85,92 @@ remove_outliers <- function(dds,
 #'                                                 partition_type = "RBConfigurationVertexPartition")
 #'                                        })
 #'
-#'   cluster_opt <- cluster_opt %>%
-#'     mutate(sample_name = rownames(snn_graph)) %>%
-#'     select(sample_name, everything())
-#'
-#'   cluster_silhouette <-
-#'     future_map_dbl(names(select(cluster_opt, -sample_name)),
-#'                           function(i){
-#'                             sil <- silhouette(
-#'                               deframe(
-#'                                 select_at(
-#'                                   cluster_opt,
-#'                                   vars("sample_name", i))
-#'                               ),
-#'                               dist_mat
-#'                             )
-#'
-#'                             if(!is.na(sil)){
-#'                               return(summary(sil)[["si.summary"]][["Mean"]])
-#'                             } else {
-#'                               return(0)
-#'                             }
-#'
-#'                           })
-#'
-#'   cs <- tibble(res = seq(from = from,
-#'                          to = to,
-#'                          by = by),
-#'                coeff = cluster_silhouette)
-#'
-#'   return(cs)
-#' }
+#' @examples
+optimize_cluster_resolution <- function(snn_graph,
+                                        dist_mat,
+                                        from = 0.2,
+                                        to = 1,
+                                        by = 0.1){
+
+
+  cluster_opt <- future_map_dfc(seq(from = from,
+                                           to = to,
+                                           by = by),
+                                       function(i){
+                                         leiden(snn_graph,
+                                                n_iterations = 10,
+                                                resolution_parameter = i,
+                                                seed = 8309,
+                                                partition_type = "RBConfigurationVertexPartition")
+                                       })
+
+  cluster_opt <- cluster_opt %>%
+    mutate(sample_name = rownames(snn_graph)) %>%
+    select(sample_name, everything())
+
+  cluster_silhouette <-
+    future_map_dbl(names(select(cluster_opt, -sample_name)),
+                          function(i){
+                            sil <- silhouette(
+                              deframe(
+                                select_at(
+                                  cluster_opt,
+                                  vars("sample_name", i))
+                              ),
+                              dist_mat
+                            )
+
+                            if(!is.na(sil)){
+                              return(summary(sil)[["si.summary"]][["Mean"]])
+                            } else {
+                              return(0)
+                            }
+
+                          })
+
+  cs <- tibble(res = seq(from = from,
+                         to = to,
+                         by = by),
+               coeff = cluster_silhouette)
+
+  return(cs)
+}
 
 
 ###--- kmeans version ---###
-sample_clustering <- function(
-  exprs_mat,
-  from = 2,
-  to = 20,
-  by = 1){
-
-  kmeans_clusters <-
-    future_map(seq(from = from,
-                   to = to,
-                   by = by),
-               function(i){
-                 clara(
-                   x = exprs_mat,
-                   k = i,
-                   metric = "jaccard",
-                   stand = TRUE,
-                   samples = 50,
-                   pamLike = TRUE
-                   )
-                 }
-               ) %>%
-    set_names(seq(from = from,
-                  to = to,
-                  by = by))
-
-  sils <- map(kmeans_clusters, function(j){
-    silhouette(j)
-  })
-
-  avg_sils <- map_dbl(sils, function(k){
-    mean(k[,3])
-  }) %>%
-    set_names(seq(from = from,
-                  to = to,
-                  by = by)) %>%
-    enframe() %>%
-    mutate(name = as.integer(name))
-
-  optimal_k =
-    avg_sils %>%
-    filter(name > 2) %>%
-    top_n(
-      n = 1,
-      wt = value
-    )
-
-  clusters <- kmeans_clusters[[as.character(optimal_k[["name"]])]][["clustering"]] %>%
-    enframe(name = "sample_name",
-            value = "cluster") %>%
-    mutate(cluster = as_factor(cluster))
-
-  return(list(avg_sils = avg_sils,
-              optimal_k = optimal_k,
-              clusters = clusters))
-}
+# optimize_cluster_resolution <- function(dist_mat,
+#                                         from = 1,
+#                                         to = 10,
+#                                         by = 1){
+#
+#   kmeans_clusters <- furrr::future_map_dfc(seq(from = from,
+#                                            to = to,
+#                                            by = by),
+#                                        function(i){
+#                                            tibble(fastkmed(dist_mat,
+#                                                            ncluster = i)[['cluster']])
+#                                          }) %>% `names<-`(paste0("res", seq(from = from,
+#                                                               to = to,
+#                                                               by = by)))
+#
+#   cluster_silhouette <- future_map_dbl(seq_along(kmeans_clusters),
+#                         function(j){
+#                           sil <- silhouette(x = kmeans_clusters[[j]],
+#                                             dist = dist_mat)
+#                           if(!is.na(sil)){
+#                             return(summary(sil)[["si.summary"]][["Mean"]])
+#                             } else {
+#                               return(0)
+#                               }
+#                           })
+#
+#   cs <- tibble(res = seq(from = from,
+#                          to = to,
+#                          by = by),
+#                coeff = cluster_silhouette)
+#
+#   return(cs)
+# }
 
 # Use the output from cluster_silhouette()
 plot_resolution_silhouette_coeff <- function(cluster_silhouette){

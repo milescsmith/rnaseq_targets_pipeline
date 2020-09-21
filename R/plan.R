@@ -59,6 +59,7 @@ analysis_plan = drake_plan(
            initial_concentration_ng_ul = replace_na(initial_concentration_ng_ul, 200),
            disease_class = as_factor(disease_class),
            sex = as_factor(sex)) %>%
+    filter(sex == "Female") %>%
     distinct(),
 
   tx_sample_names = dir(path = seq_file_directory,
@@ -92,7 +93,12 @@ analysis_plan = drake_plan(
   md_cat_data = inspectdf::inspect_cat(final_md),
   md_num_data = inspectdf::inspect_num(final_md),
 
-  samples = tx_files[rownames(final_md)],
+  samples = target({
+    message("A count file was not found for the following selected samples:")
+    print(md$sample_name[(md$sample_name %nin% names(tx_files))])
+    pruned_samples = tx_files[rownames(final_md)]}
+    ),
+
   counts = tximport(samples,
                     type = "salmon",
                     txIn = TRUE,
@@ -124,6 +130,9 @@ analysis_plan = drake_plan(
   pca_qc = outlier_qc$pca,
   removed_outliers = outlier_qc$removed,
 
+  # I would just use the DESeq() function, but running each contitutent separately makes it easier to recover from
+  # failure or to observe progress
+
   dds_processed =
     DESeq(dds_qc,
           parallel = TRUE),
@@ -141,31 +150,29 @@ analysis_plan = drake_plan(
   # to build an SNN graph off of a distance matrix, which we can then pass to the Leiden
   # algorithm to identify clusters.
 
-  # neighbors = Seurat::FindNeighbors(object = sample_dists, nn.method = "annoy"),
+  neighbors = Seurat::FindNeighbors(object = sample_dists, nn.method = "annoy"),
 
   # Test a range of resolutions and choose the one with the highest silhouette
   # coefficient
-  # cluster_res_scan = optimize_cluster_resolution(
-  #   snn_graph = as.matrix(neighbors$snn),
-  #   dist_mat = sample_dists,
-  #   from = 0.1,
-  #   to = 1.5,
-  #   by = 0.1),
-  #
-  # optimal_resolution =
-  #   cluster_res_scan %>%
-  #   top_n(1, coeff) %>%
-  #   pull(res),
-  #
-  # # Not entirely sure using Leiden as a cluster detection algorithm is the best idea
-  # # Need to explore other options here.  Maybe just go back to K-means?
-  #  clusters = leiden(as.matrix(neighbors$snn),
-  #         n_iterations = 10,
-  #         resolution_parameter = sample(optimal_resolution, 1), # On the chance that we have multiple equally good resolutions
-  #         partition_type = "RBConfigurationVertexPartition") %>%
-  #   set_names(rownames(neighbors$snn)) %>%
-  #   enframe(name = "sample_name", value = "cluster") %>%
-  #   mutate(cluster = as_factor(cluster)),
+  cluster_res_scan = optimize_cluster_resolution(
+    snn_graph = as.matrix(neighbors$snn),
+    dist_mat = sample_dists,
+    from = 0.1,
+    to = 1.5,
+    by = 0.1),
+
+  optimal_resolution =
+    cluster_res_scan %>%
+    top_n(1, coeff) %>%
+    pull(res),
+
+   clusters = leiden(as.matrix(neighbors$snn),
+          n_iterations = 10,
+          resolution_parameter = sample(optimal_resolution, 1), # On the chance that we have multiple equally good resolutions
+          partition_type = "RBConfigurationVertexPartition") %>%
+    `names<-`(rownames(neighbors$snn)) %>%
+    enframe(name = "sample_name", value = "cluster") %>%
+    mutate(cluster = as_factor(cluster)),
 
   #clusters = fastkmed(sampleDistMatrix,
   #                    ncluster = optimal_resolution)[['cluster']] %>%
@@ -176,16 +183,8 @@ analysis_plan = drake_plan(
   # leiden_res = tibble(sample_name = rownames(neighbors$snn),
   #                     cluster = as_factor(clusters)),
 
-  sample_cluster_info = sample_clustering(exprs_mat = t(vsd_exprs),
-                                          from = 3,
-                                          to = 12,
-                                          by = 1),
-
-  clusters = sample_cluster_info$clusters,
-
-  annotation_info = as.data.frame(colData(dds_with_scores))[,c("disease_class",
-                                                             "sex",
-                                                             "sledai_total_score")] %>%
+  annotation_info = as.data.frame(colData(dds_processed))[,c("disease_class",
+                                                             "sex")] %>%
     as_tibble(rownames = "sample_name") %>%
     left_join(clusters) %>%
     column_to_rownames(var="sample_name"),
