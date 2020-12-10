@@ -34,19 +34,19 @@ remove_outliers <- function(dds,
   vsd <- assay(vst(dds))
   pca_res = irlba::prcomp_irlba(vsd)[['rotation']] %>%
     as_tibble() %>%
-    mutate(sample = colnames(vsd),
+    mutate(sample_name = colnames(vsd),
            pc1_zscore = abs((PC1 - mean(PC1))/sd(PC1)),
            pc2_zscore = abs((PC2 - mean(PC2))/sd(PC2))) %>%
-    inner_join(as_tibble(colData(dds), rownames = "sample"))
+    inner_join(as_tibble(colData(dds), rownames = "sample_name"))
 
   pc1_outliers <- pca_res %>%
     filter(pc1_zscore >= pc1_zscore_cutoff) %>%
-    pull(sample)
+    pull(sample_name)
 
   if (!is.null(pc2_zscore_cutoff)){
     pc2_outliers <- pca_res %>%
       filter(pc2_zscore >= pc2_zscore_cutoff) %>%
-      pull(sample)
+      pull(sample_name)
   } else {
     pc2_outliers <- NULL
   }
@@ -295,8 +295,6 @@ calc_sva <- function(dds, model_design = NULL, n.sva = NULL){
 
   dat <- counts(dds, normalized = TRUE) %>%
     purrr::keep(.p = ~ rowMeans(.x) > 1)
-
-  # dat <- dat[rowMeans(dat) > 1, ]
 
   model_design <-
     as.formula(

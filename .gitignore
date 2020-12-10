@@ -6,3 +6,7 @@
 **/.jpeg
 *.jpeg
 .DS_Store
+metadata/*.xlsx
+results/*.csv
+results/*.RData
+*._*

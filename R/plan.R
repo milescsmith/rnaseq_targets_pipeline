@@ -1,36 +1,73 @@
 analysis_plan = drake_plan(
 
-  study_metadata = read_excel(path = metadata_file,
-                              sheet = "main",
-                              col_types = c("numeric",
-                                            rep("text",10),
-                                            "numeric",
-                                            rep("text",6),
-                                            rep("numeric", 3),
-                                            "text",
-                                            "text"),
-                              trim_ws = TRUE,
-                              na = "n/a") %>%
+    study_metadata =
+      read_excel(
+        path = metadata_file,
+        sheet = "main",
+        col_types =
+          c(
+            "numeric",
+            rep("text",10),
+            "numeric",
+            rep("text",6),
+            rep("numeric", 3),
+            "text",
+            "text"),
+        trim_ws = TRUE,
+        na = "n/a"
+        ) %>%
     clean_names() %>%
-    mutate(sample_name = janitor::make_clean_names(sample_name, case = "all_caps"),
-           disease_class = str_remove(
-             string = recode(disease_class, "Unaffected Control" = "Control"),
-             pattern = " Patient")
+    select(
+      -day,
+      -sample,
+      -box,
+      -row,
+      -column
+    ) %>%
+    mutate(
+      sample_name = janitor::make_clean_names(sample_name, case = "all_caps"),
+      disease_class =
+        str_remove(
+          string =
+            recode(
+              disease_class,
+              "Unaffected Control" = "control"
+              ),
+          pattern = " Patient"
+        ),
+      ethnicity =
+        str_remove_all(
+          string = ethnicity,
+          pattern = "[\\[\\]]"
+        ) %>%
+        as_factor(),
+      study = as_factor(study),
+      sex = as_factor(sex),
+      sample_type = as_factor(sample_type)
     ) %>%
     filter(initial_concentration_ng_ul > initial_concentration_threshold),
 
   clinical_metadata =
     read_csv(file = clinical_file) %>%
     clean_names() %>%
-    select(-matches("^M[[:digit:]]+"),
-           -starts_with("LDG")) %>%
-    mutate(sample_name = str_replace(string = sample_name, pattern = "\\-", "_")) %>%
-    set_names(recode(names(.), !!!cytokine_names)),
-             pattern = " Patient"),
-           mess = replace_na(data = mess, replace = FALSE),
-           abc_or_mess_or_control = replace_na(data = abc_or_mess_or_control, replace = FALSE)
-    ) %>%
-    filter(initial_concentration_ng_ul > initial_concentration_threshold),
+    select(
+      -matches("^M[[:digit:]]+"),
+      -starts_with("LDG")
+      ) %>%
+    mutate(
+      sample_name =
+        str_replace(
+          string = sample_name,
+          pattern = "\\-", "_"
+          )
+        ) %>%
+    set_names(
+      recode(
+        names(.),
+        !!!cytokine_names
+        )
+      ) %>%
+    filster(initial_concentration_ng_ul > initial_concentration_threshold),
 
   non_project_controls =
     study_metadata %>%
@@ -48,28 +85,7 @@ analysis_plan = drake_plan(
            rin,
            subject_ref,
            visit_ref),
-
-  abc_mess_samples =
-    study_metadata %>%
-    filter(
-      abc_or_mess_or_control == TRUE,
-      project %nin% projects_to_exclude
-    ) %>%
-    # Select the portions of the metadata that are useful:
-    select(
-      sample_name,
-      disease_class,
-      project,
-      run_id,
-      sample_alias,
-      sex,
-      race_code,
-      initial_concentration_ng_ul,
-      final_concentration_ng_ul,
-      rin,
-      subject_ref,
-      visit_ref
-      ),
+  
 
   medication_md =
     read_excel(
@@ -169,25 +185,46 @@ analysis_plan = drake_plan(
     distinct() %>%
     left_join(medication_md),
 
-  tx_sample_names = dir(path = seq_file_directory,
-                        pattern = "quant.sf.gz",
-                        recursive = TRUE,
-                        full.name = TRUE) %>%
-    grep(pattern = "Undetermined|NONE", invert = TRUE, value = TRUE) %>%
+  tx_sample_names =
+    dir(
+      path = seq_file_directory,
+      pattern = "quant.sf.gz",
+      recursive = TRUE,
+      full.name = TRUE
+    ) %>%
+    grep(
+      pattern = "Undetermined|NONE",
+      invert = TRUE,
+      value = TRUE) %>%
     str_split(pattern = "/") %>%
     map_chr(~pluck(.x, length(.x)-1)) %>%
     str_remove(pattern = '(_[L|S][[:digit:]]+)+') %>%
     janitor::make_clean_names(case = "all_caps"),
 
-  tx_files = dir(path = seq_file_directory,
-                 pattern = "quant.sf.gz",
-                 recursive = TRUE,
-                 full.name = TRUE) %>%
-    grep(pattern = "Undetermined|NONE", invert = TRUE, value = TRUE) %>%
-    set_names(tx_sample_names) %>%
-    purrr::discard(.p = is.na(match(names(.), md$sample_name))),
+  tx_files =
+    dir(
+      path = seq_file_directory,
+      pattern = "quant.sf.gz",
+      recursive = TRUE,
+      full.name = TRUE
+    ) %>%
+    grep(
+      pattern = "Undetermined|NONE",
+      invert = TRUE,
+      value = TRUE
+    ) %>%
+    set_names(nm = tx_sample_names) %>%
+    purrr::discard(
+      .p =
+        is.na(
+          match(
+            names(.),
+            study_metadata[["sample_name"]]
+            )
+          )
+      ),
 
-  final_md = md %>%
+  final_md = study_metadata %>%
     filter(
       sample_name %in% names(tx_files),
       str_detect(
@@ -198,39 +235,45 @@ analysis_plan = drake_plan(
     ) %>%
     mutate(
       disease_class = fct_relevel(disease_class, {{control_group}}),
-      run_id = fct_drop(run_id)) %>%
+      run_id = fct_drop(run_id)
+    ) %>%
     rename(old_cluster = cluster) %>%
     column_to_rownames('sample_name'),
 
   #Inspect the metadata:
   md_cat_data = inspectdf::inspect_cat(final_md),
+
   md_num_data = inspectdf::inspect_num(final_md),
 
-  samples = target({
-    message("A count file was not found for the following selected samples:")
-    print(md$sample_name[(md$sample_name %nin% names(tx_files))])
-    pruned_samples = tx_files[rownames(final_md)]}
-    ),
+  # samples = target({
+  #   message("A count file was not found for the following selected samples:")
+  #   print(md$sample_name[(md$sample_name %nin% names(tx_files))])
+  pruned_samples = tx_files[rownames(final_md)],
+  # ),
 
-  counts = tximport(samples,
-                    type = "salmon",
-                    txIn = TRUE,
-                    txOut = FALSE,
-                    tx2gene = annot,
-                    importer = data.table::fread),
+  counts =
+    tximport(
+      pruned_samples,
+      type = "salmon",
+      txIn = TRUE,
+      txOut = FALSE,
+      tx2gene = annot,
+      importer = data.table::fread
+      ),
 
-  # Process the data using DESeq2
-  # The `DESeq` function run several subfunctions that take
-  # care of normalization, dispersion calculations, model fitting,
-  # and differential expression analysis.  This can take quite some
-  # time, especially as the study design grows more complex.
-  dds_import = DESeqDataSetFromTximport(txi = counts,
-                                        colData = final_md,
-                                        design = study_design),
+  dds_import =
+    DESeqDataSetFromTximport(
+      txi = counts,
+      colData = final_md,
+      design = study_design
+      ),
 
-  corrected_counts = ComBat_seq(counts = counts(dds_import),
-                                batch = fct_drop(colData(dds_import)[[batch_variable]]),
-                                group = colData(dds_import)[[comparison_grouping_variable]]) %>%
+  corrected_counts =
+    ComBat_seq(
+      counts = counts(dds_import),
+      batch = fct_drop(colData(dds_import)[[batch_variable]]),
+      group = colData(dds_import)[[comparison_grouping_variable]]
+      ) %>%
     `storage.mode<-`("integer"),
 
   dds_import_combat =
@@ -240,73 +283,81 @@ analysis_plan = drake_plan(
       design = study_design
     ),
 
-  dds_filtered = dds_import_combat %>%
-    `[`(rowSums(counts(.)) > 1, ) %>%
-    `[`(grep(pattern = "^RNA5",
-             x = rownames(.),
-             invert = TRUE,
-             value = TRUE),),
+  dds_filtered = dds_import %>%
+    magrittr::extract(rowSums(counts(.)) > 1, ) %>%
+    magrittr::extract(grep(pattern = "^RNA5",
+                           x = rownames(.),
+                           invert = TRUE,
+                           value = TRUE),),
 
   ## Sample QC filtering
   # Remove samples that have a PC1 Z-score > 3. This matches what I was doing visually, but is vastly quicker.
   outlier_qc = remove_outliers(dds = dds_filtered,
                                pc1_zscore_cutoff = pc1_zscore_threshold,
                                pc2_zscore_cutoff = pc2_zscore_threshold),
+
   dds_qc = outlier_qc$dds,
+
   pca_qc = outlier_qc$pca,
+
   removed_outliers = outlier_qc$removed,
 
   dds =
-    DESeq(dds_qc,
-          parallel = TRUE),
+    DESeq(
+      dds_qc,
+      parallel = TRUE,
+      BPPARAM = BPPARAM
+      ),
 
-  sva_res = calc_sva(dds = dds, model_design = "disease_class", n.sva = num_sva),
-  dds_processed = sva_res$dds,
-  sva_graph_data = sva_res$sva,
+  # sva_res = calc_sva(dds = dds, model_design = "disease_class", n.sva = num_sva)
+  # dds_processed = sva_res$dds
+  # sva_graph_data = sva_res$sva
+  dds_processed = dds,
+
   vsd = vst(dds_processed),
+
   vsd_exprs = assay(vsd),
 
-  # sledai = read_xlsx(path = sledai_bpx_file,
-  #                    sheet = "SLEDAI",
-  #                    col_types = c("text",
-  #                                  "text",
-  #                                  "date",
-  #                                  rep("numeric",26),
-  #                                  "date",
-  #                                  rep("numeric",23))) %>%
-  #   clean_names() %>%
-  #   mutate_if(.predicate = is.integer,
-  #             .funs = replace_na,
-  #             0) %>%
-  #   select(-study,
-  #          -form_date) %>%
-  #   left_join(
-  #     read_xlsx(path = "metadata/SLEDAI_BPX.xlsx",
-  #               sheet = "search list",
-  #               .name_repair = janitor::make_clean_names,
-  #               col_types = c("text",
-  #                             "text"))
-  #   ),
-
   banchereau_module_scores =
-    tirosh_score_modules(expr_obj = vsd_exprs, module_list = module_list) %>%
+    tirosh_score_modules(
+      expr_obj = vsd_exprs,
+      module_list = banchereau_modules
+      ) %>%
     as_tibble(rownames = "sample_name"),
 
-  ldg_module_scores = tirosh_score_modules(expr_obj = vsd_exprs, module_list = ldg_modules) %>%
+  ldg_module_scores =
+    tirosh_score_modules(
+      expr_obj = vsd_exprs,
+      module_list = ldg_modules
+      ) %>%
     as_tibble(rownames = "sample_name"),
 
-  metasig_scores = tirosh_score_modules(vsd_exprs, metasignature_module) %>%
+  metasig_scores =
+    tirosh_score_modules(
+      vsd_exprs,
+      metasignature_module
+      ) %>%
     as_tibble(rownames = "sample_name"),
 
-  module_scores = inner_join(banchereau_module_scores, ldg_module_scores) %>%
+  module_scores =
+    inner_join(
+      banchereau_module_scores,
+      ldg_module_scores
+      ) %>%
     inner_join(metasig_scores) %>%
     column_to_rownames(var = "sample_name"),
 
   dds_with_scores = target({
     colData(dds_processed) <-
       left_join(
-        as_tibble(colData(dds_processed), rownames = "sample"),
-        as_tibble(module_scores, rownames = "sample")
+        as_tibble(
+          colData(dds_processed),
+          rownames = "sample"
+          ),
+        as_tibble(
+          module_scores,
+          rownames = "sample"
+          )
       ) %>%
       column_to_rownames(var = "sample") %>%
       DataFrame()
@@ -325,38 +376,45 @@ analysis_plan = drake_plan(
   #                 module_list = metasignature_module,
   #                 score_func = 'rsvd'),
 
-  sample_dists = vsd_exprs %>% t() %>% parallelDist::parallelDist(),
+  sample_dists =
+    vsd_exprs %>%
+    t() %>%
+    parallelDist::parallelDist(),
+
   #fig.width=12, fig.height=9
   sampleDistMatrix = as.matrix(sample_dists),
 
-  # Minus the noise, actual differences and similarities are now apparent.
-  sample_dendrogram = sample_dists %>% hclust() %>% as.dendrogram(),
+  sample_dendrogram =
+    sample_dists %>%
+    hclust() %>%
+    as.dendrogram(),
 
-  annotated_modules = module_annot %>%
-    as_tibble(rownames="module") %>%
+  annotated_modules =
+    module_annotation %>%
     filter(type != "Undetermined"),
 
   annotated_mod_list =
     annotated_modules %>%
     mutate(
-      module_type = paste(module,
-                          type,
-                          sep=" - ")
+      module_type =
+        paste(
+          module,
+          type,
+          sep = " - "
+          )
     ) %>%
     select(-type) %>%
     deframe(),
-
-  #   module_scores =
-  #     colData(dds_processed) %>%
-  #     select(sample_name,
-  #            matches("^M[[:digit:]]+\\.")) %>%
-  #     column_to_rownames("sample_name"),
 
   annotated_module_scores =
     module_scores %>%
     select(one_of(annotated_modules$module)),
 
-  sample_cluster_info = ident_clusters(annotated_module_scores, K.max = 20),
+  sample_cluster_info =
+    ident_clusters(
+      annotated_module_scores,
+      K.max = 20
+      ),
 
   clusters = sample_cluster_info$clusters %>% mutate(cluster = as_factor(cluster)),
 
@@ -371,7 +429,7 @@ analysis_plan = drake_plan(
            sex,
            cluster,
            sample_name) %>%
-    column_to_rownames(var="sample_name"),
+    column_to_rownames(var = "sample_name"),
 
   # Variation can also be examined in reduced dimensional space by PCA or UMAP:
   pca_results = irlba::prcomp_irlba(x = vsd_exprs) %>%
@@ -395,8 +453,12 @@ analysis_plan = drake_plan(
                 "umap_2",
                 "umap_3")) %>%
     mutate(sample_name = colnames(vsd_exprs)) %>%
-    inner_join(as_tibble(colData(dds_processed),
-                         rownames="sample_name")) %>%
+    inner_join(
+      as_tibble(
+        colData(dds_processed),
+        rownames = "sample_name"
+        )
+      ) %>%
     inner_join(clusters),
 
   comparison_results_list =
@@ -404,14 +466,23 @@ analysis_plan = drake_plan(
     keep(
       str_detect(
         string = .,
-        pattern = comparison_grouping_variable)),
-  res = map(comparison_results_list, function(i){
+        pattern = comparison_grouping_variable
+        )
+      ),
+
+  res = map(comparison_results_list, function(i) {
     lfcShrink(dds_processed,
               coef = i,
               parallel = TRUE,
               type = "apeglm")
   }) %>%
-    set_names(map_chr(comparison_results_list, str_remove, pattern = paste0(comparison_grouping_variable, "_"))),
+    set_names(
+      map_chr(
+        comparison_results_list,
+        str_remove,
+        pattern = paste0(comparison_grouping_variable, "_")
+        )
+      ),
 
   down_tables = map(seq_along(res), function(i){
     res[[i]] %>%
@@ -515,15 +586,26 @@ analysis_plan = drake_plan(
     column_to_rownames(var = "value") %>%
     set_names("comparison"),
 
-  deg_means = vsd_exprs %>%
+  deg_means =
+    vsd_exprs %>%
     t() %>%
     as_tibble(rownames = "name") %>%
     select(name, one_of(rownames(deg_class))) %>%
     pivot_longer(-name,
                  names_to = "gene",
                  values_to = "expr") %>%
-    left_join(as_tibble(colData(dds_processed), rownames = "name") %>%
-                select(name, sex, ethnicity, disease_class)) %>%
+    left_join(
+      as_tibble(
+        colData(dds_processed),
+        rownames = "name"
+        ) %>%
+        select(
+          name,
+          sex,
+          ethnicity,
+          disease_class
+          )
+      ) %>%
     group_by(gene,
              disease_class) %>%
     summarise(avg = mean(expr)) %>%
@@ -542,13 +624,17 @@ analysis_plan = drake_plan(
                      "OAS1", "OASL", "OAS2", "OAS3", "PTPN6", "PTPN11"),
                    rownames(vsd_exprs)),
 
-  module_tbl = module_list %>%
+  module_tbl =
+    c(
+      banchereau_modules,
+      ldg_modules,
+      metasignature_module
+      ) %>%
     enframe() %>%
     unnest(cols = "value") %>%
     rename(module = name,
            gene = value) %>%
-    inner_join(as_tibble(module_annot,
-                         rownames = "module")),
+    inner_join(module_annotation),
 
   module_ISGs = module_tbl %>%
     dplyr::group_by(gene) %>%
@@ -560,90 +646,16 @@ analysis_plan = drake_plan(
     arrange(module) %>%
     column_to_rownames("gene"),
 
-  sledai = read_xlsx(path = clinical_file,
-                     sheet = "SLEDAI",
-                     col_types = c("text",
-                                   "text",
-                                   "date",
-                                   rep("numeric",26),
-                                   "date",
-                                   rep("numeric",23))) %>%
-    clean_names() %>%
-    mutate_if(.predicate = is.integer,
-              .funs = replace_na,
-              0) %>%
-    select(-study,
-           -form_date) %>%
-    left_join(
-      read_xlsx(path = "metadata/SLEDAI_BPX.xlsx",
-                sheet = "search list",
-                .name_repair = janitor::make_clean_names,
-                col_types = c("text",
-                              "text"))
-    ),
-
-  coldata_with_clinical =
-    colData(dds_processed) %>%
-    as_tibble(rownames = "sample_name") %>%
-    left_join(sledai) %>%
-    column_to_rownames(var = "sample_name") %>%
-    as("DataFrame"),
-
-  # I don't know why and don't care enough to research it, but `colData<-` doesn't seem to return the SummarizedExperiment object
-  dds_with_sledai = target({colData(dds_processed) <- coldata_with_clinical; dds_processed}), # he knows this one weird trick...
-
-  dds_with_scores =
-    scoreEigengenes(object = dds_with_sledai,
-  banchereau_gene_module_tbl =
-    module_list %>%
-    enframe(name = "module",
-            value = "gene") %>%
-    unnest(cols = "gene"),
-
-  ldg_gene_module_tbl =
-    ldg_modules %>%
-    enframe(name = "module",
-            value = "gene") %>%
-    unnest(cols = "gene"),
-
-  mg_gene_module_tbl =
-    metasignature_module %>%
-    enframe(name = "module",
-            value = "gene") %>%
-    unnest(cols = "gene"),
-
-  dds_with_scores =
-    scoreEigengenes(object = dds_processed,
-                    module_list = module_list,
-                    score_func = 'rsvd') %>%
-    scoreEigengenes(object = .,
-                    module_list = ldg_modules,
-                    score_func = 'rsvd') %>%
-    scoreEigengenes(object = .,
-                    module_list = metasignature_module,
-                    score_func = 'rsvd'),
-
-  annotated_modules = module_annot %>%
-    as_tibble(rownames="module") %>%
-    filter(type != "Undetermined"),
-
-
-  ###--- PALETTES ---###
+  #### PALETTES ####
   # we manually setup the palettes for pheatmap because letting it automatically pick the colors results in terrible choices
-  type_pal = paletteer_d("ggsci::category20_d3",
-                         n = length(unique(annotated_modules$type))) %>%
+  type_pal =
+    paletteer_d(
+      "ggsci::category20_d3",
+      n = length(levels(annotated_modules$type))
+      ) %>%
     as.character() %>%
-    set_names(unique(annotated_modules$type)),
-
-  run_groups =
-    study_md %>%
-    pull(run_id) %>%
-    unique(),
-
-  run_id_color_set =
-    colorRampPalette(
-      brewer.pal(12, "Paired"))(length(run_groups)) %>%
-    set_names(run_groups),
+    set_names(levels(annotated_modules$type)) %>%
+    magrittr::inset2("Undetermined", "#000000"),
 
   chr_pal = c("Y" = "#E41A1C",
               "X" = "#377EB8"),
@@ -652,43 +664,50 @@ analysis_plan = drake_plan(
               "Female" = "azure2",
               "unk" = "#333333"),
 
-  cluster_pal = ifelse(
-    test = length(levels(clusters$cluster)) > 12,
-    yes = list(
-      colorRampPalette(
+  cluster_pal =
+    ifelse(
+      test = length(levels(clusters$cluster)) > 12,
+      yes = list(
+        colorRampPalette(
+          paletteer_d(
+            palette = "ggthemes::calc",
+            n = 12
+            )
+          )(
+            length(
+              levels(
+                clusters$cluster
+                )
+              )
+            )
+        ),
+      no = list(
         paletteer_d(
           palette = "ggthemes::calc",
-          n = 12
-        )
-      )(
-        length(
-          levels(
-            clusters$cluster
+          n = length(
+            levels(
+              clusters$cluster
+              )
+            )
           )
         )
-      )
-    ),
-    no = list(
-      paletteer_d(
-        palette = "ggthemes::calc",
-        n = length(
-          levels(
-            clusters$cluster
-          )
-        )
-      )
-    )
-  ) %>%
+      ) %>%
     unlist() %>%
     as.character() %>%
     set_names(levels(clusters$cluster)),
 
   project_pal =
     colorRampPalette(
-      brewer.pal(12, "Set1"))(length(levels(annotation_info$project))) %>%
+      brewer.pal(9, "Set1"))(length(levels(annotation_info$project))) %>%
     set_names(levels(annotation_info$project)),
 
-  number_disease_classes = length(unique(annotation_info$disease_class)),
+  number_disease_classes =
+    length(
+      unique(
+        annotation_info$disease_class
+        )
+      ),
+
   disease_class_pal =
     if_else(
       number_disease_classes > 2,
@@ -696,10 +715,22 @@ analysis_plan = drake_plan(
       list(c("black", "grey75"))
     ) %>%
     unlist() %>%
-    set_names(unique(annotation_info$disease_class)),
+    set_names(
+      unique(
+        annotation_info$disease_class
+        )
+      ),
+
+  # cell_type_pal =
+  #   c("#ffa600", "#0062cc", "#008a71") %>%
+  #   set_names(levels(annotation_info$cell_type)),
 
   comparison_pal =
-    oaColors::oaPalette(length(unique(deg_class$comparison))) %>%
+    oaColors::oaPalette(
+      length(
+        unique(deg_class$comparison)
+        )
+      ) %>%
     set_names(unique(deg_class$comparison)),
 
   group_pal =
@@ -710,7 +741,8 @@ analysis_plan = drake_plan(
       cluster_pal,
       project_pal,
       disease_class_pal,
-      comparison_pal) %>%
+      comparison_pal ) %>% #,
+      # cell_type_pal) %>%
     set_names(c(
       "type",
       "chr",
@@ -718,36 +750,32 @@ analysis_plan = drake_plan(
       "cluster",
       "project",
       "disease_class",
-      "comparison")),
+      "comparison")), #,
+      #"cell_type")),
 
-  module_scores =
-    colData(dds_with_scores) %>%
-    as_tibble(rownames="sample_name") %>%
-    select(sample_name,
-           matches("^M[[:digit:]]+\\.")) %>%
-    column_to_rownames("sample_name"),
-
-  annotated_module_scores =
-    colData(dds_with_scores) %>%
-    as_tibble(rownames="sample_name") %>%
-    select(sample_name,
-           one_of(annotated_modules$module)) %>%
-    column_to_rownames("sample_name"),
-
-  top_vars = matrixStats::rowSds(vsd_exprs) %>%
+  top_vars =
+    matrixStats::rowSds(vsd_exprs) %>%
     set_names(rownames(vsd_exprs)) %>%
     enframe() %>%
     top_n(20000, value) %>%
     pull(name),
 
-  vsd_top = vsd_exprs[top_vars,] %>% t(),
+  vsd_top = vsd_exprs[top_vars,] %>%
+    t(),
 
-  sft = pickSoftThreshold(vsd_top,
-                          powerVector = c(c(1:10),
-                                          seq(from = 12, to=20, by=2)),
-                          verbose = 5),
+  sft = pickSoftThreshold(
+    data = vsd_top,
+    powerVector =
+      c(
+        seq(10),
+        seq(
+          from = 12,
+          to = 20,
+          by = 2)
+        ),
+    verbose = 5),
 
-  ###--- WGCNA ---###
+  #### WGCNA ####
   wgcna_modules =
     blockwiseModules(
       datExpr = vsd_top,
@@ -764,14 +792,20 @@ analysis_plan = drake_plan(
       reassignThreshold = 1e-6
     ),
 
-  wgcna_module_genes = wgcna_modules$colors %>%
-    enframe(name = "gene",
-            value = "module"),
+  wgcna_module_genes =
+    wgcna_modules$colors %>%
+    enframe(
+      name = "gene",
+      value = "module"
+      ),
 
-  wgcna_hub_genes = chooseTopHubInEachModule(vsd_top,
-                                             wgcna_modules$colors,
-                                             power = 4,
-                                             type = "signed hybrid"),
+  wgcna_hub_genes =
+    chooseTopHubInEachModule(
+      datExpr = vsd_top,
+      colorh = wgcna_modules$colors,
+      power = 4,
+      type = "signed hybrid"
+      ),
 
   wgcna_scores = wgcna_modules$MEs %>%
     as_tibble(rownames="sample_name") %>%
@@ -779,14 +813,20 @@ analysis_plan = drake_plan(
     left_join(as_tibble(annotation_info,
                         rownames="sample_name")),
 
-  wgcna_cluster_split = initial_split(data = wgcna_scores %>%
-                                        mutate(disease_class = fct_drop(disease_class)) %>%
-                                        select(cluster,
-                                               starts_with("ME")),
-                                      prop = 0.75,
-                                      strata = "cluster"),
+  wgcna_cluster_split =
+    initial_split(
+      data = wgcna_scores %>%
+        mutate(disease_class = fct_drop(disease_class)) %>%
+        select(
+          cluster,
+          starts_with("ME")
+          ),
+      prop = 0.75,
+      strata = "cluster"
+      ),
 
   wgcna_cluster_train = training(wgcna_cluster_split),
+
   wgcna_cluster_test = testing(wgcna_cluster_split),
 
   wgcna_cluster_rf_cv =
@@ -805,120 +845,170 @@ analysis_plan = drake_plan(
       importance=T
     ),
 
-  wgcna_cluster_rf_cv_varImp = varImp(object = wgcna_cluster_rf_cv,
-                                      scale = FALSE,
-                                      importance=TRUE),
+  wgcna_cluster_rf_cv_varImp =
+    varImp(
+      object = wgcna_cluster_rf_cv,
+      scale = FALSE,
+      importance = TRUE
+      ),
 
-  wgcna_disease_class_split = initial_split(data = wgcna_scores %>%
-                                            # filter(disease_class != "LP") %>%
-                                            mutate(disease_class = fct_drop(disease_class)) %>%
-                                            select(disease_class,
-                                                   starts_with("ME")),
-                                            prop = 0.75,
-                                            strata = "disease_class"),
+  wgcna_disease_class_split =
+    initial_split(
+      data = wgcna_scores %>%
+        # filter(disease_class != "LP") %>%
+        mutate(disease_class = fct_drop(disease_class)) %>%
+        select(
+          disease_class,
+          starts_with("ME")
+          ),
+      prop = 0.75,
+      strata = "disease_class"
+      ),
 
   wgcna_disease_class_train = training(wgcna_disease_class_split),
+
   wgcna_disease_class_test = testing(wgcna_disease_class_split),
 
-  wgcna_disease_class_rf_cv = train(disease_class ~ .,
-                                    method = "parRF",
-                                    data = wgcna_disease_class_train,
-                                    trControl = trainControl(method = "repeatedcv",
-                                                             number = 20,
-                                                             repeats = 20,
-                                                             search = "grid",
-                                                             allowParallel = TRUE)),
+  wgcna_disease_class_rf_cv =
+    train(
+      form = disease_class ~ .,
+      method = "parRF",
+      data = wgcna_disease_class_train,
+      trControl =
+        trainControl(
+          method = "repeatedcv",
+          number = 20,
+          repeats = 20,
+          search = "grid",
+          allowParallel = TRUE
+          )
+      ),
 
-  wgcna_disease_class_rf_cv_varImp = varImp(object = wgcna_disease_class_rf_cv,
-                                            scale = FALSE,
-                                            importance=TRUE),
+  wgcna_disease_class_rf_cv_varImp =
+    varImp(
+      object = wgcna_disease_class_rf_cv,
+      scale = FALSE,
+      importance=TRUE
+      ),
 
-  ###---module_classification---###
-  module_scores_with_md = module_scores %>%
+  #### module_classification ####
+  module_scores_with_md =
+    module_scores %>%
     as_tibble(rownames="sample_name") %>%
     left_join(as_tibble(annotation_info,
                         rownames="sample_name")),
 
-  module_cluster_split = initial_split(data = module_scores_with_md %>%
-                                         filter(disease_class != "LP") %>%
-                                         mutate(disease_class = fct_drop(disease_class)) %>%
-                                         select(cluster,
-                                                matches("^M[0-9]+")),
-                                       prop = 0.75,
-                                       strata = "cluster"),
+  module_cluster_split =
+    initial_split(
+      data = module_scores_with_md %>%
+        mutate(disease_class = fct_drop(disease_class)) %>%
+        select(
+          cluster,
+          one_of(names(banchereau_modules))
+          ),
+      prop = 0.75,
+      strata = "cluster"
+      ),
 
   module_cluster_train = training(module_cluster_split),
+
   module_cluster_test = testing(module_cluster_split),
 
-  module_cluster_rf_cv = train(cluster ~ .,
-                               method = "parRF",
-                               data = module_cluster_train,
-                               trControl = trainControl(method = "repeatedcv",
-                                                        number = 10,
-                                                        repeats = 10,
-                                                        search = "grid",
-                                                        allowParallel = TRUE),
-                               importance=T),
+  module_cluster_rf_cv =
+    train(
+      form = cluster ~ .,
+      method = "parRF",
+      data = module_cluster_train,
+      trControl =
+        trainControl(
+          method = "repeatedcv",
+          number = 10,
+          repeats = 10,
+          search = "grid",
+          allowParallel = TRUE
+        ),
+      importance = TRUE
+    ),
 
-  module_cluster_rf_cv_varImp = varImp(object = module_cluster_rf_cv,
-                                       scale = FALSE,
-                                       importance=TRUE),
+  module_cluster_rf_cv_varImp =
+    varImp(
+      object = module_cluster_rf_cv,
+      scale = FALSE,
+      importance = TRUE
+    ),
 
-  module_disease_class_split = initial_split(data = module_scores_with_md %>%
-                                               filter(disease_class != "LP") %>%
-                                               mutate(disease_class = fct_drop(disease_class)) %>%
-                                               select(disease_class,
-                                                      matches("^M[0-9]+")),
-                                             prop = 0.75,
-                                             strata = "disease_class"),
+  module_disease_class_split =
+    initial_split(
+      data = module_scores_with_md %>%
+        mutate(disease_class = fct_drop(disease_class)) %>%
+        select(
+          disease_class,
+          one_of(names(banchereau_modules))
+        ),
+      prop = 0.75,
+      strata = "disease_class"
+    ),
 
   module_disease_class_train = training(module_disease_class_split),
+
   module_disease_class_test = testing(module_disease_class_split),
 
-  module_disease_class_rf_cv = train(disease_class ~ .,
-                                     method = "parRF",
-                                     data = module_disease_class_train,
-                                     trControl = trainControl(method = "repeatedcv",
-                                                              number = 10,
-                                                              repeats = 10,
-                                                              search = "grid",
-                                                              allowParallel = TRUE),
-                                     importance=T),
+  module_disease_class_rf_cv =
+    train(
+      form = disease_class ~ .,
+      method = "parRF",
+      data = module_disease_class_train,
+      trControl =
+        trainControl(
+          method = "repeatedcv",
+          number = 10,
+          repeats = 10,
+          search = "grid",
+          allowParallel = TRUE
+        ),
+      importance = TRUE
+    ),
 
-  module_disease_class_rf_cv_varImp = varImp(object = module_disease_class_rf_cv,
-                                             scale = FALSE,
-                                             importance=TRUE),
-                                             
-  ###--- WGCNA-based GSEA ---###
+  module_disease_class_rf_cv_varImp =
+    varImp(
+      object = module_disease_class_rf_cv,
+      scale = FALSE,
+      importance = TRUE
+    ),
+
+  #### WGCNA-based GSEA ####
   filtered_wgcna_module_genes =
     wgcna_module_genes %>%
     mutate(hugo = checkGeneSymbols(gene)[["Suggested.Symbol"]]) %>%
     filter(!is.na(hugo)),
 
-  MEenriched = future_map_dfr(
-    .x = unique(filtered_wgcna_module_genes$module),
-    .f = function(i){
-      filtered_wgcna_module_genes %>%
-        filter(module == i) %>%
-        pull(hugo) %>%
-        enricher(gene = .,
-                 TERM2GENE = c5)%>%
-        {if(!is.null(.)) mutate(slot(.,'result'), module = i) } #if_else does not work because it tries to evaulate both the true and false results, which doesn't work with `slot(NULL, "results")`
-    }),
+  MEenriched =
+    future_map_dfr(
+      .x = unique(filtered_wgcna_module_genes$module),
+      .f = function(i){
+        filtered_wgcna_module_genes %>%
+          filter(module == i) %>%
+          pull(hugo) %>%
+          enricher(gene = .,
+                   TERM2GENE = c5)%>%
+          {if(!is.null(.)) mutate(slot(.,'result'), module = i) } #if_else does not work because it tries to evaulate both the true and false results, which doesn't work with `slot(NULL, "results")`
+      }),
 
   MEplotting = MEenriched %>%
     filter(p.adjust < 0.05,
            module != "grey") %>%
     mutate(
-      GeneRatio = map_dbl(.x = GeneRatio,
-                          .f = function(i){
-                            j = str_split(i, "/") %>%
-                              `[[`(1) %>%
-                              as.double()
-                            j[[1]]/j[[2]]
-                          }),
-      ID =  str_replace_all(string = ID, pattern = "_", replacement = " "),
-      module = paste0("ME", module)) %>%
+      GeneRatio = map_dbl(
+        .x = GeneRatio,
+        .f = function(i){
+          j = str_split(i, "/") %>%
+            magrittr::extract2(1) %>%
+            as.double()
+          j[[1]]/j[[2]]
+          }),
+      ID = str_replace_all(string = ID, pattern = "_", replacement = " "),
+      module = paste0("ME", module)
+      ) %>%
     group_by(module) %>%
     top_n(5, GeneRatio) %>%
     sample_n(size = 5,
@@ -930,8 +1020,12 @@ analysis_plan = drake_plan(
 
   viral_transcripts =
     annot %>%
-    filter(!str_detect(string = transcript,
-                       pattern = "^ENST")) %>%
+    filter(
+      !str_detect(
+        string = transcript,
+        pattern = "^ENST"
+        )
+      ) %>%
     pull(gene_name) %>%
     intersect(rownames(vsd_exprs)),
 
@@ -939,11 +1033,15 @@ analysis_plan = drake_plan(
     counts(dds_with_scores) %>%
     t() %>%
     as_tibble(rownames = "sample_name") %>%
-    select(sample_name,
-           one_of(viral_transcripts)) %>%
-    pivot_longer(-sample_name,
-                 names_to = "transcript",
-                 values_to = "counts") %>%
+    select(
+      sample_name,
+      one_of(viral_transcripts)
+      ) %>%
+    pivot_longer(
+      -sample_name,
+      names_to = "transcript",
+      values_to = "counts"
+      ) %>%
     group_by(transcript) %>%
     summarise(total_counts = sum(counts)) %>%
     filter(total_counts > 0) %>%
@@ -952,7 +1050,7 @@ analysis_plan = drake_plan(
   viral_exprs =
     vsd_exprs[detected_viral_transcripts,] %>%
     t() %>%
-    as_tibble(rownames="sample_name"),
+    as_tibble(rownames = "sample_name"),
 
   ifn_modules =
     annotated_modules %>%
@@ -966,20 +1064,27 @@ analysis_plan = drake_plan(
 
   module_scores_with_viral =
     study_md %>%
-    select(sample_name,
-           disease_class,
-           matches("^M[[:digit:]]+"),
-           one_of(names(ldg_modules)),
-           mg) %>%
+    select(
+      sample_name,
+      disease_class,
+      # cell_type,
+      one_of(names(banchereau_modules)),
+      one_of(names(ldg_modules)),
+      names(metasignature_module)
+    ) %>%
     inner_join(wgcna_scores) %>%
     inner_join(viral_exprs) %>%
     inner_join(clusters),
 
   annotated_module_scores_with_cluster_class =
     module_scores_with_viral %>%
-    mutate(cluster = as_factor(cluster)) %>%
+    mutate(
+      cluster = as_factor(cluster)
+      # cell_type = as_factor(cell_type)
+      ) %>%
     select(
       cluster,
+      # cell_type,
       disease_class,
       one_of(annotated_modules$module)
     ),
@@ -989,7 +1094,8 @@ analysis_plan = drake_plan(
     drake_recode(thing_to_unquote_splice = annotated_mod_list) %>%
     set_names(
       nm = .,
-      x = annotated_module_scores_with_cluster_class),
+      x = annotated_module_scores_with_cluster_class
+    ),
 
   annotated_module_scores_pivot =
     renamed_annotated_module_scores %>%
@@ -1012,6 +1118,20 @@ analysis_plan = drake_plan(
       group_var = module,
       compare_value = score
     ),
+
+  # annotated_module_stats_by_cell_type =
+  #   annotated_module_scores_pivot %>%
+  #   group_by(module) %>%
+  #   wilcox_test(
+  #     score ~ cell_type,
+  #     p.adjust.method = "BH"
+  #   ) %>%
+  #   grouped_add_xy_positions(
+  #     stats_tbl = .,
+  #     data_tbl = annotated_module_scores_pivot,
+  #     group_var = module,
+  #     compare_value = score
+  #   ),
 
   annotated_module_stats_by_disease =
     annotated_module_scores_pivot %>%
@@ -1100,6 +1220,27 @@ analysis_plan = drake_plan(
       compare_value = score
     ),
 
+  # module_scores_with_viral_by_cell_type =
+  #   module_scores_with_viral %>%
+  #   select(cell_type,
+  #          matches("^ME")) %>%
+  #   pivot_longer(-cell_type,
+  #                names_to = "module",
+  #                values_to = "score") %>%
+  #   mutate(cell_type = as_factor(cell_type)
+  #   ),
+
+  # module_scores_with_viral_by_cell_type_stats =
+  #   module_scores_with_viral_by_cell_type %>%
+  #   group_by(module) %>%
+  #   wilcox_test(score ~ cell_type) %>%
+  #   grouped_add_xy_positions(
+  #     stats_tbl = .,
+  #     data_tbl = module_scores_with_viral_by_cell_type,
+  #     group_var = module,
+  #     compare_value = score
+  #   ),
+
   module_scores_with_viral_by_disease =
     module_scores_with_viral %>%
     select(disease_class,
@@ -1121,89 +1262,61 @@ analysis_plan = drake_plan(
       compare_value = score
     ),
 
-  cd72_and_steroids = final_md %>%
-    filter(sample_name %in% colnames(vsd_exprs)) %>%
-    left_join(t(vsd_exprs)[,"CD72", drop = FALSE] %>%
-                as_tibble(rownames = "sample_name")) %>%
-    select(prednisone, depomedrol_methylprednisone, disease_class, CD72, sample_name) %>%
-    mutate(prednisone = replace_na(prednisone, 0),
-           depomedrol_methylprednisone = replace_na(depomedrol_methylprednisone, 0)),
-
-  cd72_prednisone_correlation =
-    cd72_and_steroids %>%
-    group_by(disease_class) %>%
-    cor_test(vars = CD72, vars2 = prednisone),
-
-  cd72_depomedrol_correlation =
-    cd72_and_steroids %>%
-    group_by(disease_class) %>%
-    cor_test(vars = CD72, vars2 = depomedrol_methylprednisone),
-
-
-  report = rmarkdown::render(
-    input = knitr_in("markdown/report.rmd"),
-    output_file = file_out("results/report.html"),
-    output_dir = "results",
-    quiet = TRUE),
-
-  qc_report = rmarkdown::render(
-    input = knitr_in("markdown/qc_report.rmd"),
-    output_file = file_out("results/qc_report.html"),
-    output_dir = "results",
-    quiet = TRUE),
-
-  supplemental_report = rmarkdown::render(
-    input = knitr_in("markdown/supplemental_report.rmd"),
-    output_file = file_out("results/supplemental_report.html"),
-    output_dir = "results",
-    quiet = TRUE),
-
   vsd_exprs %>%
     as.data.frame() %>%
-    data.table::fwrite(row.names = TRUE,
-                       file = file_out("results/filtered_normalized_stabilized_expression.csv")),
+    data.table::fwrite(
+      row.names = TRUE,
+      file = file_out("results/filtered_normalized_stabilized_expression.csv")
+      ),
+
   study_md %>%
-    data.table::fwrite(row.names = TRUE,
-                       file = file_out("results/filtered_metadata.csv")),
+    data.table::fwrite(
+      row.names = TRUE,
+      file = file_out("results/filtered_metadata.csv")
+      ),
+
   counts(dds_with_scores) %>%
     as.data.frame() %>%
-    data.table::fwrite(row.names = TRUE,
-                       file = file_out("results/filtered_transcript_counts.csv")),
+    data.table::fwrite(
+      row.names = TRUE,
+      file = file_out("results/filtered_transcript_counts.csv")
+      ),
+
   res %>%
     as.data.frame() %>%
-    data.table::fwrite(row.names = TRUE,
-                       file = file_out("results/log_fold_changes.csv")),
+    data.table::fwrite(
+      row.names = TRUE,
+      file = file_out("results/log_fold_changes.csv")
+      ),
 
   wgcna_modules$MEs %>%
-    data.table::fwrite(row.names = TRUE,
-                       file = file_out("results/wgcna_eigengene_scores.csv")),
+    data.table::fwrite(
+      row.names = TRUE,
+      file = file_out("results/wgcna_eigengene_scores.csv")
+      ),
 
   wgcna_module_genes %>%
     write_csv(path = file_out("results/wgcna_genes.csv")),
 
   study_md %>%
-    select(sample_name,
-           matches("^M[[:digit:]]+"),
-           one_of(names(ldg_modules))) %>%
+    select(
+      sample_name,
+      matches("^M[[:digit:]]+"),
+      one_of(names(ldg_modules))
+      ) %>%
     as.data.frame() %>%
-    data.table::fwrite(row.names = TRUE,
-                       file = file_out("results/module_scores.csv")),
+    data.table::fwrite(
+      row.names = TRUE,
+      file = file_out("results/module_scores.csv")
+      ),
 
   disp_plot = plot_dispersion_estimate(dds_with_scores),
 
-  cytokine_values = read_csv(file = clinical_file) %>%
-    filter(cle_type != "Control") %>%
-    set_names(nm = recode(names(.), !!!cytokine_names)) %>%
-    select(sample_name, one_of(cytokine_names)),
-
-  cytokine_pivot =
-    cytokine_values %>%
-    pivot_longer(-sample_name, names_to = "cytokine"),
-
-  module_scores_for_correlation = module_scores_with_viral %>%
+  module_scores_for_correlation =
+    module_scores_with_viral %>%
     select(
       sample_name, `M4.10`, `M4.11`, `M4.1`, `M4.15`, `M3.6`, `M8.46`, `M4.14`,
-      `M5.15`, `LDG1.1`, `LDG2.1`, `M8.83`, `M3.2`, `M4.2`, `M4.6`, `M4.13`,
+      `M5.15`, `ldg_1.1`, `ldg_2.1`, `M8.83`, `M3.2`, `M4.2`, `M4.6`, `M4.13`,
       `M5.1`, `M5.7`, `M7.1`, `M1.2`, `M3.4`, `M5.12`, `M6.6`, `M2.2`, `M3.3`,
       `M3.5`, `M4.7`, `M6.11`,`M6.16`, `M9.42`, `M6.13`, `M5.6`, `M5.10`,
       `M6.2`, `M6.12`, `M4.3`, `M4.5`, `M5.9`, `M1.1`, `M2.3`,`M3.1`, `M6.18`
@@ -1235,66 +1348,44 @@ analysis_plan = drake_plan(
       values_to = "score"
     ),
 
-  cytokine_vs_modules =
-    inner_join(
-      cytokine_values,
-      module_scores_for_correlation
-    ),
-
-  cytokine_vs_modules_correlation =
-    cytokine_vs_modules %>%
-    column_to_rownames("sample_name") %>%
-    cor_mat(method = "spearman"),
-
-  cytokine_vs_modules_pivot =
-    inner_join(
-      cytokine_pivot,
-      module_score_pivot
-    ),
-
-  cytokine_vs_modules_pivot_correlation =
-    cytokine_vs_modules_pivot %>%
-    group_by(
-      cytokine,
-      module
-    ) %>%
-    cor_test(
-      vars = value,
-      vars2 = score,
-      method = "spearman"
-    ),
-
   module_score_correlation =
     module_scores_for_correlation %>%
     column_to_rownames("sample_name") %>%
     cor_mat(method = "spearman"),
 
-  # report = rmarkdown::render(
-  #   input = knitr_in("markdown/report.rmd"),
-  #   output_file = file_out("results/report.html"),
+  report =
+    rmarkdown::render(
+      input = knitr_in("markdown/report.rmd"),
+      output_file = file_out("results/report.html"),
+      output_dir = "results",
+      quiet = TRUE,
+      params = "ask"
+      ),
+
+  # report_pdf = rmarkdown::render(
+  #   input = knitr_in("markdown/report_pdf.rmd"),
+  #   output_file = file_out("results/report.pdf"),
   #   output_dir = "results",
   #   output_format = "all",
   #   quiet = TRUE),
 
-  report_pdf = rmarkdown::render(
-    input = knitr_in("markdown/report_pdf.rmd"),
-    output_file = file_out("results/report.pdf"),
-    output_dir = "results",
-    output_format = "all",
-    quiet = TRUE),
+  qc_report =
+    rmarkdown::render(
+      input = knitr_in("markdown/qc_report.rmd"),
+      output_file = file_out("results/qc_report.html"),
+      output_dir = "results",
+      quiet = TRUE,
+      params = "ask
+      ),
 
-  # qc_report = rmarkdown::render(
-  #   input = knitr_in("markdown/qc_report.rmd"),
-  #   output_file = file_out("results/qc_report.html"),
-  #   output_dir = "results",
-  #   quiet = TRUE),
-
-  # supplemental_report = rmarkdown::render(
-  #   input = knitr_in("markdown/supplemental_report.rmd"),
-  #   output_file = file_out("results/supplemental_report.html"),
-  #   output_dir = "results",
-  #   output_format = "all",
-  #   quiet = TRUE),
+  # supplemental_report =
+  #   rmarkdown::render(
+  #     input = knitr_in("markdown/supplemental_report.rmd"),
+  #     output_file = file_out("results/supplemental_report.html"),
+  #     output_dir = "results",
+  #     output_format = "all",
+  #     quiet = TRUE
+  #     ),
 
   # manuscript_figures = rmarkdown::render(
   #   input = knitr_in("markdown/for_manuscript.rmd"),
@@ -1302,15 +1393,18 @@ analysis_plan = drake_plan(
   #   output_dir = "results",
   #   quiet = TRUE),
 
-  save(annotation_info,
-       final_md,
-       group_pal,
-       module_scores_with_viral,
-       ISGs,
-       pca_results,
-       degs,
-       umap_results,
-       vsd_exprs,
-       wgcna_modules,
-       file = file_out("results/for_shiny_vis.RData"))
-)
+  save(
+    annotation_info,
+    final_md,
+    group_pal,
+    module_scores_with_viral,
+    ISGs,
+    pca_results,
+    degs,
+    umap_results,
+    vsd_exprs,
+    wgcna_modules,
+    file = file_out("results/for_shiny_vis.RData")
+    )
+  )
+

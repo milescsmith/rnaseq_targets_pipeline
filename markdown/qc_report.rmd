@@ -1,12 +1,22 @@
 ---
-title: "CLE RNAseq analysis QC"
-author: "Miles Smith"
+params: 
+  set_title:
+    label: "report title"
+    value: "Project"
+    input: text
+  set_author: 
+    label: "author"
+    value: "Miles Smith"
+    input: text
+title: "`r params$set_title` analysis QC"
+author: "`r params$set_author`"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
   html_document:
-    toc: true
+    highlight: "pygments"
+    toc: TRUE
     toc_depth: 3
-    toc_float: true
+    toc_float: TRUE
 ---
 
 ```{css, echo=FALSE}
@@ -41,21 +51,24 @@ inspectdf::show_plot(md_cat_data, high_cardinality=1, col_palette = 3) +
   labs(title = "Frequency of categorical levels")
 ```
 
+```{r}
+loadd(final_md, tx_files)
+final_md <- as_tibble(final_md, rownames = "sample_name")
+```
 
 ```{r echo=FALSE}
-loadd(md, tx_files)
-message(str_glue("{length(md$sample_name)} samples selected for analysis"))
+message(str_glue("{nrow(final_md)} samples selected for analysis"))
 message(str_glue("{length(names(tx_files))} files found"))
-if (!all(names(tx_files) %in% md$sample_name)){
+if (!all(names(tx_files) %in% final_md$sample_name)){
   message("The following files do not have a matching metadata entry:")
-  print(setdiff(names(tx_files), md$sample_name))
+  print(setdiff(names(tx_files),final_md$sample_name))
 } else {
   message("All files match a metadata entry.")
 }
 
-if (!all(md$sample_name %in% names(tx_files))){
+if (!all(final_md$sample_name %in% names(tx_files))){
   message("A count file was not found for the following selected samples:")
-  print(setdiff(md$sample_name, names(tx_files)))
+  print(setdiff(final_md$sample_name, names(tx_files)))
 } else {
   message("All expected files found.")
 }
@@ -94,7 +107,7 @@ pca_qc %>%
   mutate(
     kept = as_factor(
       if_else(
-        condition = sample %in% setdiff(names(tx_files), md$sample_name),
+        condition = sample_name %in% setdiff(names(tx_files), final_md$sample_name),
         true = "no",
         false = "yes"
         )
@@ -110,7 +123,7 @@ pca_qc %>%
     marker = list(size = 7.5,
                   line = list(color = 'rgba(0, 0, 0, .8)',
                               width = 1)),
-    text = ~paste('<br>Subject: ', sample,
+    text = ~paste('<br>Subject: ', sample_name,
                   '<br>Sex: ', sex,
                   '<br>Ethnicity: ', ethnicity,
                   '<br>Disease class: ', disease_class,
@@ -135,7 +148,7 @@ pca_qc %>%
 ```{r removed in PCA qc}
 loadd(removed_outliers)
 if (length(removed_outliers) > 0) {
-  filter(md, sample_name %in% removed_outliers) %>%
+  filter(final_md, sample_name %in% removed_outliers) %>%
   kable(caption = "Removing the following samples:") %>%
   kable_styling(
     bootstrap_options = c("striped", "hover", "condensed", "responsive"),
@@ -159,56 +172,53 @@ pheatmap(sampleDistMatrix,
 # Data quality
 
 ## MA-plot
+```{r}
+loadd(res)
+```
 
 This MA plot is of shrunken log2 fold changes (using the *apeglm* package), in which actual fold changes are adjusted to compensate for the high variablity of genes with few counts.
 
 Dots in red indicate a significant expression difference between Control and SLE.
+
 ```{r MA plot, echo=FALSE}
-loadd(res)
-l <- htmltools::tagList()
 for(m in seq_along(res)){
-  #plotMA(res[[m]], ylim = c(-6,6), main = names(res)[[m]])
-  l[[m]] <- res[[m]] %>%
-  as_tibble(rownames = "gene") %>%
-  mutate(
-    sig = case_when(
-      padj < 0.05 ~ "Significant",
-      padj >= 0.05 ~ "Not significant",
-      is.na(padj) ~ "Not significant"
-      ) %>% as_factor(),
-  ) %>%
-  filter(log2FoldChange >= 0.00001 | log2FoldChange <= -0.00001) %>%
-  plot_ly(
-    mode = "markers",
-    x = ~baseMean,
-    y = ~log2FoldChange,
-    colors = c("grey30","red")
-    ) %>%
-    add_markers(
-      color = ~sig,
+  p <-
+    res[[m]] %>%
+    as_tibble(rownames = "gene") %>%
+    mutate(
+      sig = case_when(
+        padj < 0.05 ~ "Significant",
+        padj >= 0.05 ~ "Not significant",
+        is.na(padj) ~ "Not significant"
+        ) %>% as_factor(),
+      ) %>%
+    filter(
+      log2FoldChange >= 0.00001 | log2FoldChange <= -0.00001
+      ) %>%
+    ggplot(
+      aes(
+        x = baseMean,
+        y = log2FoldChange,
+        color = sig
+        )
+      ) +
+    scale_color_manual(
+      values = c(`Not significant` = "grey30", Significant = "red"),
+      guide = guide_legend(title = "")) +
+    geom_point(
       alpha = 0.75,
-      text = ~paste('<br>Gene: ', gene,
-                    '<br>LFC: ', signif(log2FoldChange, digits = 2),
-                    '<br>p adjusted: ', scientific(padj, digits = 2)),
-      hovertemplate = "%{text}",
-      type = "scattergl",
-      marker = list(size = 7.5,
-                    line = list(color = 'rgba(0, 0, 0, .8)',
-                                width = 1
-                                )
-                    )
-    ) %>%
-    layout(xaxis = list(type = "log"))
+      size = 1
+      ) +
+    scale_x_log10() +
+    labs(title = names(res)[[m]])
+  print(p)
 }
-l
-#plotMA(res[[1]], ylim = c(-4,4))
 ```
 
 ## Dispersion estimates
 ```{r dispersion}
 loadd(disp_plot)
 disp_plot
-rm(disp_plot)
 ```
 
 ## Surrogate Variable Analysis
