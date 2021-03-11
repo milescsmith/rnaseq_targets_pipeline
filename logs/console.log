@@ -1,0 +1,40 @@
+orcus  3442  20210308 164238.307036 0600 GMT    begin drake_config
+orcus  3442  20210308 164238.483503 0600 GMT    cache homerstudiooldworkspaceanalysisrnaseqcovid.drake
+orcus  3442  20210308 164238.485536 0600 GMT    analyze environment
+orcus  3442  20210308 164238.751917 0600 GMT    analyze imports
+orcus  3442  20210308 164238.798039 0600 GMT    get knitr hash
+orcus  3442  20210308 164239.050641 0600 GMT    analyze commands
+orcus  3442  20210308 164239.168931 0600 GMT    set knitr files
+orcus  3442  20210308 164239.178385 0600 GMT    create graph edges
+orcus  3442  20210308 164239.187428 0600 GMT    connect output files
+orcus  3442  20210308 164239.188153 0600 GMT  file data_outputlog_fold_changes.csv  file_out
+orcus  3442  20210308 164239.189672 0600 GMT  file data_outputwgcna_genes.csv  file_out
+orcus  3442  20210308 164239.190318 0600 GMT  file data_outputfor_shiny_vis.RData  file_out
+orcus  3442  20210308 164239.190950 0600 GMT  file data_outputfiltered_metadata.csv  file_out
+orcus  3442  20210308 164239.191562 0600 GMT  file report_outputreport.html  file_out
+orcus  3442  20210308 164239.192169 0600 GMT  file data_outputmodule_scores.csv  file_out
+orcus  3442  20210308 164239.192790 0600 GMT  file data_outputwgcna_eigengene_scores.csv  file_out
+orcus  3442  20210308 164239.193397 0600 GMT  file data_outputfiltered_normalized_stabilized_expression.csv  file_out
+orcus  3442  20210308 164239.194017 0600 GMT  file data_outputfiltered_transcript_counts.csv  file_out
+orcus  3442  20210308 164239.194641 0600 GMT  file report_outputqc_report.html  file_out
+orcus  3442  20210308 164239.198145 0600 GMT    finalize graph edges
+orcus  3442  20210308 164239.198633 0600 GMT    create igraph
+orcus  3442  20210308 164239.303012 0600 GMT    trim neighborhoods
+orcus  3442  20210308 164239.310223 0600 GMT    add igraph attributes
+orcus  3442  20210308 164239.311631 0600 GMT    finalize igraph
+orcus  3442  20210308 164239.370576 0600 GMT    end drake_config
+orcus  3442  20210308 164239.371181 0600 GMT    begin make
+orcus  3442  20210308 164239.505383 0600 GMT  file analysis_filesreport.rmd  missing missing
+orcus  3442  20210308 164239.510312 0600 GMT  file analysis_filesqc_report.rmd  missing missing
+orcus  3442  20210308 164239.517933 0600 GMT    isolate oudated targets
+orcus  3442  20210308 164239.521386 0600 GMT    construct priority queue
+orcus  3442  20210308 164239.531192 0600 GMT  report  trigger missing
+orcus  3442  20210308 164239.533446 0600 GMT  report  target
+orcus  3442  20210308 164239.533913 0600 GMT  report  build on an hpc worker
+orcus  3442  20210308 164246.712180 0600 GMT  qc_report  trigger missing
+orcus  3442  20210308 164246.713270 0600 GMT  qc_report  target
+orcus  3442  20210308 164246.713719 0600 GMT  qc_report  build on an hpc worker
+orcus  3522  20210308 164257.755151 0600 GMT  report  Loading required package shiny
+orcus  3522  20210308 164257.865812 0600 GMT  report  Listening on http127.0.0.13091
+orcus  3558  20210308 164306.860195 0600 GMT  qc_report  Loading required package shiny
+orcus  3558  20210308 164306.899295 0600 GMT  qc_report  Listening on http127.0.0.17855

@@ -293,8 +293,15 @@ calc_sva <- function(dds, model_design = NULL, n.sva = NULL){
 
   n.sva <- n.sva %||% 2
 
-  dat <- counts(dds, normalized = TRUE) %>%
-    purrr::keep(.p = ~ rowMeans(.x) > 1)
+  dat <-
+    counts(
+      dds,
+      normalized = TRUE
+      )
+
+  non_zero_genes = which(rowMeans2(dat) > 1)
+
+  filtered_dat = dat[non_zero_genes, ]
 
   model_design <-
     as.formula(
@@ -309,7 +316,7 @@ calc_sva <- function(dds, model_design = NULL, n.sva = NULL){
 
   mod0 <- model.matrix(~ 1, colData(dds))
 
-  svseq <- svaseq(dat, mod, mod0, n.sv = n.sva)
+  svseq <- svaseq(filtered_dat, mod, mod0, n.sv = n.sva)
 
   colnames(svseq$sv) <- paste0("SV", seq(ncol(svseq$sv)))
 
@@ -337,6 +344,7 @@ calc_sva <- function(dds, model_design = NULL, n.sva = NULL){
 
 plot_sva <- function(sva_graph_data){
   sva_graph_data %>%
+    pluck("sv") %>%
     as_tibble(rownames = "sample_name") %>%
     select(
       sample_name,
@@ -505,9 +513,82 @@ score_modules <- function(res, modules){
     inner_join(gene_module_tbl) %>%
     filter(padj < 0.05) %>%
     group_by(module) %>%
-    summarise(percent_pos = sum(log2FoldChange > 0) / n(),
-              percent_neg = sum(log2FoldChange < 0) / n(),
-              percent_diff = percent_pos - percent_neg) %>%
-    dplyr::select(module, percent_diff) %>%
+    summarise(
+      percent_pos = sum(log2FoldChange > 0) / n(),
+      percent_neg = sum(log2FoldChange < 0) / n(),
+      percent_diff = percent_pos - percent_neg
+    ) %>%
+    dplyr::select(
+      module,
+      percent_diff
+      ) %>%
     rename({{compare_class}} := percent_diff)
+}
+
+plot_scale_independence <- function(fitIndices){
+  g <- ggplot(
+    data = fitIndices,
+    mapping = aes(
+      x = Power,
+      y = -sign(slope) * SFT.R.sq
+    )
+  ) +
+    geom_text(
+      mapping = aes(
+        label = Power,
+        color = "Red"
+      )
+    ) +
+    labs(
+      x = "Soft Threshold (power)",
+      y = "Scale Free Topology Model Fit, signed R^2",
+      title = "Scale independence"
+    ) +
+    geom_hline(
+      aes(
+        yintercept = 0.8,
+        color = "Red"
+        )
+      ) +
+    theme(legend.position = "none") +
+    theme_pubr()
+
+  g
+}
+
+plot_connectivity <- function(fitIndices){
+  mean.connect <-
+    ggplot(
+      data = sft$fitIndices,
+      mapping = aes(
+        x = Power,
+        y = mean.k.
+        )
+      ) +
+    geom_text(
+      mapping = aes(
+        label = Power,
+        color = "Red"
+        )
+      ) +
+    labs(
+      x = "Soft Threshold (power)",
+      y = "Mean Connectivity",
+      title = "Mean Connectivity"
+      ) +
+    theme(legend.position = "none") +
+    theme_pubr()
+
+    mean.connect
+}
+
+find_softPower <- function(sft){
+  if (is.na(sft$powerEstimate)){
+    scale_free_topo_fit <- -sign(sft$fitIndices$slope) * sft$fitIndices$SFT.R.sq
+    powerEstimate <- which(scale_free_topo_fit == max(scale_free_topo_fit))
+  } else {
+    powerEstimate <- sft$powerEstimate
+  }
+
+  powerEstimate
 }
