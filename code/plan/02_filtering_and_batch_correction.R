@@ -1,17 +1,17 @@
-corrected_counts =
-  ComBat_seq(
-    counts = counts(dds_import),
-    batch = fct_drop(colData(dds_import)[[batch_variable]]),
-    group = colData(dds_import)[[comparison_grouping_variable]]
-  ) %>%
-  `storage.mode<-`("integer")
-
-dds_import_combat =
-  DESeqDataSetFromMatrix(
-    countData = corrected_counts,
-    colData = colData(dds_import),
-    design = study_design
-  )
+# corrected_counts =
+#   ComBat_seq(
+#     counts = counts(dds_import),
+#     batch = fct_drop(colData(dds_import)[[batch_variable]]),
+#     group = colData(dds_import)[[comparison_grouping_variable]]
+#   ) %>%
+#   `storage.mode<-`("integer")
+#
+# dds_import_combat =
+#   DESeqDataSetFromMatrix(
+#     countData = corrected_counts,
+#     colData = colData(dds_import),
+#     design = study_design
+#   )
 
 dds_filtered =
   dds_import %>%
@@ -48,5 +48,5 @@ dds =
   )
 
 sva_res = calc_sva(dds = dds, model_design = comparison_grouping_variable, n.sva = num_sva)
-dds_processed = dds
+dds_processed = sva_res$dds
 sva_graph_data = sva_res$sva

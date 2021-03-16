@@ -407,10 +407,10 @@ grouped_add_xy_positions <- function(stats_tbl,
   tbl_with_positions <- map_dfr(unique_groups, function(x){
     stats_subset <- stats_tbl %>% filter({{group_var}} == x) %>% add_x_position()
 
-    stats_subset <- if ("p.adj" %in% names(stats_subset)){
-      stats_subset %>% filter(p.adj <= cutoff)
+    if ("p.adj" %in% names(stats_subset)){
+      stats_subset <- stats_subset %>% filter(p.adj <= cutoff)
     } else {
-      stats_subset %>% filter(p <= cutoff)
+      stats_subset <- stats_subset %>% filter(p <= cutoff)
     }
 
     min_max_subset <- data_min_max %>% filter({{group_var}} == x)
@@ -420,7 +420,9 @@ grouped_add_xy_positions <- function(stats_tbl,
           from = min_max_subset[['max']],
           by = min_max_subset[['step']],
           to = min_max_subset[['max']] + nrow(stats_subset)*min_max_subset[['step']])
-      stats_subset[['y.position']] <- positions[2:length(positions)]
+      stats_subset[['y.position']] <- positions[2:length(positions)] * 0.9
+    } else {
+      stats_subset[["y.position"]] <- (min_max_subset[["max"]] + nrow(stats_subset)*min_max_subset[['step']]) * 0.9
     }
     stats_subset
   })

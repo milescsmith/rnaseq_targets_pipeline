@@ -17,6 +17,11 @@ output:
     toc: TRUE
     toc_depth: 3
     toc_float: TRUE
+  pdf_document:
+    highlight: "pygments"
+    toc: TRUE
+    toc_depth: 3
+always_allow_html: true
 ---
 
 ```{css, echo=FALSE}
@@ -36,10 +41,11 @@ output:
 
 ```{r setup, include=FALSE}
 options(width = 1200)
-knitr::opts_chunk$set(echo = FALSE)
-theme_set(theme_cowplot())
+knitr::opts_chunk$set(echo = FALSE, root.dir = here(), warning = FALSE, message = FALSE)
+theme_set(theme_pubr())
 ```
 
+\newpage
 
 # Data processing of RNAseq data
 
@@ -223,11 +229,11 @@ disp_plot
 
 ## Surrogate Variable Analysis
 
-Surrogate variables are unknown, unmodeled, or latent sources of noise hidden in the data.  The `sva` package was used to estimate the first two surrogate variables which were then introduced into the DESeq design formula to control for their effects.
+Surrogate variables are unknown, unmodeled, or latent sources of noise hidden in the data.  The `sva` package was used to estimate the first `r num_sva` surrogate variables which were then introduced into the DESeq design formula to control for their effects.
 
 ```{r sva}
-loadd(dds_with_scores)
-plot_sva(colData(dds_with_scores))
+loadd(dds_with_scores, sva_graph_data)
+plot_sva(sva_graph_data = sva_graph_data)
 ```
 
 ## K-means clustering optimization
@@ -290,7 +296,7 @@ t(vsd_exprs)[,c(sex_specific_genes[['symbol']])] %>%
     angle=315)
 ```
 
-These appear to be correct.
+These all appear to be correct.
 
 ```{r}
 sessioninfo::session_info()

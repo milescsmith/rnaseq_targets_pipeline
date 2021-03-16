@@ -54,7 +54,7 @@ study_metadata =
       )
     ) %>%
   distinct() %>%
-  mutate(run_id = "S4_011_1")
+  mutate(run_id = factor("S4_011_1"))
 
 non_project_controls =
   read_excel(
@@ -76,14 +76,16 @@ non_project_controls =
     ethnicity = race_code,
     visit_ref,
     subject_ref,
-    age
+    age,
+    run_id
     ) %>%
   mutate(
     across(
       .cols =
         c(
           sex,
-          ethnicity
+          ethnicity,
+          run_id
         ),
       .fns = as_factor
       ),
@@ -139,6 +141,7 @@ tx_files =
 final_md = filter(
   .data = md,
   sample_name %in% names(tx_files),
+  sample_name %nin% samples_to_manually_remove,
   str_detect(
     string = sample_name,
     pattern = "_2$",
