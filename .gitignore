@@ -11,3 +11,5 @@ results/*.csv
 results/*.RData
 *._*
 .drake/
+*.png
+*.pdf
