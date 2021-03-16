@@ -41,19 +41,6 @@ annotated_module_stats_by_cluster =
     compare_value   = score
   )
 
-# annotated_module_stats_by_cell_type =
-#   annotated_module_scores_pivot %>%
-#   group_by(module) %>%
-#   wilcox_test(
-#     score ~ cell_type,
-#     p.adjust.method = "BH"
-#   ) %>%
-#   grouped_add_xy_positions(
-#     stats_tbl = .,
-#     data_tbl = annotated_module_scores_pivot,
-#     group_var = module,
-#     compare_value = score
-#   )
 
 annotated_module_stats_by_disease =
   annotated_module_scores_pivot %>%

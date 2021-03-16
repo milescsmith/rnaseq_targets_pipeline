@@ -1,4 +1,4 @@
-reticulate::use_condaenv('reticulate', required = TRUE, conda = "~/conda/bin/conda")
+#reticulate::use_condaenv('reticulate', required = TRUE, conda = "~/conda/bin/conda")
 library(caret)
 library(cluster)
 library(clusterProfiler)

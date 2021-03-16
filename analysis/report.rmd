@@ -41,7 +41,7 @@ theme_set(theme_pubr())
 ```
 
 ```{r}
-loadd(dds_with_scores, res)
+tar_read(dds_with_scores, res)
 ```
 
 ```{r disease_class_table}
@@ -97,7 +97,7 @@ res %>%
 
 ## 25 genes with largest negative log-fold change in experimental group {.tabset .tabset-fade .tabset-pills}
 ```{r 25_top_down_DE, echo = FALSE}
-loadd(down_tables)
+tar_read(down_tables)
 ```
 
 ```{r 25_top_down_DE_tbl, echo = FALSE}
@@ -147,7 +147,7 @@ for (i in seq_along(down_tables)){
 
 ## 25 genes with largest positive log-fold change in experimental group {.tabset .tabset-fade .tabset-pills}
 ```{r 25_top_up_DE, echo = FALSE}
-loadd(up_tables)
+tar_read(up_tables)
 ```
 
 ```{r 25_top_up_DE_tbl, echo = FALSE}
@@ -198,7 +198,7 @@ for (j in seq_along(up_tables)){
 ## Expression of top class DE genes by class {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
-loadd(deg_class, final_md, vsd_exprs, annotation_info, group_pal, up_tables, down_tables)
+tar_read(deg_class, final_md, vsd_exprs, annotation_info, group_pal, up_tables, down_tables)
 ```
 
 ### Sorted by disease classification
@@ -378,7 +378,7 @@ for (i in comparison_names){
 
 ## Expression of all top DE genes {.tabset .tabset-fade .tabset-pills}
 ```{r}
-loadd(deg_means)
+tar_read(deg_means)
 ```
 
 ```{r Expression_of_all_top_DE_genes, fig.width=12, fig.height=9}
@@ -592,7 +592,7 @@ for(k in seq_along(res)){
 
 ## Expression of selected interferon-stimulated genes {.tabset .tabset-fade .tabset-pills}
 ```{r Expression_of_selected_interferon-stimulated genes, fig.height=6, fig.width=9}
-loadd(ISGs)
+tar_read(ISGs)
 ```
 
 ### Sorted by disease classification
@@ -656,7 +656,7 @@ t(vsd_exprs)[,ISGs] %>%
 
 ## Expression of individual genes in the M1.2, M3.4, and M5.12 gene modules {.tabset .tabset-fade .tabset-pills}
 ```{r Expression_of_individual_genes_in_the_M1.2, M3.4, and M5.12 gene modules, fig.height=6, fig.width=9}
-loadd(module_ISGs)
+tar_read(module_ISGs)
 ```
 
 ### Sorted by disease classification
@@ -766,7 +766,7 @@ annotation_info %>%
 ## PCA {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
-loadd(pca_results)
+tar_read(pca_results)
 ```
 
 
@@ -1041,7 +1041,7 @@ pca_results %>%
 ## UMAP {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
-loadd(umap_results)
+tar_read(umap_results)
 ```
 
 
@@ -1287,7 +1287,7 @@ umap_results %>%
 
 ## SLE Interferon module scores {.tabset .tabset-fade .tabset-pills}
 ```{r SLE_Interferon_module_scores}
-loadd(module_scores_with_viral, ifn_modules)
+tar_read(module_scores_with_viral, ifn_modules)
 ```
 
 ### Sorted by disease classification
@@ -1356,7 +1356,7 @@ module_scores_with_viral %>%
 
 ## SLE Inflammatory module scores {.tabset .tabset-fade .tabset-pills}
 ```{r SLE_Inflammatory_module_scores, fig.height=9, fig.width=6}
-loadd(inflame_modules)
+tar_read(inflame_modules)
 ```
 
 ### Sorted by disease classification
@@ -1492,7 +1492,7 @@ module_scores_with_viral %>%
 
 ## SLE Modules with an annotated associated pathway {.tabset .tabset-fade .tabset-pills}
 ```{r}
-loadd(annotated_modules, annotated_mod_list)
+tar_read(annotated_modules, annotated_mod_list)
 ```
 
 
@@ -1667,7 +1667,7 @@ module_scores_with_viral %>%
 
 ## All SLE modules {.tabset .tabset-fade .tabset-pills}
 ```{r All_SLE_modules, fig.height=9, fig.width=11}
-loadd(module_annotation)
+tar_read(module_annotation)
 range_bound = 3
 zscore_range <- c(-range_bound:range_bound)
 ```
@@ -1759,7 +1759,7 @@ module_scores_with_viral %>%
 
 ## Expression of the annotated Banchereau modules {.tabset .tabset-fade .tabset-pills}
 ```{r}
-loadd(
+tar_read(
   module_scores_with_viral,
   annotated_module_scores,
   annotated_module_scores_pivot,
@@ -1874,7 +1874,7 @@ for(i in seq(number_of_pages)){
 
 # WGCNA
 ```{r include=FALSE}
-loadd(wgcna_modules)
+tar_read(wgcna_modules)
 ```
 
 ## Expression similarity dendrogram
@@ -1891,7 +1891,7 @@ plotDendroAndColors(dendro = wgcna_modules$dendrograms[[1]],
 
 ## Expression of identified modules {.tabset .tabset-fade .tabset-pills}
 ```{r include=FALSE}
-loadd(
+tar_read(
   module_scores_with_viral_by_cluster,
   module_scores_with_viral_by_cluster_stats,
   module_scores_with_viral_by_disease, 
@@ -2088,7 +2088,7 @@ module_scores_with_viral %>%
 
 ## Gene ontology GSEA of WGCNA modules
 ```{r wgcna_gsea, fig.height=11, fig.width=12}
-loadd(MEplotting)
+tar_read(MEplotting)
 
 for(i in 1:ceiling(length(unique(MEplotting$module))/6)){
     
@@ -2131,7 +2131,7 @@ The model was trained with 75% of the dataset and tested on 25%.
 Note: Subjects with LP were excluded due to the small population size.
 
 ```{r wgcna_cluster_confusion}
-loadd(wgcna_cluster_rf_cv, wgcna_cluster_test)
+tar_read(wgcna_cluster_rf_cv, wgcna_cluster_test)
 
 caret::confusionMatrix(
   data = predict(wgcna_cluster_rf_cv, wgcna_cluster_test),
@@ -2142,7 +2142,7 @@ caret::confusionMatrix(
 The relative importance of each eigengene in classification:
 
 ```{r wgcna_cluster_importance}
-loadd(wgcna_cluster_rf_cv_varImp)
+tar_read(wgcna_cluster_rf_cv_varImp)
 
 wgcna_cluster_rf_cv_varImp
 ```
@@ -2154,7 +2154,7 @@ The module eigengene scores were used to train a random forest model with repeat
 The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r wgcna_disease_confusion}
-loadd(wgcna_disease_class_rf_cv, wgcna_disease_class_test)
+tar_read(wgcna_disease_class_rf_cv, wgcna_disease_class_test)
 
 caret::confusionMatrix(
   data = predict(wgcna_disease_class_rf_cv, wgcna_disease_class_test),
@@ -2165,7 +2165,7 @@ caret::confusionMatrix(
 The relative importance of each eigengene in classification:
 
 ```{r wgcna_disease_importance}
-loadd(wgcna_disease_class_rf_cv_varImp)
+tar_read(wgcna_disease_class_rf_cv_varImp)
 
 wgcna_disease_class_rf_cv_varImp
 ```
@@ -2177,7 +2177,7 @@ The module eigengene scores were used to train a random forest model with repeat
 The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r Banchereau_cluster_confusion}
-loadd(module_cluster_rf_cv, module_cluster_test)
+tar_read(module_cluster_rf_cv, module_cluster_test)
 
 caret::confusionMatrix(
   data = predict(module_cluster_rf_cv, module_cluster_test),
@@ -2188,7 +2188,7 @@ caret::confusionMatrix(
 The relative importance of each eigengene in classification:
 
 ```{r Banchereau_cluster_importance}
-loadd(module_cluster_rf_cv_varImp)
+tar_read(module_cluster_rf_cv_varImp)
 
 module_cluster_rf_cv_varImp
 ```
@@ -2200,7 +2200,7 @@ The module eigengene scores were used to train a random forest model with repeat
 The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r Banchereau_disease_confusion}
-loadd(module_disease_class_rf_cv, module_disease_class_test)
+tar_read(module_disease_class_rf_cv, module_disease_class_test)
 
 caret::confusionMatrix(
   data = predict(module_disease_class_rf_cv, module_disease_class_test),
@@ -2211,7 +2211,7 @@ caret::confusionMatrix(
 The relative importance of each eigengene in classification:
 
 ```{r Banchereau_disease_importance}
-loadd(module_disease_class_rf_cv_varImp)
+tar_read(module_disease_class_rf_cv_varImp)
 
 module_disease_class_rf_cv_varImp
 ```

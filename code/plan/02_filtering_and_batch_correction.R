@@ -48,5 +48,5 @@ dds =
   )
 
 sva_res = calc_sva(dds = dds, model_design = comparison_grouping_variable, n.sva = num_sva)
-dds_processed = dds
+dds_processed = sva_res$dds
 sva_graph_data = sva_res$sva

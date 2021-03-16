@@ -158,8 +158,8 @@ if (length(removed_outliers) > 0) {
 
 ### Overall correlation between samples
 ```{r overall correlation, fig.width=12, fig.height=9}
-loadd(sampleDistMatrix, sample_dists, annotation_info, group_pal)
-pheatmap(sampleDistMatrix,
+loadd(sample_dists, annotation_info, group_pal)
+pheatmap(as.matrix(sample_dists),
          clustering_distance_rows = sample_dists,
          clustering_distance_cols = sample_dists, 
          annotation_row = annotation_info,
