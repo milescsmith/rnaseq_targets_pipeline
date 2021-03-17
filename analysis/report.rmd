@@ -41,7 +41,8 @@ theme_set(theme_pubr())
 ```
 
 ```{r}
-tar_read(dds_with_scores, res)
+tar_read(dds_with_scores)
+tar_read(res)
 ```
 
 ```{r disease_class_table}
@@ -198,7 +199,13 @@ for (j in seq_along(up_tables)){
 ## Expression of top class DE genes by class {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
-tar_read(deg_class, final_md, vsd_exprs, annotation_info, group_pal, up_tables, down_tables)
+tar_read(deg_class)
+tar_read(final_md)
+tar_read(vsd_exprs)
+tar_read(annotation_info)
+tar_read(group_pal)
+tar_read(up_tables)
+tar_read(down_tables)
 ```
 
 ### Sorted by disease classification
@@ -1287,7 +1294,8 @@ umap_results %>%
 
 ## SLE Interferon module scores {.tabset .tabset-fade .tabset-pills}
 ```{r SLE_Interferon_module_scores}
-tar_read(module_scores_with_viral, ifn_modules)
+tar_read(module_scores_with_viral)
+tar_read(ifn_modules)
 ```
 
 ### Sorted by disease classification
@@ -1492,7 +1500,8 @@ module_scores_with_viral %>%
 
 ## SLE Modules with an annotated associated pathway {.tabset .tabset-fade .tabset-pills}
 ```{r}
-tar_read(annotated_modules, annotated_mod_list)
+tar_read(annotated_modules)
+tar_read(annotated_mod_list)
 ```
 
 
@@ -1759,13 +1768,11 @@ module_scores_with_viral %>%
 
 ## Expression of the annotated Banchereau modules {.tabset .tabset-fade .tabset-pills}
 ```{r}
-tar_read(
-  module_scores_with_viral,
-  annotated_module_scores,
-  annotated_module_scores_pivot,
-  annotated_module_stats_by_cluster,
-  annotated_module_stats_by_disease
-  )
+tar_read(module_scores_with_viral)
+tar_read(annotated_module_scores)
+tar_read(annotated_module_scores_pivot)
+tar_read(annotated_module_stats_by_cluster)
+tar_read(annotated_module_stats_by_disease)
 
 number_of_modules <-
   ncol(annotated_module_scores) - 1
@@ -1891,12 +1898,10 @@ plotDendroAndColors(dendro = wgcna_modules$dendrograms[[1]],
 
 ## Expression of identified modules {.tabset .tabset-fade .tabset-pills}
 ```{r include=FALSE}
-tar_read(
-  module_scores_with_viral_by_cluster,
-  module_scores_with_viral_by_cluster_stats,
-  module_scores_with_viral_by_disease, 
-  module_scores_with_viral_by_disease_stats
-)
+tar_read(module_scores_with_viral_by_cluster)
+tar_read(module_scores_with_viral_by_cluster_stats)
+tar_read(module_scores_with_viral_by_disease)
+tar_read(module_scores_with_viral_by_disease_stats)
 
 number_of_modules <-
   module_scores_with_viral %>%
@@ -2131,7 +2136,8 @@ The model was trained with 75% of the dataset and tested on 25%.
 Note: Subjects with LP were excluded due to the small population size.
 
 ```{r wgcna_cluster_confusion}
-tar_read(wgcna_cluster_rf_cv, wgcna_cluster_test)
+tar_read(wgcna_cluster_rf_cv)
+tar_read(wgcna_cluster_test)
 
 caret::confusionMatrix(
   data = predict(wgcna_cluster_rf_cv, wgcna_cluster_test),
@@ -2154,7 +2160,8 @@ The module eigengene scores were used to train a random forest model with repeat
 The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r wgcna_disease_confusion}
-tar_read(wgcna_disease_class_rf_cv, wgcna_disease_class_test)
+tar_read(wgcna_disease_class_rf_cv)
+tar_read(wgcna_disease_class_test)
 
 caret::confusionMatrix(
   data = predict(wgcna_disease_class_rf_cv, wgcna_disease_class_test),
@@ -2177,7 +2184,8 @@ The module eigengene scores were used to train a random forest model with repeat
 The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r Banchereau_cluster_confusion}
-tar_read(module_cluster_rf_cv, module_cluster_test)
+tar_read(module_cluster_rf_cv)
+tar_read(module_cluster_test)
 
 caret::confusionMatrix(
   data = predict(module_cluster_rf_cv, module_cluster_test),
@@ -2200,7 +2208,8 @@ The module eigengene scores were used to train a random forest model with repeat
 The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r Banchereau_disease_confusion}
-tar_read(module_disease_class_rf_cv, module_disease_class_test)
+tar_read(module_disease_class_rf_cv)
+tar_read(module_disease_class_test)
 
 caret::confusionMatrix(
   data = predict(module_disease_class_rf_cv, module_disease_class_test),

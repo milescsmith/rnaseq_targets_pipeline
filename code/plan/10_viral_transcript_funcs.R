@@ -1,6 +1,6 @@
-load_gene_annotations <- function(){
+gene_annotations <- function(){
   # generated from rtracklayer::readGFF()
-  load(file="references/gencode_v32_virus_tx2gene_v1.2.RData")
+  "references/gencode_v32_virus_tx2gene_v1.2.RData"
 }
 
 extract_viral_expression <- function(annotations, exprs, dds){
@@ -26,7 +26,7 @@ extract_viral_expression <- function(annotations, exprs, dds){
     pivot_longer(
       -sample_name,
       names_to = "transcript",
-      values_to = "counts"1
+      values_to = "counts"
     ) %>%
     group_by(transcript) %>%
     summarise(total_counts = sum(counts)) %>%

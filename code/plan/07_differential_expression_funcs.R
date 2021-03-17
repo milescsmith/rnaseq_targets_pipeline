@@ -100,7 +100,7 @@ create_upregulation_tables <- function(
     )
   ) %>%
   keep(~ nrow(.x) > 0)
-
+}
 
 extract_de_genes <- function(
   results,
@@ -159,21 +159,23 @@ calc_deg_means <- function(
 ){
   grouping_variable = enquo(grouping_variable)
 
-  deg_means =
+  deg_means <-
     exprs %>%
     t() %>%
     as_tibble(rownames = "name") %>%
     select(name, one_of(rownames(deg_class))) %>%
-    pivot_longer(-name,
-                names_to = "gene",
-                values_to = "expr") %>%
+    pivot_longer(
+      -name,
+      names_to = "gene",
+      values_to = "expr"
+    ) %>%
     left_join(
       metadata
     ) %>%
     group_by(
       gene,
       {{grouping_variable}}
-      ) %>%
+    ) %>%
     summarise(avg = mean(expr)) %>%
     pivot_wider(
       names_from = gene,
