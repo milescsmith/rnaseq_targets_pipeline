@@ -1,3 +1,6 @@
+library(tibble)
+library(forcats)
+
 module_annotation <-
   tibble(
     module = c(

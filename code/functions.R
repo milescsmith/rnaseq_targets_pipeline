@@ -434,38 +434,78 @@ drake_recode <- function(
 
 # An improved version of rstatix::add_y_position
 # doesn't take 30 minutes to run either
-grouped_add_xy_positions <- function(
-  stats_tbl,
-  data_tbl,
-  group_var,
-  compare_value,
-  cutoff = 0.05,
-  step_increase = 0.1
-){
+# grouped_add_xy_positions <- function(
+#   stats_tbl,
+#   data_tbl,
+#   group_var,
+#   compare_value,
+#   cutoff = 0.05,
+#   step_increase = 0.1
+# ){
+#
+#   unique_groups <-
+#     stats_tbl %>%
+#     pull({{group_var}}) %>%
+#     unique()
+#
+#   data_min_max <-
+#     data_tbl %>%
+#     select({{group_var}}, {{compare_value}}) %>%
+#     group_by({{group_var}}) %>%
+#     summarise(
+#       max = max({{compare_value}}),
+#       min = min({{compare_value}}),
+#       span = max-min,
+#       step = span * step_increase
+#     )
+#
+#   tbl_with_positions <- map_dfr(unique_groups, function(x){
+#     stats_subset <- stats_tbl %>% filter({{group_var}} == x) %>% add_x_position()
+#
+#     if ("p.adj" %in% names(stats_subset)){
+#       stats_subset %>% filter(p.adj <= cutoff)
+#     } else {
+#       stats_subset %>% filter(p <= cutoff)
+#     }
+#
+#     min_max_subset <- data_min_max %>% filter({{group_var}} == x)
+#     if (nrow(stats_subset) > 1){
+#       positions <-
+#         seq(
+#           from = min_max_subset[['max']],
+#           by = min_max_subset[['step']],
+#           to = min_max_subset[['max']] + nrow(stats_subset)*min_max_subset[['step']])
+#       stats_subset[['y.position']] <- positions[2:length(positions)]
+#     }
+#     stats_subset
+#   })
+#   return(tbl_with_positions)
+# }
+grouped_add_xy_positions <- function(stats_tbl,
+                                     data_tbl,
+                                     group_var,
+                                     compare_value,
+                                     cutoff = 0.05,
+                                     step_increase = 0.1){
 
-  unique_groups <-
-    stats_tbl %>%
-    pull({{group_var}}) %>%
-    unique()
+  unique_groups <- stats_tbl %>% pull({{group_var}}) %>% unique()
 
   data_min_max <-
     data_tbl %>%
     select({{group_var}}, {{compare_value}}) %>%
     group_by({{group_var}}) %>%
-    summarise(
-      max = max({{compare_value}}),
-      min = min({{compare_value}}),
-      span = max-min,
-      step = span * step_increase
-    )
+    summarise(max = max({{compare_value}}),
+              min = min({{compare_value}}),
+              span = max-min,
+              step = span * step_increase)
 
   tbl_with_positions <- map_dfr(unique_groups, function(x){
     stats_subset <- stats_tbl %>% filter({{group_var}} == x) %>% add_x_position()
 
-    stats_subset <- if ("p.adj" %in% names(stats_subset)){
-      stats_subset %>% filter(p.adj <= cutoff)
+    if ("p.adj" %in% names(stats_subset)){
+      stats_subset <- stats_subset %>% filter(p.adj <= cutoff)
     } else {
-      stats_subset %>% filter(p <= cutoff)
+      stats_subset <- stats_subset %>% filter(p <= cutoff)
     }
 
     min_max_subset <- data_min_max %>% filter({{group_var}} == x)
@@ -475,7 +515,9 @@ grouped_add_xy_positions <- function(
           from = min_max_subset[['max']],
           by = min_max_subset[['step']],
           to = min_max_subset[['max']] + nrow(stats_subset)*min_max_subset[['step']])
-      stats_subset[['y.position']] <- positions[2:length(positions)]
+      stats_subset[['y.position']] <- positions[2:length(positions)] * 0.8
+    } else {
+      stats_subset[["y.position"]] <- (min_max_subset[["max"]] + nrow(stats_subset)*min_max_subset[['step']]) * 0.8
     }
     stats_subset
   })

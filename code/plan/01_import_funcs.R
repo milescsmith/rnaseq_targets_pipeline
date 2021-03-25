@@ -20,16 +20,17 @@ import_metadata <- function(
         -study_group
       ) %>%
       rename(
-        sample_name = novaseq_sample_id,
+        sample_name = novaseq_exs_id,
         ethnicity = race_code,
         age = age_at_enroll
       ) %>%
       filter(
         !is.na(sample_name),
         project_group %in% (project_groups_to_include %||% unique(.data$project_group)),
-        project_group %nin% project_groups_to_exclude
+        !project_group %in% project_groups_to_exclude
       ) %>%
       mutate(
+        age = as.integer(age),
         disease_class =
           case_when(
             project_group == "PCV Control" ~ "control",
@@ -66,8 +67,8 @@ import_metadata <- function(
     if (!is.null(extra_controls_metadata_file)){
       non_project_controls =
         read_excel(
-          path = main_sample_list,
-          sheet = main_sample_sheet,
+          path = extra_controls_metadata_file,
+          sheet = extra_controls_metadata_sheet,
           .name_repair = janitor::make_clean_names
           ) %>%
         mutate(
@@ -84,9 +85,11 @@ import_metadata <- function(
           ethnicity = race_code,
           visit_ref,
           subject_ref,
-          age
+          age,
+          run_id
           ) %>%
         mutate(
+          age = as.integer(age),
           across(
             .cols =
               c(
@@ -106,26 +109,11 @@ import_metadata <- function(
   }
 
 
-import_counts <- function(seq_file_directory){
-  tx_sample_names <-
-    dir(
-      path = seq_file_directory,
-      pattern = "quant.sf.gz",
-      recursive = TRUE,
-      full.name = TRUE
-    ) %>%
-    grep(
-      pattern = "Undetermined|NONE",
-      invert = TRUE,
-      value = TRUE) %>%
-    str_split(pattern = "/") %>%
-    map_chr(~pluck(.x, length(.x)-1)) %>%
-    str_remove(pattern = '(_[L|S][[:digit:]]+)+') %>%
-    janitor::make_clean_names(case = "all_caps")
+import_counts <- function(directory, metadata){
 
   tx_files <-
     dir(
-      path = seq_file_directory,
+      path = directory,
       pattern = "quant.sf.gz",
       recursive = TRUE,
       full.name = TRUE
@@ -134,24 +122,31 @@ import_counts <- function(seq_file_directory){
       pattern = "Undetermined|NONE",
       invert = TRUE,
       value = TRUE
-    ) %>%
-    set_names(nm = tx_sample_names) %>%
-    purrr::discard(
-      .p =
-        is.na(
-          match(
-            names(.),
-            md[["sample_name"]]
-          )
-        )
     )
+
+  tx_sample_names <-
+    tx_files %>%
+    str_split(pattern = "/") %>%
+    map_chr(~pluck(.x, length(.x)-1)) %>%
+    str_remove(pattern = '(_[L|S][[:digit:]]+)+') %>%
+    janitor::make_clean_names(case = "all_caps")
+
+  names(tx_files) <- tx_sample_names
 
   tx_files
 }
 
-create_initial_deseq_dataset <- function(metadata, tx_files, study_design, comparison_group, control_group){
+create_final_md <- function(
+  md,
+  tx_files,
+  study_design,
+  comparison_group,
+  control_group,
+  annot
+  ){
+
   final_md <- filter(
-    .data = metadata,
+    .data = md,
     sample_name %in% names(tx_files),
     str_detect(
       string = sample_name,
@@ -160,32 +155,10 @@ create_initial_deseq_dataset <- function(metadata, tx_files, study_design, compa
       )
     ) %>%
     mutate(
-      {{comparison_group}} := as_factor({{comparison_group}}) %>% fct_relevel({{control_group}}),
+      {{comparison_group}} := as_factor({{comparison_group}}) %>%
+        fct_relevel(control_group),
     ) %>%
     column_to_rownames('sample_name')
 
-  # samples = target({
-  #   message("A count file was not found for the following selected samples:")
-  #   print(md$sample_name[(md$sample_name %nin% names(tx_files))])
-  pruned_samples <- tx_files[rownames(final_md)]
-  # ),
-
-  counts <-
-    tximport(
-      pruned_samples,
-      type = "salmon",
-      txIn = TRUE,
-      txOut = FALSE,
-      tx2gene = annot,
-      importer = fread
-    )
-
-  dds_import <-
-    DESeqDataSetFromTximport(
-      txi = counts,
-      colData = final_md,
-      design = study_design
-  )
-
-  dds_import
+  final_md
 }

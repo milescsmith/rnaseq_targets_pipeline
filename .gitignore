@@ -14,3 +14,4 @@ results/*.csv
 results/*.RData
 *._*
 .drake/
+_targets/

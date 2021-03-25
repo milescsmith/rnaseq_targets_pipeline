@@ -41,41 +41,115 @@ theme_set(theme_pubr())
 ```
 
 ```{r}
-tar_read(dds_with_scores)
-tar_read(res)
+tar_load(dds_with_scores)
+tar_load(res)
 ```
 
 ```{r disease_class_table}
 md <- colData(dds_with_scores) %>% as_tibble(rownames = "sample_name")
-md %>%
-  tabyl(disease_class) %>%
-  rename(`Disease classification` = disease_class,
-         Number = n,
-         Percent = percent) %>%
-  qflextable() %>%
-  set_formatter(
-    Percent = function(x) sprintf("%.01f", x*100)
-  )
+if (knitr::is_html_output()){
+  md %>%
+    tabyl(disease_class) %>%
+    adorn_pct_formatting(digits = 2) %>%
+    kable() %>%
+    kable_styling(
+      bootstrap_options =
+        c(
+          "striped",
+          "hover",
+          "condensed",
+          "responsive"
+          ),
+      full_width = FALSE
+      ) %>%
+    column_spec(
+      1,
+      bold = TRUE,
+      border_right = TRUE,
+      width = "10em"
+      ) %>%
+    column_spec(
+      2,
+      border_right = TRUE,
+      width = "10em"
+      ) %>%
+    column_spec(
+      3,
+      border_right = FALSE,
+      width = "10em"
+      )  
+} else if(knitr::is_latex_output()){
+  md %>%
+    tabyl(disease_class) %>%
+    rename(`Disease classification` = disease_class,
+           Number = n,
+           Percent = percent) %>%
+    qflextable() %>%
+    set_formatter(
+      Percent = function(x) sprintf("%.01f", x*100)
+    )
+}
+
 ```
 
 # Differential Gene Expression {.tabset .tabset-fade .tabset-pills}
 ```{r DE_table}
-res %>% 
-  map(alt_summary) %>%
-  enframe() %>%
-  unnest(cols = c(value)) %>%
-  mutate(
-    `up %` = round(100*(as.integer(up)/as.integer(total)),
-                   digits = 2),
-    `down %` = round(100*(as.integer(down)/as.integer(total)),
-                     digits = 2),
-    `low counts %` = round(100*(as.integer(lowcounts)/as.integer(total)),
-                           digits = 2),
-    name = str_replace_all(string = name, 
-                           pattern = "_",
-                           replacement = " ")
-    ) %>%
+results_tbl <-
+  res %>% 
+    map(alt_summary) %>%
+    enframe() %>%
+    unnest(cols = c(value)) %>%
+    mutate(
+      `up %` = round(
+        100*(as.integer(up)/as.integer(total)),
+        digits = 2
+        ),
+      `down %` = round(
+        100*(as.integer(down)/as.integer(total)),
+        digits = 2
+        ),
+      `low counts %` = round(
+        100*(as.integer(lowcounts)/as.integer(total)),
+        digits = 2
+        ),
+      name = str_replace_all(
+        string = name, 
+        pattern = "_",
+        replacement = " "
+        )
+    )
+
+if (is_html_output()){
   select(
+    .data = results_tbl,
+    comparison = name,
+    up,
+    `up %`,
+    down,
+    `down %`,
+    `mean count cutoff` = ft,
+    `low counts` = lowcounts,
+    `low counts %`
+  ) %>%
+  kable() %>%
+  kable_styling(
+    bootstrap_options =
+      c(
+        "striped",
+        "hover",
+        "condensed",
+        "responsive"
+        )
+    ) %>%
+  footnote(
+    paste(
+      alt_summary(res[[1]])$total,
+      "with nonzero total read count", "\nOutliers: ",
+      alt_summary(res[[1]])$outlier)
+    )
+} else if (is_latex_output()){
+  select(
+    .data = results_tbl,
     Comparison = name,
     `# Up\nregulated` = up,
     `% Up\nregulated` = `up %`,
@@ -92,20 +166,100 @@ res %>%
     `% Low\ncounts` = function(x) sprintf("%.02f", x)
   ) %>%
   bold(part = "header") %>%
-  # align(align = "center", part = "header", j = 2:8) %>%
-  align(align = "left", part = "body", j = 1)
+  align(
+    align = "left",
+    part = "body",
+    j = 1
+    )
+  }
 ```
 
 ## 25 genes with largest negative log-fold change in experimental group {.tabset .tabset-fade .tabset-pills}
 ```{r 25_top_down_DE, echo = FALSE}
-tar_read(down_tables)
+tar_load(down_tables)
 ```
 
-```{r 25_top_down_DE_tbl, echo = FALSE}
-for (i in seq_along(down_tables)){
+```{r 25_top_down_DE_tbl, echo = FALSE, results='asis'}
+if (is_html_output()){
+  for (i in seq_along(down_tables)){
+    dtbl <-
+      down_tables[[i]] %>%
+      select(-baseMean) %>%
+      filter(log2FoldChange > 0) %>%
+      arrange(desc(log2FoldChange)) %>%
+      mutate(
+        gene =
+          cell_spec(
+            x = gene,
+            bold = TRUE
+            ),
+        padj =
+          cell_spec(
+            x = padj,
+            color = "white",
+            bold = 
+              ifelse(
+                test = pvalue < 0.05,
+                yes = T,
+                no = F
+                ),
+            background = spec_color(padj)
+            ),
+        log2FoldChange = color_bar("tomato")(log2FoldChange)) %>%
+      ungroup() %>%
+      rename(
+        !!paste0(
+          "pvalue",
+          footnote_marker_symbol(1)
+          ) := pvalue,
+        !!paste0(
+          "padj",
+          footnote_marker_symbol(2)
+          ) := padj,
+        "lfc standard error" = lfcSE
+        ) %>%
+      kable(
+        escape = FALSE,
+        caption = 
+          paste0(
+            "<b>",
+            names(down_tables)[[i]],
+            ": downregulated in ",
+            str_split(
+              string = names(down_tables)[[i]],
+              pattern = "_vs_",
+              simplify = TRUE)[[1]],
+            "</b>"
+            )
+        ) %>%
+      kable_styling(
+        bootstrap_options = 
+          c(
+            "striped",
+            "hover",
+            "condensed",
+            "responsive"
+            ),
+        full_width = TRUE,
+        fixed_thead = TRUE) %>%
+      footnote(
+        symbol =
+          c(
+            "Wald test p-values",
+            "Benjamini–Hochberg adjusted value"
+            )
+        ) %>%
+      column_spec(
+        2,
+        color = "black"
+        )
+      print(dtbl)
+  }
+} else if (is_latex_output()){
+  for (i in seq_along(down_tables)){
   dtbl <-down_tables[[i]] %>%
-    dplyr::select(-baseMean) %>%
-    dplyr::filter(log2FoldChange > 0) %>%
+    select(-baseMean) %>%
+    filter(log2FoldChange > 0) %>%
     arrange(desc(log2FoldChange)) %>%
     ungroup() %>%
     rename(
@@ -120,7 +274,8 @@ for (i in seq_along(down_tables)){
         part = "header",
         value = 
           as_paragraph(
-            c("Wald test p-values",
+            c(
+              "Wald test p-values",
               "Benjamini–Hochberg adjusted value"
               )
             ),
@@ -144,68 +299,147 @@ for (i in seq_along(down_tables)){
 
   cat(knit_print(dtbl))
 }
+}
 ```
 
 ## 25 genes with largest positive log-fold change in experimental group {.tabset .tabset-fade .tabset-pills}
 ```{r 25_top_up_DE, echo = FALSE}
-tar_read(up_tables)
+tar_load(up_tables)
 ```
 
-```{r 25_top_up_DE_tbl, echo = FALSE}
-for (j in seq_along(up_tables)){
-  utbl <- up_tables[[j]] %>%
-    select(-baseMean) %>%
-    filter(log2FoldChange > 0) %>%
-    arrange(desc(log2FoldChange)) %>%
-    ungroup() %>%
-    rename(
-      Gene = gene,
-      `Log-fold change\nstandard error` = lfcSE,
-      `P-value` = pvalue,
-      `Adjusted\nP-value` = padj) %>%
-    qflextable() %>%
-      flextable::footnote(
-        i = 1,
-        j = 4:5,
-        part = "header",
-        value = 
-          as_paragraph(
-            c("Wald test p-values",
-              "Benjamini–Hochberg adjusted value"
-              )
+```{r 25_top_up_DE_tbl, echo = FALSE, results='asis'}
+if (is_html_output()){
+  for (j in seq_along(up_tables)){
+    utbl <-
+      up_tables[[j]] %>%
+      select(-baseMean) %>%
+      filter(log2FoldChange > 0) %>%
+      arrange(desc(log2FoldChange)) %>%
+      mutate(
+        gene =
+          cell_spec(
+            x          = gene,
+            bold       = TRUE
             ),
-        ref_symbols = c("*","†")
+        padj =
+          cell_spec(
+            x          = padj,
+            color      = "white",
+            bold       = ifelse(
+              test     = pvalue < 0.05,
+              yes      = T,
+              no       = F
+            ),
+            background = spec_color(padj)
+            ),
+        log2FoldChange = color_bar("lightgreen")(log2FoldChange)) %>%
+      ungroup() %>%
+      rename(
+        !!paste0(
+          "pvalue",
+          footnote_marker_symbol(1)
+          ) := pvalue,
+        !!paste0(
+          "padj",
+          footnote_marker_symbol(2)
+          ) := padj,
+        "lfc standard error" = lfcSE
         ) %>%
-    bold(part = "header") %>%
-    set_formatter(
-      log2FoldChange = function(x) sprintf("%.02g", x)
-    ) %>%
-    flextable::compose(
-      i = 1,
-      j = 2,
-      part = "header",
-      value = as_paragraph(
-        "Log",
-        as_sub("2"),
-        "-fold change"
+      kable(
+        escape = FALSE,
+        caption =
+          paste0(
+            "<b>",
+            names(up_tables)[[j]],
+            ": upregulated in ",
+            str_split(
+              string   = names(up_tables)[[j]],
+              pattern  = "_vs_",
+              simplify = TRUE
+              )[[1]],
+            "</b>"
+            )
+        ) %>%
+      kable_styling(
+        bootstrap_options =
+          c(
+            "striped",
+            "hover",
+            "condensed",
+            "responsive"
+            ),
+        full_width = TRUE,
+        fixed_thead = TRUE) %>%
+      footnote(
+        symbol =
+          c(
+            "Wald test p-values",
+            "Benjamini–Hochberg adjusted value"
+            )
+        ) %>%
+      column_spec(
+        column = 2,
+        color = "black"
         )
-      ) %>%
-    add_header_lines(values = names(up_tables)[[j]])
 
-  cat(knit_print(utbl))
+      print(utbl)
+  }
+} else if (is_latex_output()){
+  for (j in seq_along(up_tables)){
+    utbl <- up_tables[[j]] %>%
+      select(-baseMean) %>%
+      filter(log2FoldChange > 0) %>%
+      arrange(desc(log2FoldChange)) %>%
+      ungroup() %>%
+      rename(
+        Gene = gene,
+        `Log-fold change\nstandard error` = lfcSE,
+        `P-value` = pvalue,
+        `Adjusted\nP-value` = padj) %>%
+      qflextable() %>%
+        flextable::footnote(
+          i = 1,
+          j = 4:5,
+          part = "header",
+          value = 
+            as_paragraph(
+              c("Wald test p-values",
+                "Benjamini–Hochberg adjusted value"
+                )
+              ),
+          ref_symbols = c("*","†")
+          ) %>%
+      bold(part = "header") %>%
+      set_formatter(
+        log2FoldChange = function(x) sprintf("%.02g", x)
+      ) %>%
+      flextable::compose(
+        i = 1,
+        j = 2,
+        part = "header",
+        value = as_paragraph(
+          "Log",
+          as_sub("2"),
+          "-fold change"
+          )
+        ) %>%
+      add_header_lines(values = names(up_tables)[[j]])
+  
+    cat(knit_print(utbl))
+  }
   }
 ```
 
 ## Expression of top class DE genes by class {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
-tar_read(deg_class)
-tar_read(final_md)
-tar_read(vsd_exprs)
-tar_read(annotation_info)
-tar_read(group_pal)
-tar_read(up_tables)
-tar_read(down_tables)
+tar_load(deg_class)
+tar_load(final_md)
+tar_load(vsd_exprs)
+tar_load(annotation_info)
+tar_load(group_pal)
+tar_load(up_tables)
+tar_load(down_tables)
 ```
 
 ### Sorted by disease classification
@@ -385,7 +619,7 @@ for (i in comparison_names){
 
 ## Expression of all top DE genes {.tabset .tabset-fade .tabset-pills}
 ```{r}
-tar_read(deg_means)
+tar_load(deg_means)
 ```
 
 ```{r Expression_of_all_top_DE_genes, fig.width=12, fig.height=9}
@@ -599,7 +833,7 @@ for(k in seq_along(res)){
 
 ## Expression of selected interferon-stimulated genes {.tabset .tabset-fade .tabset-pills}
 ```{r Expression_of_selected_interferon-stimulated genes, fig.height=6, fig.width=9}
-tar_read(ISGs)
+tar_load(ISGs)
 ```
 
 ### Sorted by disease classification
@@ -663,7 +897,7 @@ t(vsd_exprs)[,ISGs] %>%
 
 ## Expression of individual genes in the M1.2, M3.4, and M5.12 gene modules {.tabset .tabset-fade .tabset-pills}
 ```{r Expression_of_individual_genes_in_the_M1.2, M3.4, and M5.12 gene modules, fig.height=6, fig.width=9}
-tar_read(module_ISGs)
+tar_load(module_ISGs)
 ```
 
 ### Sorted by disease classification
@@ -773,7 +1007,7 @@ annotation_info %>%
 ## PCA {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
-tar_read(pca_results)
+tar_load(pca_results)
 ```
 
 
@@ -975,31 +1209,31 @@ plot_grid(
 )
 ```
 
-### PCA by initial sample concentration
-```{r, fig.width=8, fig.height=6}
-ggplot(
-  data = pca_results,
-  mapping = aes(
-    x = PC1,
-    y = PC2,
-    fill = initial_concentration_ng_ul
-  )
-) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2.5,
-    stroke = 0.5,
-    alpha = 0.6
-  ) +
-  scale_fill_gradient2(
-    low = "blue",
-    mid = "grey90",
-    high = "red",
-    midpoint = 10
-    ) +
-  theme_pubr()
-```
+<!-- ### PCA by initial sample concentration -->
+<!-- ```{r, fig.width=8, fig.height=6} -->
+<!-- ggplot( -->
+<!--   data = pca_results, -->
+<!--   mapping = aes( -->
+<!--     x = PC1, -->
+<!--     y = PC2, -->
+<!--     fill = initial_concentration_ng_ul -->
+<!--   ) -->
+<!-- ) + -->
+<!--   geom_point( -->
+<!--     shape = 21, -->
+<!--     colour = "black", -->
+<!--     size = 2.5, -->
+<!--     stroke = 0.5, -->
+<!--     alpha = 0.6 -->
+<!--   ) + -->
+<!--   scale_fill_gradient2( -->
+<!--     low = "blue", -->
+<!--     mid = "grey90", -->
+<!--     high = "red", -->
+<!--     midpoint = 10 -->
+<!--     ) + -->
+<!--   theme_pubr() -->
+<!-- ``` -->
 
 ### PCA by K-means cluster
 ```{r PCA_by_K-means cluster, fig.width=7, fig.height=6}
@@ -1048,7 +1282,7 @@ pca_results %>%
 ## UMAP {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
-tar_read(umap_results)
+tar_load(umap_results)
 ```
 
 
@@ -1294,8 +1528,8 @@ umap_results %>%
 
 ## SLE Interferon module scores {.tabset .tabset-fade .tabset-pills}
 ```{r SLE_Interferon_module_scores}
-tar_read(module_scores_with_viral)
-tar_read(ifn_modules)
+tar_load(module_scores_with_viral)
+tar_load(ifn_modules)
 ```
 
 ### Sorted by disease classification
@@ -1364,7 +1598,7 @@ module_scores_with_viral %>%
 
 ## SLE Inflammatory module scores {.tabset .tabset-fade .tabset-pills}
 ```{r SLE_Inflammatory_module_scores, fig.height=9, fig.width=6}
-tar_read(inflame_modules)
+tar_load(inflame_modules)
 ```
 
 ### Sorted by disease classification
@@ -1433,6 +1667,7 @@ module_scores_with_viral %>%
 
 ## Low-density granulocyte module scores {.tabset .tabset-fade .tabset-pills}
 ```{r Low-density granulocyte module scores}
+tar_load(ldg_modules)
 range_bound = 3
 zscore_range <- c(-range_bound:range_bound)
 ```
@@ -1500,8 +1735,8 @@ module_scores_with_viral %>%
 
 ## SLE Modules with an annotated associated pathway {.tabset .tabset-fade .tabset-pills}
 ```{r}
-tar_read(annotated_modules)
-tar_read(annotated_mod_list)
+tar_load(annotated_modules)
+tar_load(annotated_mod_list)
 ```
 
 
@@ -1676,7 +1911,7 @@ module_scores_with_viral %>%
 
 ## All SLE modules {.tabset .tabset-fade .tabset-pills}
 ```{r All_SLE_modules, fig.height=9, fig.width=11}
-tar_read(module_annotation)
+tar_load(module_annotation)
 range_bound = 3
 zscore_range <- c(-range_bound:range_bound)
 ```
@@ -1768,11 +2003,11 @@ module_scores_with_viral %>%
 
 ## Expression of the annotated Banchereau modules {.tabset .tabset-fade .tabset-pills}
 ```{r}
-tar_read(module_scores_with_viral)
-tar_read(annotated_module_scores)
-tar_read(annotated_module_scores_pivot)
-tar_read(annotated_module_stats_by_cluster)
-tar_read(annotated_module_stats_by_disease)
+tar_load(module_scores_with_viral)
+tar_load(annotated_module_scores)
+tar_load(annotated_module_scores_pivot)
+tar_load(annotated_module_stats_by_cluster)
+tar_load(annotated_module_stats_by_disease)
 
 number_of_modules <-
   ncol(annotated_module_scores) - 1
@@ -1799,7 +2034,12 @@ annotated_module_disease_class_graphs <-
   scale_fill_paletteer_d("ggsci::uniform_startrek") +
   stat_pvalue_manual(
     data = annotated_module_stats_by_disease,
-    label = "p.adj.signif",
+    label = 
+      ifelse(
+        test = ("p.adj.signif" %in% annotated_module_stats_by_disease),
+        yes = "p.adj.signif",
+        no = "p"
+      ),
     hide.ns = TRUE,
     bracket.size = 0.1,
     tip.length = 0.01,
@@ -1846,7 +2086,12 @@ annotated_module_cluster_graphs <-
   scale_fill_paletteer_d("ggsci::uniform_startrek") +
   stat_pvalue_manual(
     data = annotated_module_stats_by_cluster,
-    label = "p.adj.signif",
+    label = 
+      ifelse(
+        test = ("p.adj.signif" %in% annotated_module_stats_by_cluster),
+        yes = "p.adj.signif",
+        no = "p"
+      ),
     hide.ns = TRUE,
     bracket.size = 0.1,
     tip.length = 0.01,
@@ -1881,7 +2126,7 @@ for(i in seq(number_of_pages)){
 
 # WGCNA
 ```{r include=FALSE}
-tar_read(wgcna_modules)
+tar_load(wgcna_modules)
 ```
 
 ## Expression similarity dendrogram
@@ -1898,10 +2143,10 @@ plotDendroAndColors(dendro = wgcna_modules$dendrograms[[1]],
 
 ## Expression of identified modules {.tabset .tabset-fade .tabset-pills}
 ```{r include=FALSE}
-tar_read(module_scores_with_viral_by_cluster)
-tar_read(module_scores_with_viral_by_cluster_stats)
-tar_read(module_scores_with_viral_by_disease)
-tar_read(module_scores_with_viral_by_disease_stats)
+tar_load(module_scores_with_viral_by_cluster)
+tar_load(module_scores_with_viral_by_cluster_stats)
+tar_load(module_scores_with_viral_by_disease)
+tar_load(module_scores_with_viral_by_disease_stats)
 
 number_of_modules <-
   module_scores_with_viral %>%
@@ -1928,7 +2173,12 @@ module_disease_graphs <-
   scale_fill_paletteer_d("ggsci::uniform_startrek") +
   stat_pvalue_manual(
     data = module_scores_with_viral_by_disease_stats,
-    label = "p.adj.signif",
+    label =
+      ifelse(
+        test = ("p.adj.signif" %in% module_scores_with_viral_by_disease_stats),
+        yes = "p.adj.signif",
+        no = "p"
+        ),
     hide.ns = TRUE,
     bracket.size = 0.1,
     tip.length = 0.01,
@@ -1977,7 +2227,12 @@ module_cluster_graphs <-
   scale_fill_paletteer_d("ggsci::uniform_startrek") +
   stat_pvalue_manual(
     data = module_scores_with_viral_by_cluster_stats,
-    label = "p.adj.signif",
+    label = 
+      ifelse(
+        test = ("p.adj.signif" %in% module_scores_with_viral_by_cluster_stats),
+        yes = "p.adj.signif",
+        no = "p"
+      ),
     hide.ns = TRUE,
     bracket.size = 0.1,
     tip.length = 0.01,
@@ -2093,7 +2348,7 @@ module_scores_with_viral %>%
 
 ## Gene ontology GSEA of WGCNA modules
 ```{r wgcna_gsea, fig.height=11, fig.width=12}
-tar_read(MEplotting)
+tar_load(MEplotting)
 
 for(i in 1:ceiling(length(unique(MEplotting$module))/6)){
     
@@ -2136,8 +2391,8 @@ The model was trained with 75% of the dataset and tested on 25%.
 Note: Subjects with LP were excluded due to the small population size.
 
 ```{r wgcna_cluster_confusion}
-tar_read(wgcna_cluster_rf_cv)
-tar_read(wgcna_cluster_test)
+tar_load(wgcna_cluster_rf_cv)
+tar_load(wgcna_cluster_test)
 
 caret::confusionMatrix(
   data = predict(wgcna_cluster_rf_cv, wgcna_cluster_test),
@@ -2148,7 +2403,7 @@ caret::confusionMatrix(
 The relative importance of each eigengene in classification:
 
 ```{r wgcna_cluster_importance}
-tar_read(wgcna_cluster_rf_cv_varImp)
+tar_load(wgcna_cluster_rf_cv_varImp)
 
 wgcna_cluster_rf_cv_varImp
 ```
@@ -2160,8 +2415,8 @@ The module eigengene scores were used to train a random forest model with repeat
 The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r wgcna_disease_confusion}
-tar_read(wgcna_disease_class_rf_cv)
-tar_read(wgcna_disease_class_test)
+tar_load(wgcna_disease_class_rf_cv)
+tar_load(wgcna_disease_class_test)
 
 caret::confusionMatrix(
   data = predict(wgcna_disease_class_rf_cv, wgcna_disease_class_test),
@@ -2173,8 +2428,6 @@ The relative importance of each eigengene in classification:
 
 ```{r wgcna_disease_importance}
 tar_read(wgcna_disease_class_rf_cv_varImp)
-
-wgcna_disease_class_rf_cv_varImp
 ```
 
 ## Use of module modules in classifying clusters.
@@ -2184,8 +2437,8 @@ The module eigengene scores were used to train a random forest model with repeat
 The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r Banchereau_cluster_confusion}
-tar_read(module_cluster_rf_cv)
-tar_read(module_cluster_test)
+tar_load(module_cluster_rf_cv)
+tar_load(module_cluster_test)
 
 caret::confusionMatrix(
   data = predict(module_cluster_rf_cv, module_cluster_test),
@@ -2197,8 +2450,6 @@ The relative importance of each eigengene in classification:
 
 ```{r Banchereau_cluster_importance}
 tar_read(module_cluster_rf_cv_varImp)
-
-module_cluster_rf_cv_varImp
 ```
 
 ## Use of module modules in labeling disease class.
@@ -2208,8 +2459,8 @@ The module eigengene scores were used to train a random forest model with repeat
 The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r Banchereau_disease_confusion}
-tar_read(module_disease_class_rf_cv)
-tar_read(module_disease_class_test)
+tar_load(module_disease_class_rf_cv)
+tar_load(module_disease_class_test)
 
 caret::confusionMatrix(
   data = predict(module_disease_class_rf_cv, module_disease_class_test),
@@ -2221,8 +2472,6 @@ The relative importance of each eigengene in classification:
 
 ```{r Banchereau_disease_importance}
 tar_read(module_disease_class_rf_cv_varImp)
-
-module_disease_class_rf_cv_varImp
 ```
 
 ```{r}

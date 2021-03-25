@@ -1,15 +1,11 @@
-gene_annotations <- function(){
-  # generated from rtracklayer::readGFF()
-  "references/gencode_v32_virus_tx2gene_v1.2.RData"
-}
-
 extract_viral_expression <- function(annotations, exprs, dds){
   viral_transcripts <-
     filter(
       .data = annotations,
-      !str_detect(
+      str_detect(
         string = transcript,
-        pattern = "^ENST"
+        pattern = "^ENST",
+        negate = TRUE
       )
     ) %>%
     pull(gene_name) %>%
@@ -34,7 +30,7 @@ extract_viral_expression <- function(annotations, exprs, dds){
     pull(transcript)
 
     viral_exprs =
-      vsd_exprs[detected_viral_transcripts,] %>%
+      exprs[detected_viral_transcripts,] %>%
       t() %>%
       as_tibble(rownames = "sample_name")
 }

@@ -1,14 +1,14 @@
 
-modules_compare_with_stats <- function(module_score_table, comparison){
+modules_compare_with_stats <- function(module_score_table, compare_by){
   module_score_table %>%
     group_by(module) %>%
     wilcox_test(
-      score ~ {{comparison}},
+      as.formula(str_glue("score ~ {compare_by}")),
       p.adjust.method = "BH"
     ) %>%
     grouped_add_xy_positions(
       stats_tbl       = .,
-      data_tbl        = annotated_module_scores_pivot,
+      data_tbl        = module_score_table,
       group_var       = module,
       compare_value   = score
     )

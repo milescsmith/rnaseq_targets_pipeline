@@ -20,16 +20,20 @@ module_gsea <- function(module_genes, module_of_interest){
     module_genes %>%
       filter(module == module_of_interest) %>%
       pull(hugo) %>%
-      enricher(gene = .,
-                TERM2GENE = c5)
-  
+      enricher(
+        gene = .,
+        TERM2GENE = c5
+      ) %>%
+    slot("result")
+
   if(!is.null(enriched_module_genes)){
-    mutate(
-      .data = slot(enriched_module_genes,'result'),
-      module = module_of_interest
-      )
+    enriched_module_genes <-
+      mutate(
+        .data = enriched_module_genes,
+        module = module_of_interest
+        )
   }
-  
+
   enriched_module_genes
 }
 

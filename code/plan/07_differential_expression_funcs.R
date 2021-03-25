@@ -13,7 +13,7 @@ create_results_list <- function(
   }) %>%
     set_names(
       map_chr(
-        comparison_results_list,
+        comparison_list,
         str_remove,
         pattern = paste0(comparison_grouping_variable, "_")
       )
@@ -21,23 +21,39 @@ create_results_list <- function(
 }
 
 
-create_downregulation_tables <- function(
-  results,
+create_deg_tables <- function(
+  deg_res,
   comparison_list,
-  grouping_variable
+  grouping_variable,
+  direction=c("up","down")
 ){
-  map(seq_along(res), function(i){
-    res[[i]] %>%
-      as_tibble(
-        rownames = "gene"
-      ) %>%
-      filter(
-        !is.na(padj) & padj <= 0.05,
-        log2FoldChange < 0
-      ) %>%
-      mutate(
-        log2FoldChange = -log2FoldChange
-      ) %>%
+  direction <- match.arg(direction, choices=c("up", "down"))
+
+  map(seq_along(deg_res), function(i){
+    degs <-
+      deg_res[[i]] %>%
+        as_tibble(
+          rownames = "gene"
+        )
+
+    if (direction == "up"){
+      degs <-
+        filter(
+          .data = degs,
+          !is.na(padj) & padj <= 0.05,
+          log2FoldChange > 0
+        )
+    } else if (direction == "down"){
+      degs <-
+        filter(
+          .data = degs,
+          !is.na(padj) & padj <= 0.05,
+          log2FoldChange < 0
+        )
+    }
+
+    degs %>%
+      mutate(log2FoldChange = abs(log2FoldChange)) %>%
       mutate_at(
         .vars = vars(-gene),
         .funs = list(~signif(x = ., digits =  2))
@@ -63,44 +79,44 @@ create_downregulation_tables <- function(
 }
 
 
-create_upregulation_tables <- function(
-  results,
-  comparison_list,
-  grouping_variable
-){
-  map(seq_along(res), function(i){
-  res[[i]] %>%
-    as_tibble(
-      rownames = "gene"
-    ) %>%
-    filter(
-      !is.na(padj) & padj <= 0.05,
-      log2FoldChange > 0
-    ) %>%
-    mutate_at(
-      vars(-gene),
-      list(~signif(., 2)
-      )
-    ) %>%
-    top_n(
-      n = 25,
-      wt = log2FoldChange
-    ) %>%
-    arrange(
-      desc(
-        log2FoldChange
-      )
-    )
-}) %>%
-  set_names(
-    nm = map_chr(
-      .x = comparison_list,
-      .f = str_remove,
-      pattern = str_glue("{grouping_variable}_")
-    )
-  ) %>%
-  keep(~ nrow(.x) > 0)
-}
+# create_upregulation_tables <- function(
+#   results,
+#   comparison_list,
+#   grouping_variable
+# ){
+#   map(seq_along(results), function(i){
+#     results[[i]] %>%
+#     as_tibble(
+#       rownames = "gene"
+#     ) %>%
+#     filter(
+#       !is.na(padj) & padj <= 0.05,
+#       log2FoldChange > 0
+#     ) %>%
+#     mutate_at(
+#       vars(-gene),
+#       list(~signif(., 2)
+#       )
+#     ) %>%
+#     top_n(
+#       n = 25,
+#       wt = log2FoldChange
+#     ) %>%
+#     arrange(
+#       desc(
+#         log2FoldChange
+#       )
+#     )
+# }) %>%
+#   set_names(
+#     nm = map_chr(
+#       .x = comparison_list,
+#       .f = str_remove,
+#       pattern = str_glue("{grouping_variable}_")
+#     )
+#   ) %>%
+#   keep(~ nrow(.x) > 0)
+# }
 
 extract_de_genes <- function(
   results,
@@ -108,7 +124,7 @@ extract_de_genes <- function(
   grouping_variable
 ){
   map(seq_along(results), function(i){
-    res[[i]] %>%
+    results[[i]] %>%
       as_tibble(
         rownames = "gene"
       ) %>%
