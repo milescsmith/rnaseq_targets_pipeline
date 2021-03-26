@@ -10,3 +10,6 @@ metadata/*.xlsx
 results/*.csv
 results/*.RData
 *._*
+.drake/
+*.png
+*.pdf
