@@ -10,6 +10,7 @@ source("code/plan/08_WGCNA_funcs.R")
 source("code/plan/10_viral_transcript_funcs.R")
 source("code/plan/11_stats_testing_funcs.R")
 source("code/plan/98_palettes_funcs.R")
+source("code/plan/99_output_funcs.R")
 
 source("project_options.R")
 options(tidyverse.quiet = TRUE)
@@ -425,10 +426,21 @@ list(
     name = sample_cluster_info,
     command =
       ident_clusters(
-        column_to_rownames(
-          annotated_module_scores,
-          "sample_name"
-        ),
+        irlba(
+          A = vsd_exprs,
+          nv = 100
+          ) %>%
+          pluck("v") %>%
+          as.data.frame() %>%
+          set_colnames(
+            paste0(
+              "PC",
+              seq(100)
+              )
+            ) %>%
+          set_rownames(
+            colnames(vsd_exprs)
+            ),
         K.max = 20
       )
   ),
@@ -609,19 +621,19 @@ list(
   ),
 
   tar_target(
-    name = wgcna_modules,
+    name    = wgcna_modules,
     command = blockwiseModules(
-      datExpr =vsd_top,
-      power = find_softPower(sft),
-      maxBlockSize = 20000,
-      mergeCutHeight = 0.2,
-      minModuleSize = 20,
+      datExpr           = vsd_top,
+      power             = find_softPower(sft),
+      maxBlockSize      = 20000,
+      mergeCutHeight    = 0.2,
+      minModuleSize     = 20,
       pamRespectsDendro = FALSE,
-      saveTOMs = FALSE,
-      verbose = 3,
-      detectCutHeight = 0.995,
-      TOMDenom = "min",
-      networkType = "signed hybrid",
+      saveTOMs          = FALSE,
+      verbose           = 3,
+      detectCutHeight   = 0.995,
+      TOMDenom          = "min",
+      networkType       = "signed hybrid",
       reassignThreshold = 1e-6
     )
   ),
@@ -645,7 +657,7 @@ list(
     name = wgcna_hub_genes,
     command =
       chooseTopHubInEachModule(
-        datExpr = vsd_top_float,
+        datExpr = vsd_top,
         colorh = wgcna_modules$colors,
         power = 4,
         type = "signed hybrid"
@@ -1129,6 +1141,56 @@ list(
         annotation_info = annotation_info,
         deg_class = deg_class
       )
+  ),
+
+  tar_target(
+    name     = output_expression,
+    command  =
+      save_table_to_disk(
+        file_to_output = as_tibble(vsd_exprs, rownames = "sample_name"),
+        output_name    = "processed_data/variance_stabilized_expression.csv.gz"
+        ),
+    format   = "file"
+  ),
+
+  tar_target(
+    name     = output_metadata,
+    command  =
+      save_table_to_disk(
+        file_to_output = as_tibble(colData(dds_with_scores), rownames = "sample_name"),
+        output_name    = "processed_data/sample_metadata.csv.gz"
+      ),
+    format   = "file"
+  ),
+
+  tar_target(
+    name     = output_module_scores,
+    command  =
+      save_table_to_disk(
+        file_to_output = module_scores,
+        output_name    = "processed_data/module_scores.csv.gz"
+      ),
+    format   = "file"
+  ),
+
+  tar_target(
+    name     = output_wgcna_scores,
+    command  =
+      save_table_to_disk(
+        file_to_output = wgcna_scores,
+        output_name    = "processed_data/wgcna_scores.csv.gz"
+      ),
+    format   = "file"
+  ),
+
+  tar_target(
+    name     = output_wgcna_module_genes,
+    command  =
+      save_table_to_disk(
+        file_to_output = wgcna_module_genes,
+        output_name    = "processed_data/wgcna_module_genes.csv.gz"
+      ),
+    format   = "file"
   ),
 
   tar_render(
