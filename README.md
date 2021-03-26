@@ -1,6 +1,6 @@
 # Description
 
-An R/Drake pipeline focused on analysis of RNA-sequencing.  This pipeline expects the input data to be pseudocounts from Salmon.  For a pipeline capable of processing of raw data from bcl up through alignment and quantification, see either (milescsmith/rnaseq_pipeline)[https://github.com/milescsmith/rnaseq_pipeline] for a Snakemake version or (milescsmith/nf-rnaseq)[https://github.com/milescsmith/nf-rnaseq] for a Nextflow version.
+An R/Drake pipeline focused on analysis of RNA-sequencing.  This pipeline expects the input data to be pseudocounts from Salmon.  For a pipeline capable of processing of raw data from bcl up through alignment and quantification, see either [milescsmith/rnaseq_pipeline](https://github.com/milescsmith/rnaseq_pipeline) for a Snakemake version or [milescsmith/nf-rnaseq](https://github.com/milescsmith/nf-rnaseq) for a Nextflow version.
 
 ## Layout
 
