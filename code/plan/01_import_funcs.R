@@ -44,10 +44,7 @@ import_metadata <- function(
             case = "all_caps"
             ),
         project_group =
-          janitor::make_clean_names(
-            string = sample_name,
-            case = "all_caps"
-          ),
+          tolower(project_group),
         across(
           .cols =
             c(
@@ -161,4 +158,26 @@ create_final_md <- function(
     column_to_rownames('sample_name')
 
   final_md
+}
+
+only_hugo_named_genes <- function(imported_counts){
+
+  renamed_counts <- map(c("abundance", "counts", "length"), function(x){
+    imported_counts[[x]] %>%
+      as_tibble(rownames = "gene") %>%
+      mutate(hugo = checkGeneSymbols(gene)[["Suggested.Symbol"]]) %>%
+      filter(!is.na(hugo)) %>%
+      group_by(hugo) %>%
+      slice(1) %>%
+      ungroup() %>%
+      select(
+        -gene,
+        gene = hugo
+      ) %>%
+      column_to_rownames("gene") %>%
+      as.matrix()
+  })
+  renamed_counts[["countsFromAbundance"]] <- imported_counts[["countsFromAbundance"]]
+  names(renamed_counts) <- names(imported_counts)
+  renamed_counts
 }

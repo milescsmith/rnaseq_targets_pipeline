@@ -22,8 +22,8 @@ BPPARAM                         = BiocParallel::SnowParam(workers=parallel::dete
 BiocParallel::register(BPPARAM)
 
 #### Setup project variables ####
-project_groups_to_include       = c("PCV Case", "control")
-project_groups_to_exclude       = c("OSCTR Case")
+project_groups_to_include       = c("control", "OSCTR Case")
+project_groups_to_exclude       = "PCV Case"
 disease_classes_to_include      = NULL
 disease_classes_to_exclude      = NULL
 study_design                    = ~ disease_class
@@ -32,6 +32,7 @@ batch_variable                  = "run_id"
 control_group                   = "control"
 experimental_group              = "infected"
 num_sva                         = 3
+comparison_groups               = c("infection_status", "hospitalization_status")
 
 initial_concentration_threshold = 1.5
 pc1_zscore_threshold            = 2

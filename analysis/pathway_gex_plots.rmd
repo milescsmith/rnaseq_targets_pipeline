@@ -1,0 +1,248 @@
+---
+params: 
+  set_title:
+    label: "report title"
+    value: "Project"
+    input: text
+  set_author: 
+    label: "author"
+    value: "Miles Smith"
+    input: text
+title: "`r params$set_title`"
+author: "`r params$set_author`"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    highlight: "pygments"
+    toc: TRUE
+    toc_depth: 3
+    toc_float: TRUE
+  pdf_document:
+    highlight: "pygments"
+    toc: TRUE
+    toc_depth: 3
+---
+
+```{css, echo=FALSE}
+    body .main-container {
+      max-width: 1500px !important;
+      width: 1500px !important;
+    }
+    body {
+      max-width: 1500px !important;
+    }
+    caption {
+      color: black;
+      font-weight: bold;
+      font-size: 1.0em;
+    }
+```
+
+```{r setup, include=FALSE}
+options(width = 1200)
+knitr::opts_chunk$set(echo = FALSE)
+theme_set(theme_pubr())
+```
+
+```{r include=FALSE}
+tar_load(pathway_exprs)
+tar_load(pathway_expr_stats)
+tar_load(plafker_gene_list)
+```
+
+# Differential transcript expression by pathway {.tabset .tabset-fade .tabset-pills}
+
+
+## Expression of genes in GO_NLRP3_INFLAMMASOME_COMPLEX_ASSEMBLY {.tabset .tabset-fade .tabset-pills}
+
+```{r}
+sample_disease_info <-
+  tar_read(study_md) %>%
+  select(
+    sample_name,
+    disease_class
+    ) %>%
+  arrange(disease_class)
+```
+
+### GO_NLRP3_INFLAMMASOME_COMPLEX_ASSEMBLY
+
+```{r echo=FALSE, fig.height=6, fig.width=11}
+grouped_complex_heatmap(
+  exprs_mat = pathway_exprs,
+  exprs_stats = pathway_expr_stats,
+  sample_info_tbl = sample_disease_info,
+  pathway = "GO_NLRP3_INFLAMMASOME_COMPLEX_ASSEMBLY",
+  gene_list = plafker_gene_list,
+  group_var = "disease_class",
+  group1 = "control",
+  group2 = "infected"
+  )
+```
+
+## Expression of genes in REACTOME_INFLAMMASOMES {.tabset .tabset-fade .tabset-pills}
+
+### REACTOME_INFLAMMASOMES
+
+```{r echo=FALSE, fig.height=6, fig.width=11}
+grouped_complex_heatmap(
+  exprs_mat = pathway_exprs,
+  exprs_stats = pathway_expr_stats,
+  sample_info_tbl = sample_disease_info,
+  pathway = "REACTOME_INFLAMMASOMES",
+  gene_list = plafker_gene_list,
+  group_var = "disease_class",
+  group1 = "control",
+  group2 = "infected"
+  )
+```                                
+
+## Expression of genes in WINTER_HYPOXIA_METAGENE {.tabset .tabset-fade .tabset-pills}
+
+
+### WINTER_HYPOXIA_METAGENE
+
+```{r echo=FALSE, fig.height=12, fig.width=11}
+grouped_complex_heatmap(
+  exprs_mat = pathway_exprs,
+  exprs_stats = pathway_expr_stats,
+  sample_info_tbl = sample_disease_info,
+  pathway = "WINTER_HYPOXIA_METAGENE",
+  gene_list = plafker_gene_list,
+  group_var = "disease_class",
+  group1 = "control",
+  group2 = "infected",
+  row_name_fontsize = 6
+  )
+```
+
+## Expression of genes in GO_CELLULAR_RESPONSE_TO_VITAMIN_D {.tabset .tabset-fade .tabset-pills}
+
+
+### GO_CELLULAR_RESPONSE_TO_VITAMIN_D
+
+```{r echo=FALSE, fig.height=6, fig.width=11}
+grouped_complex_heatmap(
+  exprs_mat = pathway_exprs,
+  exprs_stats = pathway_expr_stats,
+  sample_info_tbl = sample_disease_info,
+  pathway = "GO_CELLULAR_RESPONSE_TO_VITAMIN_D",
+  gene_list = plafker_gene_list,
+  group_var = "disease_class",
+  group1 = "control",
+  group2 = "infected"
+  )
+```
+
+```{r echo=FALSE, results="asis"}
+# sample_disease_info <-
+#   tar_read(study_md) %>%
+#   select(
+#     sample_name,
+#     disease_class
+#     ) %>% 
+#   arrange(disease_class)
+# 
+# groups <-
+#   lapply(names(pathway_exprs), function(j){
+#     header <-
+#       knit_expand(
+#         text     = "\n## Expression of genes in {{PATHWAY}} {.tabset .tabset-fade .tabset-pills}\n",
+#         PATHWAY = j
+#       )
+#     src <-
+#         knit_expand(
+#           file      = "analysis/templates/gex_grouped_heatmap_template.Rmd",
+#           EXPR      = "pathway_exprs",
+#           STATS     = "pathway_expr_stats",
+#           INFO      = "sample_disease_info",
+#           PATHWAY   = j,
+#           GENE_LIST = "plafker_gene_list",
+#           GROUP_VAR = "disease_class",
+#           GROUP1    = "control",
+#           GROUP2    = "infected"
+#         )
+#     c(header, src)
+#   })
+# 
+#   res <- knit_child(text = unlist(groups), quiet = TRUE)
+#   cat(res, sep = '\n')
+```
+
+# Differential transcript/gene expression {.tabset .tabset-fade .tabset-pills}
+
+```{r, echo=FALSE, results='asis'}
+groups <-
+  lapply(names(pathway_exprs), function(j){
+    header <-
+      knit_expand(
+        text     = "\n## Comparision of genes in {{PATHWAY}} {.tabset .tabset-fade .tabset-pills}\n",
+        PATHWAY = j
+      )
+    src_list <-
+      lapply(unique(pathway_exprs[[j]][["gene"]]), function(i){
+        knit_expand(
+          file        = "analysis/templates/gex_violins_template.Rmd",
+          GENE_SYMBOL = i,
+          DATASET     = str_glue('pathway_exprs[["{j}"]]'),
+          STATS_DATA  = str_glue('pathway_expr_stats[["{j}"]]'),
+          X_VAR       = "disease_class",
+          Y_VAR       = "expression"
+        )
+      })
+    c(header, unlist(src_list))
+  })
+
+  res <- knit_child(text = unlist(groups), quiet = TRUE)
+  cat(res, sep = '\n')
+```
+
+# Pathway eigenvalues
+
+```{r fig.height=6, fig.width=9}
+scale_range = -4:4
+
+tar_read(pathway_eigenvalues) %>%
+  pivot_longer(
+    -sample_name,
+    names_to      = "pathway",
+    values_to     = "score"
+    ) %>%
+  left_join(
+    select(
+      .data       = tar_read(study_md),
+      sample_name, 
+      disease_class
+      )
+    ) %>%
+  group_by(disease_class) %>%
+  heatmap(
+    .row          = pathway,
+    .column       = sample_name,
+    .value        = score,
+    .scale        = "row",
+    palette_value = circlize::colorRamp2(scale_range, viridis::viridis(length(scale_range)))
+    ) %>%
+  add_tile(disease_class)
+```
+
+```{r fig.height=6, fig.width=6}
+
+tar_read(pathway_eigenvalues_long) %>%
+  ggviolin(
+    x = "disease_class",
+    y = "score",
+    fill = "disease_class"
+    ) +
+  geom_quasirandom() +
+  stat_pvalue_manual(
+    data = tar_read(pathway_eigenvalues_stats),
+    label = "p.adj.signif",
+    hide.ns = TRUE
+    ) +
+  facet_wrap(
+    facets = vars(pathway),
+    scales = "free"
+    )
+
+```

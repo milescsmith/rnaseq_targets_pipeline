@@ -32,7 +32,7 @@ remove_outliers <- function(dds,
                               locfun = genefilter::shorth,
                               type = "poscounts")
   vsd <- assay(vst(dds))
-  pca_res = irlba::prcomp_irlba(vsd)[['rotation']] %>%
+  pca_res = prcomp_irlba(vsd)[['rotation']] %>%
     as_tibble() %>%
     mutate(sample_name = colnames(vsd),
            pc1_zscore = abs((PC1 - mean(PC1))/sd(PC1)),
@@ -433,60 +433,14 @@ drake_recode <- function(
 }
 
 # An improved version of rstatix::add_y_position
-# doesn't take 30 minutes to run either
-# grouped_add_xy_positions <- function(
-#   stats_tbl,
-#   data_tbl,
-#   group_var,
-#   compare_value,
-#   cutoff = 0.05,
-#   step_increase = 0.1
-# ){
-#
-#   unique_groups <-
-#     stats_tbl %>%
-#     pull({{group_var}}) %>%
-#     unique()
-#
-#   data_min_max <-
-#     data_tbl %>%
-#     select({{group_var}}, {{compare_value}}) %>%
-#     group_by({{group_var}}) %>%
-#     summarise(
-#       max = max({{compare_value}}),
-#       min = min({{compare_value}}),
-#       span = max-min,
-#       step = span * step_increase
-#     )
-#
-#   tbl_with_positions <- map_dfr(unique_groups, function(x){
-#     stats_subset <- stats_tbl %>% filter({{group_var}} == x) %>% add_x_position()
-#
-#     if ("p.adj" %in% names(stats_subset)){
-#       stats_subset %>% filter(p.adj <= cutoff)
-#     } else {
-#       stats_subset %>% filter(p <= cutoff)
-#     }
-#
-#     min_max_subset <- data_min_max %>% filter({{group_var}} == x)
-#     if (nrow(stats_subset) > 1){
-#       positions <-
-#         seq(
-#           from = min_max_subset[['max']],
-#           by = min_max_subset[['step']],
-#           to = min_max_subset[['max']] + nrow(stats_subset)*min_max_subset[['step']])
-#       stats_subset[['y.position']] <- positions[2:length(positions)]
-#     }
-#     stats_subset
-#   })
-#   return(tbl_with_positions)
-# }
+# that doesn't take 30 minutes to run
 grouped_add_xy_positions <- function(stats_tbl,
                                      data_tbl,
                                      group_var,
                                      compare_value,
                                      cutoff = 0.05,
-                                     step_increase = 0.1){
+                                     step_increase = 0.1,
+                                     percent_shift_down = 0.95){
 
   unique_groups <- stats_tbl %>% pull({{group_var}}) %>% unique()
 
@@ -515,9 +469,9 @@ grouped_add_xy_positions <- function(stats_tbl,
           from = min_max_subset[['max']],
           by = min_max_subset[['step']],
           to = min_max_subset[['max']] + nrow(stats_subset)*min_max_subset[['step']])
-      stats_subset[['y.position']] <- positions[2:length(positions)] * 0.8
+      stats_subset[['y.position']] <- positions[2:length(positions)] * percent_shift_down
     } else {
-      stats_subset[["y.position"]] <- (min_max_subset[["max"]] + nrow(stats_subset)*min_max_subset[['step']]) * 0.8
+      stats_subset[["y.position"]] <- (min_max_subset[["max"]] + nrow(stats_subset)*min_max_subset[['step']]) * percent_shift_down
     }
     stats_subset
   })
@@ -696,4 +650,69 @@ find_softPower <- function(sft){
   }
 
   powerEstimate
+}
+
+fix_na_y_pos <- function(dataset, stats_data, y_var = "transcript_id", value_var = "tx_expression"){
+  if ("y.position" %in% colnames(stats_data)){
+    if (any(is.na(stats_data[["y.position"]]))){
+      if(is.character(y_var)){
+        y_var <- sym(y_var)
+      }
+
+      if(is.character(value_var)){
+        value_var <- sym(value_var)
+      }
+
+      y_var     <- enquo(y_var)
+      value_var <- enquo(value_var)
+
+      non_na_stats_data <- filter(.data = stats_data, !is.na(y.position))
+      na_stats_data     <- filter(.data = stats_data, is.na(y.position))
+
+      new_stats_data <-
+        filter(
+          .data = dataset,
+          {{y_var}} %in% pull(na_stats_data, {{y_var}})
+        ) %>%
+        group_by({{y_var}}) %>%
+        summarize(y.position = max({{value_var}})*1.1) %>%
+        right_join(
+          select(
+            .data = na_stats_data,
+            -y.position
+          )
+        ) %>%
+        bind_rows(non_na_stats_data)
+    } else {
+      new_stats_data <- stats_data
+    }
+  } else {
+    if(is.character(y_var)){
+      y_var <- sym(y_var)
+    }
+
+    if(is.character(value_var)){
+      value_var <- sym(value_var)
+    }
+
+    y_var     <- enquo(y_var)
+    value_var <- enquo(value_var)
+
+    new_stats_data <-
+      filter(
+        .data = dataset,
+        {{y_var}} %in% pull(stats_data, {{y_var}})
+      ) %>%
+      group_by({{y_var}}) %>%
+      summarize(y.position = max({{value_var}})*1.1) %>%
+      right_join(
+        stats_data
+      )
+  }
+
+  new_stats_data
+}
+
+scale_group <- function(x){
+  (x - mean(x, na.rm=TRUE)) / sd(x, na.rm=TRUE)
 }

@@ -1,0 +1,15 @@
+
+### {{PATHWAY}}
+
+```{r echo=FALSE, fig.height=9, fig.width=11}
+grouped_complex_heatmap(
+  exprs_mat = {{EXPR}},
+  exprs_stats = {{STATS}},
+  sample_info_tbl = {{INFO}},
+  pathway = "{{PATHWAY}}",
+  gene_list = {{GENE_LIST}},
+  group_var = "{{GROUP_VAR}}",
+  group1 = "{{GROUP1}}",
+  group2 = "{{GROUP2}}"
+  )
+```

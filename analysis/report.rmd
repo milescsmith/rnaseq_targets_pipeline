@@ -444,7 +444,6 @@ tar_load(down_tables)
 
 ### Sorted by disease classification
 ```{r top_class_DE_disease_sort, fig.width=12, fig.height=9}
-
 deg_class_tbl <-
   as_tibble(
     deg_class,
@@ -494,16 +493,17 @@ for (i in comparison_names){
     sample_disease_order,
     colVars(matrix_to_plot) > 1e-10
     ] %>% 
+    scale() %>%
       pheatmap(
-        scale = 'column',
+        #scale = 'column',
         main = i,
         fontsize = 9,
         fontsize_col = 9,
         cluster_rows = FALSE,
         show_rownames = FALSE,
-        annotation_row = annotation_info,
+        annotation_row = annotation_info[sample_disease_order, ],
         annotation_colors = group_pal,
-        angle_col = 315,
+        angle_col = "315",
         breaks = zscore_range,
         color = viridis(n = length(zscore_range), option = "D"),
         border_color = NA,
@@ -965,9 +965,8 @@ t(vsd_exprs)[sample_disease_order,(arrange(as_tibble(module_ISGs, rownames = "ge
 
 # Sample Clustering
 
-The eigenvales for the annotated Banchereau modules were used to calculate an
-adjacentcy matrix, which was in turn used to calculate the gap statistic to
-determine the optimal *k*-clusters.
+The eigenvalues for the first 100 principal components were used to calculate a
+random forest-based adjacentcy matrix, which was in turn used to calculate the gap statistic to determine the optimal *k*-clusters.
 
 ```{r Sample_Clustering_chart}
 annotation_info %>%
@@ -998,7 +997,7 @@ annotation_info %>%
   )) +
   geom_col() +
   labs(y = "Proportion of disease class in cluster") +
-  scale_fill_brewer(palette = "Set1") +
+  scale_fill_manual(values = group_pal$cluster) +
   theme_pubr()
 ```
 
@@ -2350,35 +2349,82 @@ module_scores_with_viral %>%
 ```{r wgcna_gsea, fig.height=11, fig.width=12}
 tar_load(MEplotting)
 
-for(i in 1:ceiling(length(unique(MEplotting$module))/6)){
-    
-      plots <-
-        ggplot(data = MEplotting,
-               mapping = aes(
-                 y = GeneRatio,
-                 x = order,
-                 color = p.adjust)
-               ) +
-          geom_point(stat = "identity",
-                     size = 2) +
-          scale_x_continuous(breaks = MEplotting$order,
-                           labels = str_wrap(MEplotting$ID, width = 40),
-                           expand = c(0.1,0.1)) +
-          scale_color_gradient(low = "blue", high = "red") +
-          labs(color = "adjusted\np value") +
-          facet_wrap_paginate(~ module,
-                              ncol = 2,
-                              nrow = 3,
-                              scales = "free",
-                              page = i) +
-          theme(axis.text.y = element_text(size = 9),
-                axis.text.x = element_text(size = 9),
-                panel.background = element_rect(fill = "white", linetype = "solid"),
-                panel.border = element_rect(colour = "black", fill=NA, size=1),
-                panel.grid = element_line(color = "grey90"),
-                axis.title.y = element_blank()) +
-          coord_flip()
-      print(plots)
+modules <- unique(MEplotting$module)
+n <- 6
+
+bins <-
+  ceiling(
+    x = seq_along(along.with = modules)/n
+    ) %>%
+  set_names(nm = modules) %>%
+  enframe()
+
+for (i in unique(bins[['value']])){
+  modules_to_plot <-
+    bins %>%
+    filter(
+      value == i
+    ) %>%
+    pull(name)
+  
+  module_data <-
+    filter(
+      .data = MEplotting,
+      module %in% modules_to_plot
+    )
+  
+  plots <-
+    module_data %>%
+    ggplot(
+      mapping =
+        aes(
+          y = GeneRatio,
+          x = order,
+          color = p.adjust
+        )
+    ) +
+    geom_point(
+      stat = "identity",
+      size = 2
+    ) +
+    scale_x_continuous(
+      breaks = module_data[["order"]],
+      labels =
+        str_wrap(
+          module_data[["ID"]],
+          width = 40
+        ),
+      expand = c(0.1,0.1)
+    ) +
+    scale_color_gradient(
+      low = "blue",
+      high = "red"
+    ) +
+    labs(color = "adjusted\np value") +
+    facet_wrap(
+      facets = vars(module),
+      ncol = 2,
+      nrow = 3,
+      scales = "free",
+    ) +
+    theme(
+      axis.text.y = element_text(size = 9),
+      axis.text.x = element_text(size = 9),
+      panel.background =
+        element_rect(
+          fill = "white",
+          linetype = "solid"
+        ),
+      panel.border =
+        element_rect(
+          colour = "black",
+          fill=NA, 
+          size=1
+        ),
+      panel.grid = element_line(color = "grey90"),
+      axis.title.y = element_blank()) +
+    coord_flip()
+  print(plots)
 }
 ```
 
@@ -2392,11 +2438,11 @@ Note: Subjects with LP were excluded due to the small population size.
 
 ```{r wgcna_cluster_confusion}
 tar_load(wgcna_cluster_rf_cv)
-tar_load(wgcna_cluster_test)
+tar_load(wgcna_cluster_split)
 
 caret::confusionMatrix(
-  data = predict(wgcna_cluster_rf_cv, wgcna_cluster_test),
-  reference = as_factor(wgcna_cluster_test$cluster)
+  data = predict(wgcna_cluster_rf_cv, testing(wgcna_cluster_split)),
+  reference = as_factor(testing(wgcna_cluster_split)$cluster)
 )
 ```
 
