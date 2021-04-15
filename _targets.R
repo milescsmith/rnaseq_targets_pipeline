@@ -9,6 +9,7 @@ source("code/plan/07_differential_expression_funcs.R")
 source("code/plan/08_WGCNA_funcs.R")
 source("code/plan/10_viral_transcript_funcs.R")
 source("code/plan/11_stats_testing_funcs.R")
+source("code/plan/13_pathways.R")
 source("code/plan/98_palettes_funcs.R")
 source("code/plan/99_output_funcs.R")
 
@@ -29,6 +30,7 @@ tar_option_set(
     "flextable",
     "formattable",
     "furrr",
+    "ggbeeswarm",
     "ggforce",
     "ggplotify",
     "ggpubr",
@@ -59,6 +61,7 @@ tar_option_set(
     "scales",
     "stats",
     "sva",
+    "tidyHeatmap",
     "tidymodels",
     "tidyverse",
     "tximport",
@@ -174,49 +177,54 @@ list(
   ),
 
   tar_target(
+    name = filtered_tx_counts,
+    command = only_hugo_named_genes(tx_counts)
+  ),
+
+  tar_target(
     name = dds_import,
     command =
       DESeqDataSetFromTximport(
-        txi = tx_counts,
+        txi = filtered_tx_counts,
         colData = final_md,
         design = ~ disease_class
       ),
     packages = "DESeq2"
   ),
 
-  tar_target(
-    name    = no_single_batches_dds,
-    command =
-      remove_single_batches(
-        dds             = dds_import,
-        batch_variable  = batch_variable,
-        number_of_items = 2
-      )
-  ),
-
-  tar_target(
-    name = corrected_counts,
-    command =
-      ComBat_seq(
-        counts      = counts(no_single_batches_dds),
-        batch       = fct_drop(colData(no_single_batches_dds)[[batch_variable]]),
-        group       = colData(no_single_batches_dds)[[comparison_grouping_variable]],
-        shrink      = TRUE,
-        shrink.disp = TRUE,
-        full_mod    = TRUE
-      ) %>%
-      `storage.mode<-`("integer")
-  ),
-
-  tar_target(
-    name = dds_import_combat,
-    command =
-      DESeqDataSetFromMatrix(
-        countData = corrected_counts,
-        colData = colData(dds_import),
-        design = study_design
-      )
-  ),
+  # tar_target(
+  #   name    = no_single_batches_dds,
+  #   command =
+  #     remove_single_batches(
+  #       dds             = dds_import,
+  #       batch_variable  = batch_variable,
+  #       number_of_items = 2
+  #     )
+  # ),
+#
+#   tar_target(
+#     name = corrected_counts,
+#     command =
+#       ComBat_seq(
+#         counts      = counts(no_single_batches_dds),
+#         batch       = fct_drop(colData(no_single_batches_dds)[[batch_variable]]),
+#         group       = colData(no_single_batches_dds)[[comparison_grouping_variable]],
+#         shrink      = TRUE,
+#         shrink.disp = TRUE,
+#         full_mod    = TRUE
+#       ) %>%
+#       `storage.mode<-`("integer")
+#   ),
+#
+#   tar_target(
+#     name = dds_import_combat,
+#     command =
+#       DESeqDataSetFromMatrix(
+#         countData = corrected_counts,
+#         colData = colData(dds_import),
+#         design = study_design
+#       )
+#   ),
 
   tar_target(
     name = dds_filtered,
@@ -235,7 +243,8 @@ list(
         dds = dds_filtered,
         pc1_zscore_cutoff = pc1_zscore_threshold,
         pc2_zscore_cutoff = pc2_zscore_threshold
-      )
+      ),
+    cue = tar_cue(mode = "never")
   ),
 
   tar_target(
@@ -244,7 +253,8 @@ list(
       outlier_qc$dds,
       parallel = TRUE,
       BPPARAM = BPPARAM
-    )
+    ),
+    cue = tar_cue(mode = "never")
   ),
 
   tar_target(
@@ -254,7 +264,8 @@ list(
         dds = dds_qc,
         model_design = comparison_grouping_variable,
         n.sva = num_sva
-      )
+      ),
+    cue = tar_cue(mode = "never")
   ),
 
   tar_target(
@@ -269,7 +280,20 @@ list(
 
   tar_target(
     name = vsd_exprs,
-    command = assay(vsd)
+    command =
+      assay(vsd) %>%
+      as_tibble(rownames = "gene") %>%
+      mutate(hugo = checkGeneSymbols(gene)[["Suggested.Symbol"]]) %>%
+      filter(!is.na(hugo)) %>%
+      group_by(hugo) %>%
+      slice(1) %>%
+      ungroup() %>%
+      select(
+        -gene,
+        gene = hugo
+        ) %>%
+      column_to_rownames("gene") %>%
+      as.matrix()
   ),
 
   tar_target(
@@ -689,22 +713,12 @@ list(
   ),
 
   tar_target(
-    name = wgcna_cluster_train,
-    command =  training(wgcna_cluster_split)
-  ),
-
-  tar_target(
-    name = wgcna_cluster_test,
-    command = testing(wgcna_cluster_split)
-  ),
-
-  tar_target(
     name = wgcna_cluster_rf_cv,
     command =
       train(
         cluster ~ .,
         method = "parRF",
-        data = wgcna_cluster_train,
+        data = training(wgcna_cluster_split),
         trControl =
           trainControl(
             method = "repeatedcv",
@@ -944,15 +958,15 @@ list(
       )
   ),
 
-  tar_target(
-    name = viral_exprs,
-    command =
-      extract_viral_expression(
-        annotations = annot,
-        exprs = vsd_exprs,
-        dds = dds_with_scores
-      )
-  ),
+  # tar_target(
+  #   name = viral_exprs,
+  #   command =
+  #     extract_viral_expression(
+  #       annotations = annot,
+  #       exprs = vsd_exprs,
+  #       dds = dds_with_scores
+  #     )
+  # ),
 
   tar_target(
     name = ifn_modules,
@@ -988,7 +1002,7 @@ list(
           list(
             module_scores,
             wgcna_scores,
-            viral_exprs,
+            # viral_exprs,
             clusters
           ),
         .f = left_join
@@ -1143,6 +1157,208 @@ list(
       )
   ),
 
+    tar_target(
+    name = plafker_gene_list_file,
+    "references/plafker_gene_list.csv",
+    format = "file"
+  ),
+
+  tar_target(
+    name = plafker_gene_list,
+    command = create_module_list(plafker_gene_list_file)
+  ),
+
+  tar_target(
+    name = pathway_exprs,
+    command =
+      map(plafker_gene_list, extract_pathway_exprs, exprs_mat = vsd_exprs, metadata = study_md),
+  ),
+
+  tar_target(
+    name = pathway_expr_stats,
+    command = map(pathway_exprs, calc_gex_stats)
+  ),
+
+  tar_target(
+    name = dds_with_pathway_scores,
+    command =
+      scoreEigengenes(
+        object = dds_with_scores,
+        module_list = plafker_gene_list,
+        score_func = 'rsvd'
+      )
+  ),
+
+  tar_target(
+    name = pathway_eigenvalues,
+    command = extract_module_scores(dds_with_pathway_scores, names(plafker_gene_list))
+  ),
+
+  tar_target(
+    name = pathway_eigenvalues_long,
+    command =
+      pathway_eigenvalues %>%
+      pivot_longer(
+        -sample_name,
+        names_to      = "pathway",
+        values_to     = "score"
+      ) %>%
+      left_join(
+        select(
+          .data       = tar_read(study_md),
+          sample_name,
+          disease_class
+        )
+      )
+    ),
+
+  tar_target(
+    name = pathway_eigenvalues_stats,
+    command =
+      pathway_eigenvalues_long %>%
+      group_by(pathway) %>%
+      wilcox_test(
+        score ~ disease_class,
+        ref.group = "control"
+      ) %>%
+      adjust_pvalue(method = "BH") %>%
+      add_significance() %>%
+      grouped_add_xy_positions(
+        stats_tbl = .,
+        data_tbl = pathway_eigenvalues_long,
+        group_var = pathway,
+        compare_value = score,
+        percent_shift_down = 0.99
+      )
+  ),
+
+  # tar_target(
+  #   name = ica_res,
+  #   command =
+  #     icafast(
+  #       X = vsd_top,
+  #       nc = 25,
+  #       alg = "par"
+  #       ),
+  #   packages = "ica"
+  # ),
+  #
+  # tar_target(
+  #   name = ica_eigenvalues,
+  #   command =
+  #     pluck(
+  #       .x = ica_res,
+  #       "S"
+  #     ) %>%
+  #     as.data.frame() %>%
+  #     set_rownames(rownames(vsd_top)) %>%
+  #     set_colnames(str_glue("IC{1:25}"))
+  # ),
+  #
+  # tar_target(
+  #   name = ica_eigenvalues_long,
+  #   command =
+  #     as_tibble(
+  #       x = ica_eigenvalues,
+  #       rownames = "sample_name") %>%
+  #     pivot_longer(
+  #       cols = starts_with("IC"),
+  #       names_to = "IC",
+  #       values_to = "score"
+  #       ) %>%
+  #     left_join(
+  #       y =
+  #         select(
+  #           .data = study_md,
+  #           sample_name,
+  #           cluster,
+  #           disease_class
+  #           )
+  #       )
+  # ),
+  #
+  # tar_target(
+  #   name = ica_eigenvalues_stats,
+  #   command =
+  #     group_by(
+  #       .data = ica_eigenvalues_long,
+  #       pathway
+  #       ) %>%
+  #     wilcox_test(
+  #       score ~ disease_class,
+  #       ref.group = "control"
+  #       ) %>%
+  #     adjust_pvalue(method = "BH") %>%
+  #     add_significance() %>%
+  #     grouped_add_xy_positions(
+  #       stats_tbl = .,
+  #       data_tbl = ica_eigenvalues_long,
+  #       group_var = IC,
+  #       compare_value = score,
+  #       percent_shift_down = 0.99
+  #       )
+  #   ),
+  #
+  # tar_target(
+  #   name = ica_loadings,
+  #   command =
+  #     pluck(
+  #       .x = ica_res,
+  #       "M"
+  #       ) %>%
+  #     as.data.frame() %>%
+  #     set_rownames(colnames(vsd_top)) %>%
+  #     set_colnames(str_glue("IC{1:25}"))
+  #   ),
+  #
+  # tar_target(
+  #   name = ic_top_25_genes,
+  #   command =
+  #     ica_loadings %>%
+  #     as_tibble(rownames = "gene") %>%
+  #     pivot_longer(
+  #       -gene,
+  #       names_to = "IC",
+  #       values_to = "score"
+  #     ) %>%
+  #     group_by(IC) %>%
+  #     top_n(
+  #       n = 25,
+  #       wt = score
+  #     ) %>%
+  #     select(-score) %>%
+  #     rename(module = "IC") %>%
+  #     mutate(hugo = checkGeneSymbols(gene)[["Suggested.Symbol"]]) %>%
+  #     filter(!is.na(hugo))
+  #   ),
+  #
+  # tar_target(
+  #   name = ic_enriched_list,
+  #   command =
+  #     map_dfr(
+  #       .x = unique(ic_top_25_genes$module),
+  #       .f = function(x){
+  #         module_gsea(
+  #           module_genes = ic_top_25_genes,
+  #           module_of_interest = x)
+  #       }
+  #     ),
+  #   packages = "purrr"
+  #   ),
+  #
+  # tar_target(
+  #   name = ic_plotting,
+  #   command =
+  #     module_gsea_plots(ic_enriched_list) %>%
+  #     mutate(
+  #       module =
+  #         str_remove(
+  #           string = module,
+  #           pattern = "^ME"
+  #           )
+  #       )
+  # ),
+
   tar_target(
     name     = output_expression,
     command  =
@@ -1184,6 +1400,16 @@ list(
   ),
 
   tar_target(
+    name     = output_pathway_eigenvalues,
+    command  =
+      save_table_to_disk(
+        file_to_output = pathway_eigenvalues,
+        output_name    = "processed_data/plafker_pathway_scores.csv.gz"
+      ),
+    format   = "file"
+  ),
+
+  tar_target(
     name     = output_wgcna_module_genes,
     command  =
       save_table_to_disk(
@@ -1211,5 +1437,16 @@ list(
       set_author  = "Miles Smith"
     ),
     output_dir    = "reports/"
+  ),
+
+  tar_render(
+    name          = pathway_report,
+    path          =  "analysis/pathway_gex_plots.rmd",
+    params        = list(
+      set_title   = "Expression of pathway genes",
+      set_author  = "Miles Smith"
+    ),
+    output_dir    = "reports/",
+    packages      = c("tidyverse", "markdown", "knitr", "ComplexHeatmap", "targets", "grid", "magrittr", "rlang", "viridis", "circlize", "ggpubr", "ggbeeswarm", "paletteer", "ggtext", "tidyHeatmap")
   )
 )
