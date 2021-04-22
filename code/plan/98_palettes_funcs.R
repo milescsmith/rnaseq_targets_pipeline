@@ -58,23 +58,23 @@ create_palettes <- function(
       brewer.pal(9, "Set1"))(length(levels(annotation_info$project))) %>%
     set_names(levels(annotation_info$project))
 
-  number_disease_classes =
+  number_study_groupes =
     length(
       unique(
-        annotation_info$disease_class
+        annotation_info$study_group
       )
     )
 
-  disease_class_pal =
+  study_group_pal =
     if_else(
-      number_disease_classes > 2,
-      list(brewer.pal(number_disease_classes, "Set1")),
+      number_study_groupes > 2,
+      list(brewer.pal(number_study_groupes, "Set1")),
       list(c("black", "grey75"))
     ) %>%
     unlist() %>%
     set_names(
       unique(
-        annotation_info$disease_class
+        annotation_info$study_group
       )
     )
 
@@ -97,7 +97,7 @@ create_palettes <- function(
       sex_pal,
       cluster_pal,
       project_pal,
-      disease_class_pal,
+      study_group_pal,
       comparison_pal ) %>% #,
     # cell_type_pal) %>%
     set_names(c(
@@ -106,7 +106,7 @@ create_palettes <- function(
       "sex",
       "cluster",
       "project",
-      "disease_class",
+      "study_group",
       "comparison"))
 
   group_pal

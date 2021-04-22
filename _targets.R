@@ -74,42 +74,43 @@ tar_option_set(
 list(
   tar_target(
     raw_metadata,
-    "metadata/COVID (PCV, OSCTR) analysis dataset.xlsx",
+    metadata_file,
     format = "file",
     deployment = "main"
   ),
 
-  tar_target(
-    name = raw_sample_list,
-    "metadata/NovaSeq_Sample_List.xlsx",
-    format = "file",
-    deployment = "main"
-  ),
+  # tar_target(
+  #   name = raw_sample_list,
+  #   main_sample_list,
+  #   format = "file",
+  #   deployment = "main"
+  # ),
 
   tar_target(
     name = md,
     command =
       import_metadata(
         metadata_file = raw_metadata,
-        metadata_sheet = "main",
-        extra_controls_metadata_file = raw_sample_list,
-        extra_controls_metadata_sheet = "main",
-        groups_to_include = project_groups_to_include,
-        groups_to_exclude = project_groups_to_exclude
+        #extra_controls_metadata_file = raw_sample_list,
+        projects_to_include = projects_to_include,
+        projects_to_exclude = projects_to_exclude,
+        study_groups_to_include = study_groups_to_include,
+        study_groups_to_exclude = study_groups_to_exclude
       ),
     packages =
       c(
-        "readxl",
+        "readr",
         "dplyr",
         "janitor",
         "purrr",
-        "forcats"
+        "forcats",
+        "lubridate"
       )
   ),
 
   tar_target(
     name = seq_file_directory,
-    "/home/rstudio/workspace/datasets/rnaseq/novaseq",
+    sequencing_file_directory,
     format = "file"
   ),
 
@@ -146,7 +147,7 @@ list(
       create_final_md(
         md = md,
         tx_files = tx_files,
-        comparison_group = disease_class,
+        comparison_group = study_group,
         control_group = "control"
       ),
     packages = c(
@@ -187,7 +188,7 @@ list(
       DESeqDataSetFromTximport(
         txi = filtered_tx_counts,
         colData = final_md,
-        design = ~ disease_class
+        design = ~ study_group
       ),
     packages = "DESeq2"
   ),
@@ -494,7 +495,7 @@ list(
     command =
       column_to_rownames(
         select(.data = study_md,
-               disease_class,
+               study_group,
                sex,
                cluster,
                sample_name
@@ -597,9 +598,9 @@ list(
           name,
           sex,
           ethnicity,
-          disease_class
+          study_group
         ),
-      grouping_variable = disease_class
+      grouping_variable = study_group
     )
   ),
 
@@ -702,7 +703,7 @@ list(
     command =
       initial_split(
         data = wgcna_scores %>%
-          mutate(disease_class = fct_drop(disease_class)) %>%
+          mutate(study_group = fct_drop(study_group)) %>%
           select(
             cluster,
             starts_with("ME")
@@ -742,40 +743,40 @@ list(
   ),
 
   tar_target(
-    name = wgcna_disease_class_split,
+    name = wgcna_study_group_split,
     command =
       initial_split(
         data =
           select(
             .data = mutate(
               .data = wgcna_scores,
-              disease_class = fct_drop(disease_class)
+              study_group = fct_drop(study_group)
             ),
-            disease_class,
+            study_group,
             starts_with("ME")
           ),
         prop = 0.75,
-        strata = "disease_class"
+        strata = "study_group"
       )
   ),
 
   tar_target(
-    name = wgcna_disease_class_train,
-    command = training(wgcna_disease_class_split)
+    name = wgcna_study_group_train,
+    command = training(wgcna_study_group_split)
   ),
 
   tar_target(
-    name = wgcna_disease_class_test,
-    command = testing(wgcna_disease_class_split)
+    name = wgcna_study_group_test,
+    command = testing(wgcna_study_group_split)
   ),
 
   tar_target(
-    name = wgcna_disease_class_rf_cv,
+    name = wgcna_study_group_rf_cv,
     command =
       train(
-        form = disease_class ~ .,
+        form = study_group ~ .,
         method = "parRF",
-        data = wgcna_disease_class_train,
+        data = wgcna_study_group_train,
         trControl =
           trainControl(
             method = "repeatedcv",
@@ -788,10 +789,10 @@ list(
   ),
 
   tar_target(
-    name = wgcna_disease_class_rf_cv_varImp,
+    name = wgcna_study_group_rf_cv_varImp,
     command =
       varImp(
-        object = wgcna_disease_class_rf_cv,
+        object = wgcna_study_group_rf_cv,
         scale = FALSE,
         importance=TRUE
       )
@@ -851,7 +852,7 @@ list(
             .data =
               mutate(
                 .data = module_scores_with_md,
-                disease_class = fct_drop(disease_class)
+                study_group = fct_drop(study_group)
               ),
             cluster,
             one_of(names(banchereau_modules))
@@ -901,7 +902,7 @@ list(
   ),
 
   tar_target(
-    name = module_disease_class_split,
+    name = module_study_group_split,
     command =
       initial_split(
         data =
@@ -909,33 +910,33 @@ list(
             .data =
               mutate(
                 .data = module_scores_with_md,
-                disease_class = fct_drop(disease_class)
+                study_group = fct_drop(study_group)
               ),
-            disease_class,
+            study_group,
             one_of(names(banchereau_modules))
           ),
         prop = 0.75,
-        strata = "disease_class"
+        strata = "study_group"
       )
   ),
 
   tar_target(
-    name = module_disease_class_train,
-    command = training(module_disease_class_split)
+    name = module_study_group_train,
+    command = training(module_study_group_split)
   ),
 
   tar_target(
-    name = module_disease_class_test,
-    command = testing(module_disease_class_split)
+    name = module_study_group_test,
+    command = testing(module_study_group_split)
   ),
 
   tar_target(
-    name = module_disease_class_rf_cv,
+    name = module_study_group_rf_cv,
     command =
       train(
-        form = disease_class ~ .,
+        form = study_group ~ .,
         method = "parRF",
-        data = module_disease_class_train,
+        data = module_study_group_train,
         trControl =
           trainControl(
             method = "repeatedcv",
@@ -949,10 +950,10 @@ list(
   ),
 
   tar_target(
-    name = module_disease_class_rf_cv_varImp,
+    name = module_study_group_rf_cv_varImp,
     command =
       varImp(
-        object = module_disease_class_rf_cv,
+        object = module_study_group_rf_cv,
         scale = FALSE,
         importance = TRUE
       )
@@ -1019,7 +1020,7 @@ list(
             cluster = as_factor(cluster)
           ),
         cluster,
-        disease_class,
+        study_group,
         one_of(annotated_modules$module)
       )
   ),
@@ -1061,7 +1062,7 @@ list(
     command =
       modules_compare_with_stats(
         module_score_table = annotated_module_scores_pivot,
-        compare_by = "disease_class"
+        compare_by = "study_group"
       )
   ),
 
@@ -1084,7 +1085,7 @@ list(
     command =
       modules_compare_with_stats(
         module_score_table = module_scores_pivot,
-        compare_by = "disease_class"
+        compare_by = "study_group"
       )
   ),
 
@@ -1126,14 +1127,14 @@ list(
             data =
               select(
                 .data = module_scores_with_viral,
-                disease_class,
+                study_group,
                 matches("^ME")
               ),
-            -disease_class,
+            -study_group,
             names_to     = "module",
             values_to    = "score"
           ),
-        disease_class = as_factor(disease_class)
+        study_group = as_factor(study_group)
       )
   ),
 
@@ -1142,7 +1143,7 @@ list(
     command =
       modules_compare_with_stats(
         module_score_table = module_scores_with_viral_by_disease,
-        compare_by         = "disease_class"
+        compare_by         = "study_group"
       )
   ),
 
@@ -1207,7 +1208,7 @@ list(
         select(
           .data       = tar_read(study_md),
           sample_name,
-          disease_class
+          study_group
         )
       )
     ),
@@ -1218,7 +1219,7 @@ list(
       pathway_eigenvalues_long %>%
       group_by(pathway) %>%
       wilcox_test(
-        score ~ disease_class,
+        score ~ study_group,
         ref.group = "control"
       ) %>%
       adjust_pvalue(method = "BH") %>%
@@ -1272,7 +1273,7 @@ list(
   #           .data = study_md,
   #           sample_name,
   #           cluster,
-  #           disease_class
+  #           study_group
   #           )
   #       )
   # ),
@@ -1285,7 +1286,7 @@ list(
   #       pathway
   #       ) %>%
   #     wilcox_test(
-  #       score ~ disease_class,
+  #       score ~ study_group,
   #       ref.group = "control"
   #       ) %>%
   #     adjust_pvalue(method = "BH") %>%

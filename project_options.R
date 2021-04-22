@@ -1,15 +1,9 @@
-sequencing_file_directory       = "/home/rstudio/workspace/datasets/rnaseq/novaseq"
-metadata_file                   = "metadata/COVID (PCV, OSCTR) analysis dataset.xlsx"
-metadata_sheet                  = "main"
-main_sample_list                = "metadata/NovaSeq_Sample_List.xlsx"
-main_sample_sheet               = "main"
+sequencing_file_directory       = "/home/rstudio/workspace/datasets/rnaseq/narch_advanta/data/results/aligned/"
+metadata_file                   = "metadata/narch_rnaseq_targets_metadata.csv"
 
 #### Import code and libraries ####
 
-# source("code/packages.R")        # Load your packages, e.g. library(drake).
 source("code/functions.R")       # Define your custom code as a bunch of functions.
-# source("code/extant_modules.R")  # Banchereau, Kegerreis, and Metagene modules
-
 
 c5 <- clusterProfiler::read.gmt("references/c5.all.v6.2.symbols.gmt")
 
@@ -22,17 +16,17 @@ BPPARAM                         = BiocParallel::SnowParam(workers=parallel::dete
 BiocParallel::register(BPPARAM)
 
 #### Setup project variables ####
-project_groups_to_include       = c("control", "OSCTR Case")
-project_groups_to_exclude       = "PCV Case"
-disease_classes_to_include      = NULL
-disease_classes_to_exclude      = NULL
-study_design                    = ~ disease_class
-comparison_grouping_variable    = "disease_class"
-batch_variable                  = "run_id"
+projects_to_include             = NULL
+projects_to_exclude             = NULL
+study_groups_to_include         = c("control", "sle", "ra")
+study_groups_to_exclude         = NULL
+study_design                    = ~ plate_id + study_group
+comparison_grouping_variable    = "study_group"
+batch_variable                  = "plate_id"
 control_group                   = "control"
-experimental_group              = "infected"
+experimental_group              = c("sle", "ra")
 num_sva                         = 3
-comparison_groups               = c("infection_status", "hospitalization_status")
+comparison_groups               = c("study_group", "sample_type")
 
 initial_concentration_threshold = 1.5
 pc1_zscore_threshold            = 2

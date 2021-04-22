@@ -197,6 +197,6 @@ calc_deg_means <- function(
       names_from = gene,
       values_from = avg
       ) %>%
-    column_to_rownames("disease_class")
+    column_to_rownames("study_group")
 }
 

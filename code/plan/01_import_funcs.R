@@ -3,63 +3,76 @@ import_metadata <- function(
   metadata_sheet = "main",
   extra_controls_metadata_file = NULL,
   extra_controls_metadata_sheet = "main",
-  groups_to_include = NULL,
-  groups_to_exclude = NULL){
+  projects_to_include = NULL,
+  projects_to_exclude = NULL,
+  study_groups_to_include = NULL,
+  study_groups_to_exclude = NULL){
     study_metadata <-
-      read_excel(
-        path    = metadata_file,
-        sheet   = metadata_sheet,
-        skip    = 1,
+      read_csv(
+        file = metadata_file,
         trim_ws = TRUE,
-        na      = "n/a",
-        .name_repair = janitor::make_clean_names
+        na      = "n/a"
       ) %>%
-      select(
-        -cytokine_loc_idx,
-        -cytokine_sample_id,
-        -study_group
-      ) %>%
-      rename(
-        sample_name = novaseq_exs_id,
-        ethnicity = race_code,
-        age = age_at_enroll
-      ) %>%
-      filter(
-        !is.na(sample_name),
-        project_group %in% (project_groups_to_include %||% unique(.data$project_group)),
-        !project_group %in% project_groups_to_exclude
-      ) %>%
+      janitor::clean_names() %>%
       mutate(
         age = as.integer(age),
-        disease_class =
+        study_group =
           case_when(
-            project_group == "PCV Control" ~ "control",
-            project_group == "PCV Case" ~ "infected",
-            project_group == "OSCTR Case" ~ "infected",
-            TRUE ~ "unknown"
-            ),
+            str_detect(
+              string  = tolower(study_group),
+              pattern = "patient"
+              ) ~ str_remove(
+                string  = study_group,
+                pattern = " [Pp]atient") %>% tolower(),
+            str_detect(
+              string = tolower(study_group),
+              pattern = "control"
+              ) ~ "control"
+          ),
         sample_name =
           janitor::make_clean_names(
             string = sample_name,
             case = "all_caps"
             ),
-        project_group =
-          tolower(project_group),
+        project =
+          tolower(x = project),
+        visit_date =
+          str_split(
+            string= visit_ref,
+            pattern = "\\|"
+            ) %>%
+          map(magrittr::extract(3)) %>%
+          unlist() %>%
+          as_date(),
+        ethnicity =
+          str_replace(
+            string = ethnicity,
+            pattern = "\\[([[:alpha:]]{1,2})\\]",
+            replacement = "\\1"
+            ) %>%
+          str_remove(pattern = "-noGSA"),
         across(
           .cols =
             c(
-              project_group,
+              project,
+              study_group,
+              subject_ref,
               sex,
               ethnicity,
-              grant_defined_severity,
-              j_james_severity,
-              k_smith_severity
+              sample_type,
+              run_id,
               ),
           .fns = as_factor
           )
         ) %>%
-      distinct() %>%
-      mutate(run_id = "S4_011_1")
+      filter(
+        !is.na(sample_name),
+        project %in% (projects_to_include %||% unique(.data$project)),
+        !project %in% projects_to_exclude,
+        study_group %in% (study_groups_to_include %||% unique(.data$study_group)),
+        !study_group %in% study_groups_to_exclude
+      ) %>%
+      distinct()
 
     if (!is.null(extra_controls_metadata_file)){
       non_project_controls =
@@ -69,14 +82,14 @@ import_metadata <- function(
           .name_repair = janitor::make_clean_names
           ) %>%
         mutate(
-          disease_class = tolower(disease_class),
+          study_group = tolower(study_group),
           project_group = "control"
           ) %>%
-        filter(disease_class == "control") %>%
+        filter(study_group == "control") %>%
         #Select the portions of the metadata that are useful:
         select(
           sample_name = nova_seq_sample_id,
-          disease_class,
+          study_group,
           project_group,
           sex,
           ethnicity = race_code,

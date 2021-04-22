@@ -45,11 +45,11 @@ tar_load(dds_with_scores)
 tar_load(res)
 ```
 
-```{r disease_class_table}
+```{r study_group_table}
 md <- colData(dds_with_scores) %>% as_tibble(rownames = "sample_name")
 if (knitr::is_html_output()){
   md %>%
-    tabyl(disease_class) %>%
+    tabyl(study_group) %>%
     adorn_pct_formatting(digits = 2) %>%
     kable() %>%
     kable_styling(
@@ -80,8 +80,8 @@ if (knitr::is_html_output()){
       )  
 } else if(knitr::is_latex_output()){
   md %>%
-    tabyl(disease_class) %>%
-    rename(`Disease classification` = disease_class,
+    tabyl(study_group) %>%
+    rename(`Disease classification` = study_group,
            Number = n,
            Percent = percent) %>%
     qflextable() %>%
@@ -468,7 +468,7 @@ for (i in comparison_names){
   people <-
     filter(
       .data = final_md_tbl,
-      disease_class %in% str_split(i, "_vs_", simplify = TRUE)) %>%
+      study_group %in% str_split(i, "_vs_", simplify = TRUE)) %>%
     pull(subject)
   
   matrix_to_plot <- t(vsd_exprs)[people,comparison_genes]
@@ -477,7 +477,7 @@ for (i in comparison_names){
     annotation_info %>%
     as_tibble(rownames = "subject") %>%
     filter(subject %in% people) %>%
-    arrange(disease_class)
+    arrange(study_group)
   
   sample_disease_order <-
     sample_disease_order_info %>%
@@ -485,7 +485,7 @@ for (i in comparison_names){
   
   sample_disease_order_count <-
     sample_disease_order_info %>%
-    dplyr::count(disease_class) %>%
+    dplyr::count(study_group) %>%
     pull(n) %>%
     accumulate(sum)
     
@@ -531,7 +531,7 @@ for (i in comparison_names){
   people <-
     filter(
       .data = final_md_tbl,
-      disease_class %in% str_split(i, "_vs_", simplify = TRUE)) %>%
+      study_group %in% str_split(i, "_vs_", simplify = TRUE)) %>%
     pull(subject)
   
   matrix_to_plot <- t(vsd_exprs)[people,comparison_genes]
@@ -592,7 +592,7 @@ for (i in comparison_names){
   people <-
     filter(
       .data = final_md_tbl,
-      disease_class %in% str_split(i, "_vs_", simplify = TRUE)) %>%
+      study_group %in% str_split(i, "_vs_", simplify = TRUE)) %>%
     pull(subject)
   
   matrix_to_plot <- t(vsd_exprs)[people,comparison_genes]
@@ -628,7 +628,7 @@ tar_load(deg_means)
 sample_disease_order_info <-
   annotation_info %>%
   as_tibble(rownames = "subject") %>%
-  arrange(disease_class)
+  arrange(study_group)
 
 sample_disease_order <-
   sample_disease_order_info %>%
@@ -636,7 +636,7 @@ sample_disease_order <-
   
 sample_disease_order_count <-
   sample_disease_order_info %>%
-  dplyr::count(disease_class) %>%
+  dplyr::count(study_group) %>%
   pull(n) %>%
   accumulate(sum)
 
@@ -971,7 +971,7 @@ random forest-based adjacentcy matrix, which was in turn used to calculate the g
 ```{r Sample_Clustering_chart}
 annotation_info %>%
   mutate(cluster = as_factor(cluster)) %>%
-  group_by(disease_class,
+  group_by(study_group,
            cluster) %>%
   summarise(n = n()) %>%
   pivot_wider(names_from = cluster,
@@ -980,17 +980,17 @@ annotation_info %>%
 
 annotation_info %>%
   mutate(cluster = as_factor(cluster)) %>%
-  select(disease_class, cluster) %>%
-  group_by(disease_class) %>%
+  select(study_group, cluster) %>%
+  group_by(study_group) %>%
   mutate(total_disease = n()) %>%
   ungroup() %>%
-  group_by(disease_class, cluster) %>%
+  group_by(study_group, cluster) %>%
   mutate(total_cluster_disease = n(),
          freq = total_cluster_disease/total_disease,
          cluster = as_factor(cluster)) %>%
   distinct() %>%
   ggplot(aes(
-    x = disease_class,
+    x = study_group,
     y = freq,
     group = cluster,
     fill = cluster
@@ -1011,14 +1011,14 @@ tar_load(pca_results)
 
 
 ### PCA by disease classification
-```{r PCA_by_disease_classification, fig.width=12, fig.height=6}
+```{r PCA_by_study_groupification, fig.width=12, fig.height=6}
 p1 <-
   ggplot(
     data = pca_results,
     aes(
       x = PC1,
       y = PC2,
-      fill = disease_class,
+      fill = study_group,
       line = 1
     ),
     shape = 1
@@ -1040,7 +1040,7 @@ p2 <-
     aes(
       x = PC1,
       y = PC2,
-      fill = disease_class,
+      fill = study_group,
       line = 1
       ), shape = 1
     ) +
@@ -1054,8 +1054,8 @@ p2 <-
   scale_fill_brewer(palette = "Set1") +
   scale_color_brewer(palette = "Set1") +
   theme_pubr() +
-  geom_mark_ellipse(aes(fill = disease_class,
-                        color = disease_class),
+  geom_mark_ellipse(aes(fill = study_group,
+                        color = study_group),
                     alpha = 0.05
                     ) +
   theme(legend.position = "bottom")
@@ -1263,7 +1263,7 @@ pca_results %>%
 <!--     colors = group_pal$cluster -->
 <!--   ) %>% -->
 <!--   add_markers( -->
-<!--     text = str_glue("Sample: {pca_results$sample_name}<br>Classification: {pca_results$disease_class}<br>Ethnicity {pca_results$ethnicity}<br>Cluster: {pca_results$cluster}<br>Sex: {pca_results$sex}<br>Plate: {pca_results$run_id}"), -->
+<!--     text = str_glue("Sample: {pca_results$sample_name}<br>Classification: {pca_results$study_group}<br>Ethnicity {pca_results$ethnicity}<br>Cluster: {pca_results$cluster}<br>Sex: {pca_results$sex}<br>Plate: {pca_results$run_id}"), -->
 <!--     color = ~cluster, -->
 <!--     size = 2.5, -->
 <!--     alpha = 0.9, -->
@@ -1286,14 +1286,14 @@ tar_load(umap_results)
 
 
 ### UMAP by disease classification
-```{r UMAP_by_disease_classification, fig.width=12, fig.height=7}
+```{r UMAP_by_study_groupification, fig.width=12, fig.height=7}
 p1 <-
   ggplot(
     data = umap_results,
     aes(
       x = umap_1,
       y = umap_2,
-      fill = disease_class,
+      fill = study_group,
       line = 1
     ),
     shape = 1
@@ -1315,7 +1315,7 @@ p2 <-
     aes(
       x = umap_1,
       y = umap_2,
-      fill = disease_class,
+      fill = study_group,
       line = 1
     ), shape = 1
   ) +
@@ -1329,8 +1329,8 @@ p2 <-
     scale_fill_brewer(palette = "Set1") +
     scale_color_brewer(palette = "Set1") +
     theme_pubr() +
-    geom_mark_ellipse(aes(fill = disease_class,
-                          color = disease_class),
+    geom_mark_ellipse(aes(fill = study_group,
+                          color = study_group),
                       alpha = 0.05
     ) +
   guides(color = guide_legend(nrow = 4)) +
@@ -1508,7 +1508,7 @@ umap_results %>%
 <!--     colors = group_pal$cluster -->
 <!--   ) %>% -->
 <!--   add_markers( -->
-<!--     text = str_glue("Sample: {umap_results$sample_name}<br>Classification: {umap_results$disease_class}<br>Ethnicity {umap_results$ethnicity}<br>Cluster: {umap_results$cluster}<br>Sex: {umap_results$sex}<br>Plate: {umap_results$run_id}"), -->
+<!--     text = str_glue("Sample: {umap_results$sample_name}<br>Classification: {umap_results$study_group}<br>Ethnicity {umap_results$ethnicity}<br>Cluster: {umap_results$cluster}<br>Sex: {umap_results$sex}<br>Plate: {umap_results$run_id}"), -->
 <!--     color = ~cluster, -->
 <!--     size = 2.5, -->
 <!--     alpha = 0.9, -->
@@ -1799,7 +1799,7 @@ module_gaps <- c(1,4,7,14,20,25)
 ### Sorted by disease classification
 ```{r annotated_module_disease_sort, fig.width=12, fig.height=9}
 module_scores_with_viral %>%
-  arrange(disease_class) %>%
+  arrange(study_group) %>%
   select(
     sample_name,
     one_of(module_order)
@@ -1829,7 +1829,7 @@ module_scores_with_viral %>%
     show_colnames = FALSE,
     annotation_colors = group_pal,
     annotation_row = column_to_rownames(mutate(annotated_modules, module = recode(module, !!!annotated_mod_list)), var = "module"),
-    annotation_col = arrange(annotation_info[,"disease_class",drop=FALSE], disease_class),
+    annotation_col = arrange(annotation_info[,"study_group",drop=FALSE], study_group),
     breaks = zscore_range,
     cluster_rows = FALSE,
     cluster_cols = FALSE,
@@ -1898,7 +1898,7 @@ module_scores_with_viral %>%
     show_colnames = TRUE,
     annotation_colors = group_pal,
     annotation_row = column_to_rownames(annotated_modules, var = "module"),
-    annotation_col = annotation_info[,c("cluster", "disease_class"),drop=FALSE],
+    annotation_col = annotation_info[,c("cluster", "study_group"),drop=FALSE],
     breaks = zscore_range,
     cluster_rows = FALSE,
     cluster_cols = TRUE,
@@ -2017,14 +2017,14 @@ number_of_pages <-
 
 ### By disease classification
 ```{r Banchereau_modules_by_disease, echo=FALSE, fig.height=8, fig.width=12, warning=FALSE}
-annotated_module_disease_class_graphs <-
+annotated_module_study_group_graphs <-
   annotated_module_scores_pivot %>%
   select(-cluster) %>%
-  mutate(disease_class = as_factor(disease_class)) %>%
+  mutate(study_group = as_factor(study_group)) %>%
   ggviolin(
-    x = "disease_class",
+    x = "study_group",
     y = "score",
-    fill = "disease_class",
+    fill = "study_group",
     draw_quantiles = c(0.25, 0.5, 0.75),
     add = "jitter",
     trim = TRUE,
@@ -2050,7 +2050,7 @@ annotated_module_disease_class_graphs <-
   
 for(i in seq(number_of_pages)){
   print(
-    annotated_module_disease_class_graphs +
+    annotated_module_study_group_graphs +
       facet_wrap_paginate(
         facets = vars(module),
         scales = "free_y",
@@ -2071,7 +2071,7 @@ number_of_pages <-
   
 annotated_module_cluster_graphs <-
   annotated_module_scores_pivot %>%
-  select(-disease_class) %>%
+  select(-study_group) %>%
   mutate(cluster = as_factor(cluster)) %>%
   ggviolin(
     x = "cluster",
@@ -2161,9 +2161,9 @@ number_of_pages <-
 module_disease_graphs <-
   module_scores_with_viral_by_disease %>%
   ggviolin(
-    x = "disease_class",
+    x = "study_group",
     y = "score",
-    fill = "disease_class",
+    fill = "study_group",
     draw_quantiles = c(0.25, 0.5, 0.75),
     add = "jitter",
     trim = TRUE,
@@ -2461,19 +2461,19 @@ The module eigengene scores were used to train a random forest model with repeat
 The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r wgcna_disease_confusion}
-tar_load(wgcna_disease_class_rf_cv)
-tar_load(wgcna_disease_class_test)
+tar_load(wgcna_study_group_rf_cv)
+tar_load(wgcna_study_group_test)
 
 caret::confusionMatrix(
-  data = predict(wgcna_disease_class_rf_cv, wgcna_disease_class_test),
-  reference = as_factor(wgcna_disease_class_test$disease_class)
+  data = predict(wgcna_study_group_rf_cv, wgcna_study_group_test),
+  reference = as_factor(wgcna_study_group_test$study_group)
 )
 ```
 
 The relative importance of each eigengene in classification:
 
 ```{r wgcna_disease_importance}
-tar_read(wgcna_disease_class_rf_cv_varImp)
+tar_read(wgcna_study_group_rf_cv_varImp)
 ```
 
 ## Use of module modules in classifying clusters.
@@ -2505,19 +2505,19 @@ The module eigengene scores were used to train a random forest model with repeat
 The model was trained with 75% of the dataset and tested on 25%.
 
 ```{r Banchereau_disease_confusion}
-tar_load(module_disease_class_rf_cv)
-tar_load(module_disease_class_test)
+tar_load(module_study_group_rf_cv)
+tar_load(module_study_group_test)
 
 caret::confusionMatrix(
-  data = predict(module_disease_class_rf_cv, module_disease_class_test),
-  reference = as_factor(module_disease_class_test$disease_class)
+  data = predict(module_study_group_rf_cv, module_study_group_test),
+  reference = as_factor(module_study_group_test$study_group)
 )
 ```
 
 The relative importance of each eigengene in classification:
 
 ```{r Banchereau_disease_importance}
-tar_read(module_disease_class_rf_cv_varImp)
+tar_read(module_study_group_rf_cv_varImp)
 ```
 
 ```{r}

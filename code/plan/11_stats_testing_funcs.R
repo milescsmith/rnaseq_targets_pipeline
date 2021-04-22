@@ -18,12 +18,12 @@ pivot_module_scores <- function(module_scores){
   mutate(
     .data = module_scores,
     cluster       = as_factor(cluster),
-    disease_class = as_factor(disease_class)
+    study_group = as_factor(study_group)
   ) %>%
   select(
     sample_name,
     cluster,
-    disease_class,
+    study_group,
     matches("^M[[:digit:]]+"),
     mg,
     starts_with("ldg")

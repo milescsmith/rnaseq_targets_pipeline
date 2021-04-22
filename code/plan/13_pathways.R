@@ -69,7 +69,7 @@ extract_pathway_exprs <- function(exprs_mat, gene_list, metadata){
           select(
             .data = metadata,
             sample_name,
-            disease_class,
+            study_group,
             grant_defined_severity,
             project_group
             )
@@ -84,7 +84,7 @@ calc_gex_stats <- function(expr_tbl){
     expr_tbl %>%
     group_by(gene) %>%
     wilcox_test(
-      formula = expression ~ disease_class
+      formula = expression ~ study_group
     ) %>%
     adjust_pvalue(
       method = "BH"
@@ -195,7 +195,7 @@ grouped_complex_heatmap <- function(
             pathway
           ),
         {{diffused_group_var}} == group2
-        # disease_class == group2
+        # study_group == group2
       ) %>%
         pull(sample_name) %>%
         unique(),
@@ -215,7 +215,7 @@ grouped_complex_heatmap <- function(
         filter(
           .data = sample_info_tbl,
           # {{diffused_group_var}} == group2
-          disease_class == group2
+          study_group == group2
         ) %>%
         column_to_rownames("sample_name"),
       col = circlize::colorRamp2(seq(-4,4), viridis::viridis(length(seq(-4,4)))),
@@ -235,7 +235,7 @@ grouped_complex_heatmap <- function(
         filter(
           .data = sample_info_tbl,
           {{diffused_group_var}} == group1
-          # disease_class == group1
+          # study_group == group1
         ) %>%
         column_to_rownames("sample_name"),
       col = circlize::colorRamp2(seq(-4,4), viridis::viridis(length(seq(-4,4)))),

@@ -60,9 +60,9 @@ sample_disease_info <-
   tar_read(study_md) %>%
   select(
     sample_name,
-    disease_class
+    study_group
     ) %>%
-  arrange(disease_class)
+  arrange(study_group)
 ```
 
 ### GO_NLRP3_INFLAMMASOME_COMPLEX_ASSEMBLY
@@ -74,7 +74,7 @@ grouped_complex_heatmap(
   sample_info_tbl = sample_disease_info,
   pathway = "GO_NLRP3_INFLAMMASOME_COMPLEX_ASSEMBLY",
   gene_list = plafker_gene_list,
-  group_var = "disease_class",
+  group_var = "study_group",
   group1 = "control",
   group2 = "infected"
   )
@@ -91,7 +91,7 @@ grouped_complex_heatmap(
   sample_info_tbl = sample_disease_info,
   pathway = "REACTOME_INFLAMMASOMES",
   gene_list = plafker_gene_list,
-  group_var = "disease_class",
+  group_var = "study_group",
   group1 = "control",
   group2 = "infected"
   )
@@ -109,7 +109,7 @@ grouped_complex_heatmap(
   sample_info_tbl = sample_disease_info,
   pathway = "WINTER_HYPOXIA_METAGENE",
   gene_list = plafker_gene_list,
-  group_var = "disease_class",
+  group_var = "study_group",
   group1 = "control",
   group2 = "infected",
   row_name_fontsize = 6
@@ -128,7 +128,7 @@ grouped_complex_heatmap(
   sample_info_tbl = sample_disease_info,
   pathway = "GO_CELLULAR_RESPONSE_TO_VITAMIN_D",
   gene_list = plafker_gene_list,
-  group_var = "disease_class",
+  group_var = "study_group",
   group1 = "control",
   group2 = "infected"
   )
@@ -139,9 +139,9 @@ grouped_complex_heatmap(
 #   tar_read(study_md) %>%
 #   select(
 #     sample_name,
-#     disease_class
+#     study_group
 #     ) %>% 
-#   arrange(disease_class)
+#   arrange(study_group)
 # 
 # groups <-
 #   lapply(names(pathway_exprs), function(j){
@@ -158,7 +158,7 @@ grouped_complex_heatmap(
 #           INFO      = "sample_disease_info",
 #           PATHWAY   = j,
 #           GENE_LIST = "plafker_gene_list",
-#           GROUP_VAR = "disease_class",
+#           GROUP_VAR = "study_group",
 #           GROUP1    = "control",
 #           GROUP2    = "infected"
 #         )
@@ -186,7 +186,7 @@ groups <-
           GENE_SYMBOL = i,
           DATASET     = str_glue('pathway_exprs[["{j}"]]'),
           STATS_DATA  = str_glue('pathway_expr_stats[["{j}"]]'),
-          X_VAR       = "disease_class",
+          X_VAR       = "study_group",
           Y_VAR       = "expression"
         )
       })
@@ -212,10 +212,10 @@ tar_read(pathway_eigenvalues) %>%
     select(
       .data       = tar_read(study_md),
       sample_name, 
-      disease_class
+      study_group
       )
     ) %>%
-  group_by(disease_class) %>%
+  group_by(study_group) %>%
   heatmap(
     .row          = pathway,
     .column       = sample_name,
@@ -223,16 +223,16 @@ tar_read(pathway_eigenvalues) %>%
     .scale        = "row",
     palette_value = circlize::colorRamp2(scale_range, viridis::viridis(length(scale_range)))
     ) %>%
-  add_tile(disease_class)
+  add_tile(study_group)
 ```
 
 ```{r fig.height=6, fig.width=6}
 
 tar_read(pathway_eigenvalues_long) %>%
   ggviolin(
-    x = "disease_class",
+    x = "study_group",
     y = "score",
-    fill = "disease_class"
+    fill = "study_group"
     ) +
   geom_quasirandom() +
   stat_pvalue_manual(
