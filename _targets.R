@@ -1,6 +1,8 @@
 library(targets)
 library(tarchetypes)
 
+source("code/project_parameters.R")
+
 source("code/plan/01_import_funcs.R")
 source("code/plan/02_filtering_funcs.R")
 source("code/plan/04_module_funcs.R")
@@ -13,7 +15,6 @@ source("code/plan/13_pathways.R")
 source("code/plan/98_palettes_funcs.R")
 source("code/plan/99_output_funcs.R")
 
-source("project_options.R")
 options(tidyverse.quiet = TRUE)
 
 tar_option_set(
@@ -73,31 +74,23 @@ tar_option_set(
 
 list(
   tar_target(
-    raw_metadata,
-    metadata_file,
-    format = "file",
+    name       = raw_metadata,
+    command    = params[["metadata_file"]],
+    format     = "file",
     deployment = "main"
   ),
 
-  # tar_target(
-  #   name = raw_sample_list,
-  #   main_sample_list,
-  #   format = "file",
-  #   deployment = "main"
-  # ),
-
   tar_target(
-    name = md,
-    command =
+    name       = md,
+    command    =
       import_metadata(
         metadata_file = raw_metadata,
-        #extra_controls_metadata_file = raw_sample_list,
-        projects_to_include = projects_to_include,
-        projects_to_exclude = projects_to_exclude,
-        study_groups_to_include = study_groups_to_include,
-        study_groups_to_exclude = study_groups_to_exclude
+        projects_to_include     = params[["projects_to_include"]],
+        projects_to_exclude     = params[["projects_to_exclude"]],
+        study_groups_to_include = params[["study_groups_to_include"]],
+        study_groups_to_exclude = params[["study_groups_to_exclude"]]
       ),
-    packages =
+    packages   =
       c(
         "readr",
         "dplyr",
@@ -109,19 +102,19 @@ list(
   ),
 
   tar_target(
-    name = seq_file_directory,
-    sequencing_file_directory,
-    format = "file"
+    name       = seq_file_directory,
+    command    = params[["sequencing_file_directory"]],
+    format     = "file"
   ),
 
   tar_target(
-    name = tx_files,
-    command =
+    name       = tx_files,
+    command    =
       import_counts(
         directory = seq_file_directory,
-        metadata = md
+        metadata  = md
       ),
-    packages =
+    packages   =
       c(
         "purrr",
         "magrittr",
@@ -130,27 +123,27 @@ list(
   ),
 
   tar_target(
-    annotation_file,
-    "references/gencode_v32_virus_tx2gene_v1.2.csv",
-    format = "file"
+    name       = annotation_file,
+    command    = params[["annotation_file"]],
+    format     = "file"
   ),
 
   tar_target(
-    name = annot,
-    command = read_csv(annotation_file),
-    packages = "readr"
+    name       = annot,
+    command    = read_csv(annotation_file),
+    packages   = "readr"
   ),
 
   tar_target(
-    name = final_md,
-    command =
+    name       = final_md,
+    command    =
       create_final_md(
-        md = md,
-        tx_files = tx_files,
-        comparison_group = study_group,
-        control_group = "control"
+        md               = md,
+        tx_files         = tx_files,
+        comparison_group = params[["comparison_grouping_variable"]],
+        control_group    = params[["control_group"]]
       ),
-    packages = c(
+    packages   = c(
       "forcats",
       "stringr",
       "dplyr",
@@ -160,38 +153,64 @@ list(
   ),
 
   tar_target(
-    name = tx_counts,
-    command =
-      tximport(
-        tx_files[rownames(final_md)],
-        type = "salmon",
-        txIn = TRUE,
-        txOut = FALSE,
-        tx2gene = annot,
-        importer = fread
+    name       = tx_counts,
+    command    =
+      import_counts(
+        directory = seq_file_directory
       ),
     packages =
       c(
         "tximport",
-        "data.table"
+        "data.table",
+        "magrittr",
+        "janitor",
+        "purrr",
+        "stringr"
       )
   ),
 
   tar_target(
-    name = filtered_tx_counts,
-    command = only_hugo_named_genes(tx_counts)
+    name = imported_data,
+    command = process_counts(
+      count_files                  = tx_counts,
+      sample_metadata              = final_md,
+      study_design                 = params[["study_design"]],
+      batch_variable               = params[["batch_variable"]],
+      comparison_grouping_variable = params[["comparison_groups"]],
+      reference_gene_annotation    = annot,
+      aligner                      = params[["aligner"]],
+      minimum_gene_count           = params[["minimum_gene_count"]],
+      pc1_zscore_threshold         = params[["pc1_zscore_threshold"]],
+      pc2_zscore_threshold         = params[["pc2_zscore_threshold"]],
+      BPPARAM                      = BPPARAM,
+      num_sva                      = params[["sva_num"]],
+      use_combat                   = params[["use_combar"]],
+      method                       = params[["process_method"]]
+    ),
+    packages =
+      c(
+        "purrr",
+        "tibble",
+        "HGNChelper",
+        "dplyr",
+        "matrixStats",
+        "tidyselect",
+        "stringr",
+        "rlang"
+      ),
+    cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
-    name = dds_import,
-    command =
-      DESeqDataSetFromTximport(
-        txi = filtered_tx_counts,
-        colData = final_md,
-        design = ~ study_group
-      ),
-    packages = "DESeq2"
-  ),
+  # tar_target(
+  #   name = dds_import,
+  #   command =
+  #     DESeqDataSetFromTximport(
+  #       txi = filtered_tx_counts,
+  #       colData = final_md,
+  #       design = ~ study_group
+  #     ),
+  #   packages = "DESeq2"
+  # ),
 
   # tar_target(
   #   name    = no_single_batches_dds,
@@ -227,62 +246,36 @@ list(
 #       )
 #   ),
 
+  # tar_target(
+  #   dds_qc,
+  #   DESeq(
+  #     outlier_qc$dds,
+  #     parallel = TRUE,
+  #     BPPARAM = BPPARAM
+  #   ),
+  #   cue = tar_cue(mode = "never")
+  # ),
+
+  # tar_target(
+  #   name = sva_res,
+  #   command =
+  #     calc_sva(
+  #       dds = dds_qc,
+  #       model_design = comparison_grouping_variable,
+  #       n.sva = num_sva
+  #     ),
+  #   cue = tar_cue(mode = "never")
+  # ),
+
   tar_target(
-    name = dds_filtered,
+    name       = sva_graph_data,
+    command    = plot_sva(imported_data[["sva_graph_data"]])
+  ),
+
+  tar_target(
+    name = vsc_exprs,
     command =
-      filter_counts(
-        dds = dds_import,
-        min_counts = 1,
-        removal_pattern = "^RNA5"
-      )
-  ),
-
-  tar_target(
-    name = outlier_qc,
-    command =
-      remove_outliers(
-        dds = dds_filtered,
-        pc1_zscore_cutoff = pc1_zscore_threshold,
-        pc2_zscore_cutoff = pc2_zscore_threshold
-      ),
-    cue = tar_cue(mode = "never")
-  ),
-
-  tar_target(
-    dds_qc,
-    DESeq(
-      outlier_qc$dds,
-      parallel = TRUE,
-      BPPARAM = BPPARAM
-    ),
-    cue = tar_cue(mode = "never")
-  ),
-
-  tar_target(
-    name = sva_res,
-    command =
-      calc_sva(
-        dds = dds_qc,
-        model_design = comparison_grouping_variable,
-        n.sva = num_sva
-      ),
-    cue = tar_cue(mode = "never")
-  ),
-
-  tar_target(
-    name = sva_graph_data,
-    command = plot_sva(sva_res$sva)
-  ),
-
-  tar_target(
-    name = vsd,
-    command = vst(sva_res$dds)
-  ),
-
-  tar_target(
-    name = vsd_exprs,
-    command =
-      assay(vsd) %>%
+      imported_data[["variance_stabilized_counts"]] %>%
       as_tibble(rownames = "gene") %>%
       mutate(hugo = checkGeneSymbols(gene)[["Suggested.Symbol"]]) %>%
       filter(!is.na(hugo)) %>%
@@ -297,27 +290,28 @@ list(
       as.matrix()
   ),
 
+  # This should be changed into a list that we can walk through
   tar_target(
     name = banchereau_module_file,
-    "references/banchereau_modules.csv",
+    command = params[["banchereau_modules"]],
     format = "file"
   ),
 
   tar_target(
     name = banchereau_module_annotations_file,
-    "references/banchereau_module_annotations.csv",
+    command = params[["banchereau_module_annotations_file"]],
     format = "file"
   ),
 
   tar_target(
     name = ldg_module_file,
-    "references/ldg_modules.csv",
+    command = params[["ldg_module_file"]],
     format = "file"
   ),
 
   tar_target(
     name = metasignature_module_file,
-    "references/metasignature_module.csv",
+    command = params[["metasignature_module_file"]],
     format = "file"
   ),
 
@@ -343,11 +337,12 @@ list(
     command = create_module_list(metasignature_module_file)
   ),
 
+  # TODO: can scoreEigengenes handle anything other than a DESeqDataSet or a plain matrix?
   tar_target(
-    name = dds_with_scores,
+    name = dataset_with_scores,
     command =
       scoreEigengenes(
-        object = sva_res$dds,
+        object = imported_data[["dataset"]],
         module_list = banchereau_modules,
         score_func = 'rsvd'
       ) %>%
@@ -363,11 +358,12 @@ list(
       )
   ),
 
+  # TODO: can extract_module_scores handle anything other than a DESeqDataSet?
   tar_target(
     name = module_scores,
     command =
       extract_module_scores(
-        dds = dds_with_scores,
+        dds = dataset_with_scores,
         names(banchereau_modules),
         names(ldg_modules),
         names(metasignature_module)
@@ -376,7 +372,7 @@ list(
 
   tar_target(
     name = disp_plot,
-    command = plot_dispersion_estimate(dds_with_scores)
+    command = plot_dispersion_estimate(dataset_with_scores)
   ),
 
   tar_target(
@@ -431,14 +427,14 @@ list(
     command =
       extract_module_genes(
         module_table      = module_tbl,
-        exprs_mat         = vsd_exprs,
+        exprs_mat         = vsc_exprs,
         module_annotation = "Interferon"
       )
   ),
 
   tar_target(
     name = sample_dists,
-    command = parallelDist(t(vsd_exprs)),
+    command = parallelDist(t(vsc_exprs)),
     packages = "parallelDist"
   ),
 
@@ -452,7 +448,7 @@ list(
     command =
       ident_clusters(
         irlba(
-          A = vsd_exprs,
+          A = vsc_exprs,
           nv = 100
           ) %>%
           pluck("v") %>%
@@ -464,7 +460,7 @@ list(
               )
             ) %>%
           set_rownames(
-            colnames(vsd_exprs)
+            colnames(vsc_exprs)
             ),
         K.max = 20
       )
@@ -479,12 +475,14 @@ list(
       )
   ),
 
+  # TODO: again, needs to work with things other than a DESeqDataSet
+  # TODO: maybe a generalized get metadata from object function?
   tar_target(
     name = study_md,
     command =
       left_join(
         as_tibble(
-          colData(dds_with_scores),
+          colData(dataset_with_scores),
           rownames = "sample_name"),
         clusters
       )
@@ -494,11 +492,12 @@ list(
     name = annotation_info,
     command =
       column_to_rownames(
-        select(.data = study_md,
-               study_group,
-               sex,
-               cluster,
-               sample_name
+        select(
+          .data = study_md,
+          study_group,
+          sex,
+          cluster,
+          sample_name
         ),
         var = "sample_name"
       )
@@ -507,10 +506,10 @@ list(
   tar_target(
     pca_results,
     run_pca(
-      expr_data = vsd_exprs,
+      expr_data = vsc_exprs,
       metadata =
         as_tibble(
-          x = colData(dds_with_scores),
+          x = colData(dataset_with_scores),
           rownames="sample_name"
         ),
       cluster_info = clusters
@@ -520,10 +519,10 @@ list(
   tar_target(
     umap_results,
     run_umap(
-      expr_data = vsd_exprs,
+      expr_data = vsc_exprs,
       metadata =
         as_tibble(
-          x = colData(dds_with_scores),
+          x = colData(dataset_with_scores),
           rownames = "sample_name"
         ),
       cluster_info = clusters
@@ -533,9 +532,9 @@ list(
   tar_target(
     name = comparison_results_list,
     keep(
-      resultsNames(dds_with_scores),
+      resultsNames(dataset_with_scores),
       str_detect(
-        string = resultsNames(dds_with_scores),
+        string = resultsNames(dataset_with_scores),
         pattern = comparison_grouping_variable
       )
     )
@@ -546,15 +545,16 @@ list(
     command =
       create_results_list(
         comparison_list = comparison_results_list,
-        dds = dds_with_scores,
+        dds = dataset_with_scores,
         comparison_grouping_variable = comparison_grouping_variable
       )
   ),
 
+  # TODO: generalize create_deg_tables?
   tar_target(
     name = down_tables,
     command = create_deg_tables(
-      deg_res = res,
+      deg_res = imported_data[["res"]],
       comparison_list = comparison_results_list,
       grouping_variable = comparison_grouping_variable,
       direction = "down"
@@ -564,7 +564,7 @@ list(
   tar_target(
     name = up_tables,
     command = create_deg_tables(
-      deg_res = res,
+      deg_res = imported_data[["res"]],
       comparison_list = comparison_results_list,
       grouping_variable = comparison_grouping_variable,
       direction = "up"
@@ -574,7 +574,7 @@ list(
   tar_target(
     name = degs,
     command = extract_de_genes(
-      results = res,
+      results = imported_data[["res"]],
       comparison_list = comparison_results_list,
       grouping_variable = comparison_grouping_variable
     )
@@ -588,10 +588,10 @@ list(
   tar_target(
     name = deg_means,
     command = calc_deg_means(
-      exprs = vsd_exprs,
+      exprs = vsc_exprs,
       deg_class = deg_class,
       metadata = as_tibble(
-        colData(dds_with_scores),
+        colData(dataset_with_scores),
         rownames = "name"
       ) %>%
         select(
@@ -617,14 +617,14 @@ list(
         "GBP2", "RSAD2", "MX2", "MX1", "IFIT2", "IFI35", "BST2",
         "OAS1", "OASL", "OAS2", "OAS3", "PTPN6", "PTPN11"
       ),
-      rownames(vsd_exprs)
+      rownames(vsc_exprs)
     )
   ),
 
   tar_target(
-    name = vsd_top,
+    name = vsc_top,
     command = top_variable_genes(
-      exprs = vsd_exprs,
+      exprs = vsc_exprs,
       n = 20000
     )
   ),
@@ -632,7 +632,7 @@ list(
   tar_target(
     name = sft,
     command = pickSoftThreshold(
-      data = vsd_top,
+      data = vsc_top,
       powerVector =
         c(
           seq(10),
@@ -648,7 +648,7 @@ list(
   tar_target(
     name    = wgcna_modules,
     command = blockwiseModules(
-      datExpr           = vsd_top,
+      datExpr           = vsc_top,
       power             = find_softPower(sft),
       maxBlockSize      = 20000,
       mergeCutHeight    = 0.2,
@@ -675,17 +675,23 @@ list(
 
   tar_target(
     name = wgcna_module_colors,
-    command = unique(pull(wgcna_module_genes, module))
+    command =
+      unique(
+        pull(
+          .data = wgcna_module_genes,
+          module
+        )
+      )
   ),
 
   tar_target(
     name = wgcna_hub_genes,
     command =
       chooseTopHubInEachModule(
-        datExpr = vsd_top,
-        colorh = wgcna_modules$colors,
-        power = 4,
-        type = "signed hybrid"
+        datExpr = vsc_top,
+        colorh  = wgcna_modules$colors,
+        power   = 4,
+        type    = "signed hybrid"
       )
   ),
 
@@ -693,8 +699,19 @@ list(
     name = wgcna_scores,
     command =
       left_join(
-        x = select(.data = as_tibble(x = wgcna_modules$MEs, rownames="sample_name"), -MEgrey),
-        y = as_tibble(x = annotation_info, rownames="sample_name")
+        x = select(
+          .data =
+            as_tibble(
+              x        = wgcna_modules$MEs,
+              rownames = "sample_name"
+            ),
+          -MEgrey
+        ),
+        y =
+          as_tibble(
+            x        = annotation_info,
+            rownames = "sample_name"
+          )
       )
   ),
 
@@ -736,8 +753,8 @@ list(
     name = wgcna_cluster_rf_cv_varImp,
     command =
       varImp(
-        object = wgcna_cluster_rf_cv,
-        scale = FALSE,
+        object     = wgcna_cluster_rf_cv,
+        scale      = FALSE,
         importance = TRUE
       )
   ),
@@ -748,8 +765,8 @@ list(
       initial_split(
         data =
           select(
-            .data = mutate(
-              .data = wgcna_scores,
+            .data         = mutate(
+              .data       = wgcna_scores,
               study_group = fct_drop(study_group)
             ),
             study_group,
@@ -761,40 +778,40 @@ list(
   ),
 
   tar_target(
-    name = wgcna_study_group_train,
+    name    = wgcna_study_group_train,
     command = training(wgcna_study_group_split)
   ),
 
   tar_target(
-    name = wgcna_study_group_test,
+    name    = wgcna_study_group_test,
     command = testing(wgcna_study_group_split)
   ),
 
   tar_target(
-    name = wgcna_study_group_rf_cv,
+    name    = wgcna_study_group_rf_cv,
     command =
       train(
-        form = study_group ~ .,
+        form   = study_group ~ .,
         method = "parRF",
-        data = wgcna_study_group_train,
+        data   = wgcna_study_group_train,
         trControl =
           trainControl(
-            method = "repeatedcv",
-            number = 20,
-            repeats = 20,
-            search = "grid",
+            method        = "repeatedcv",
+            number        = 20,
+            repeats       = 20,
+            search        = "grid",
             allowParallel = TRUE
           )
       )
   ),
 
   tar_target(
-    name = wgcna_study_group_rf_cv_varImp,
+    name    = wgcna_study_group_rf_cv_varImp,
     command =
       varImp(
-        object = wgcna_study_group_rf_cv,
-        scale = FALSE,
-        importance=TRUE
+        object     = wgcna_study_group_rf_cv,
+        scale      = FALSE,
+        importance = TRUE
       )
   ),
 
@@ -805,70 +822,70 @@ list(
         .data =
           mutate(
             .data = wgcna_module_genes,
-            hugo = checkGeneSymbols(gene)[["Suggested.Symbol"]]
+            hugo  = checkGeneSymbols(gene)[["Suggested.Symbol"]]
           ),
         !is.na(hugo)
       )
   ),
 
   tar_target(
-    name = MEenriched_list,
+    name    = MEenriched_list,
     command = module_gsea(
-      module_genes = filtered_wgcna_module_genes,
+      module_genes       = filtered_wgcna_module_genes,
       module_of_interest = wgcna_module_colors
     ),
-    pattern = map(wgcna_module_colors),
+    pattern   = map(wgcna_module_colors),
     iteration = "list"
   ),
 
   tar_target(
-    name = MEenriched,
+    name    = MEenriched,
     command = bind_rows(MEenriched_list)
   ),
 
   tar_target(
-    name = MEplotting,
+    name    = MEplotting,
     command = module_gsea_plots(enriched_genes = MEenriched)
   ),
 
   tar_target(
-    name = module_scores_with_md,
+    name    = module_scores_with_md,
     command =
       left_join(
         x = module_scores,
         y = as_tibble(
-          x = annotation_info,
-          rownames="sample_name"
+          x        = annotation_info,
+          rownames = "sample_name"
         )
       )
   ),
 
   tar_target(
-    name = module_cluster_split,
+    name    = module_cluster_split,
     command =
       initial_split(
         data =
           select(
             .data =
               mutate(
-                .data = module_scores_with_md,
+                .data       = module_scores_with_md,
                 study_group = fct_drop(study_group)
               ),
             cluster,
             one_of(names(banchereau_modules))
           ),
-        prop = 0.75,
+        prop   = 0.75,
         strata = "cluster"
       )
   ),
 
   tar_target(
-    name = module_cluster_train,
+    name    = module_cluster_train,
     command = training(module_cluster_split)
   ),
 
   tar_target(
-    name = module_cluster_test,
+    name    = module_cluster_test,
     command = testing(module_cluster_split)
   ),
 
@@ -881,10 +898,10 @@ list(
         data = module_cluster_train,
         trControl =
           trainControl(
-            method = "repeatedcv",
-            number = 10,
-            repeats = 10,
-            search = "grid",
+            method        = "repeatedcv",
+            number        = 10,
+            repeats       = 10,
+            search        = "grid",
             allowParallel = TRUE
           ),
         importance = TRUE
@@ -895,8 +912,8 @@ list(
     name = module_cluster_rf_cv_varImp,
     command =
       varImp(
-        object = module_cluster_rf_cv,
-        scale = FALSE,
+        object     = module_cluster_rf_cv,
+        scale      = FALSE,
         importance = TRUE
       )
   ),
@@ -909,7 +926,7 @@ list(
           select(
             .data =
               mutate(
-                .data = module_scores_with_md,
+                .data       = module_scores_with_md,
                 study_group = fct_drop(study_group)
               ),
             study_group,
@@ -921,12 +938,12 @@ list(
   ),
 
   tar_target(
-    name = module_study_group_train,
+    name    = module_study_group_train,
     command = training(module_study_group_split)
   ),
 
   tar_target(
-    name = module_study_group_test,
+    name    = module_study_group_test,
     command = testing(module_study_group_split)
   ),
 
@@ -939,10 +956,10 @@ list(
         data = module_study_group_train,
         trControl =
           trainControl(
-            method = "repeatedcv",
-            number = 10,
-            repeats = 10,
-            search = "grid",
+            method        = "repeatedcv",
+            number        = 10,
+            repeats       = 10,
+            search        = "grid",
             allowParallel = TRUE
           ),
         importance = TRUE
@@ -950,11 +967,11 @@ list(
   ),
 
   tar_target(
-    name = module_study_group_rf_cv_varImp,
+    name    = module_study_group_rf_cv_varImp,
     command =
       varImp(
-        object = module_study_group_rf_cv,
-        scale = FALSE,
+        object     = module_study_group_rf_cv,
+        scale      = FALSE,
         importance = TRUE
       )
   ),
@@ -964,8 +981,8 @@ list(
   #   command =
   #     extract_viral_expression(
   #       annotations = annot,
-  #       exprs = vsd_exprs,
-  #       dds = dds_with_scores
+  #       exprs = vsc_exprs,
+  #       dds = dataset_with_scores
   #     )
   # ),
 
@@ -1031,7 +1048,7 @@ list(
       set_names(
         nm =
           drake_recode(
-            target_list = names(annotated_module_scores_with_cluster_class),
+            target_list             = names(annotated_module_scores_with_cluster_class),
             thing_to_unquote_splice = annotated_mod_list),
         x  = annotated_module_scores_with_cluster_class
       )
@@ -1053,21 +1070,21 @@ list(
     command =
       modules_compare_with_stats(
         module_score_table = annotated_module_scores_pivot,
-        compare_by = "cluster"
+        compare_by         = "cluster"
       )
   ),
 
   tar_target(
-    name = annotated_module_stats_by_disease,
+    name    = annotated_module_stats_by_disease,
     command =
       modules_compare_with_stats(
         module_score_table = annotated_module_scores_pivot,
-        compare_by = "study_group"
+        compare_by         = "study_group"
       )
   ),
 
   tar_target(
-    name = module_scores_pivot,
+    name    = module_scores_pivot,
     command = pivot_module_scores(module_scores = module_scores_with_viral)
   ),
 
@@ -1081,11 +1098,11 @@ list(
   ),
 
   tar_target(
-    name = module_stats_by_disease,
+    name    = module_stats_by_disease,
     command =
       modules_compare_with_stats(
         module_score_table = module_scores_pivot,
-        compare_by = "study_group"
+        compare_by         = "study_group"
       )
   ),
 
@@ -1152,92 +1169,95 @@ list(
     command =
       create_palettes(
         annotated_modules = annotated_modules,
-        clusters = clusters,
-        annotation_info = annotation_info,
-        deg_class = deg_class
+        clusters          = clusters,
+        annotation_info   = annotation_info,
+        deg_class         = deg_class
       )
   ),
 
-    tar_target(
-    name = plafker_gene_list_file,
-    "references/plafker_gene_list.csv",
-    format = "file"
-  ),
+  # TODO: make an optional accessory gene list report
+  # tar_target(
+  #   name = plafker_gene_list_file,
+  #   "references/plafker_gene_list.csv",
+  #   format = "file"
+  # ),
 
-  tar_target(
-    name = plafker_gene_list,
-    command = create_module_list(plafker_gene_list_file)
-  ),
+  # tar_target(
+  #   name = plafker_gene_list,
+  #   command = create_module_list(plafker_gene_list_file)
+  # ),
 
-  tar_target(
-    name = pathway_exprs,
-    command =
-      map(plafker_gene_list, extract_pathway_exprs, exprs_mat = vsd_exprs, metadata = study_md),
-  ),
+  # tar_target(
+  #   name = pathway_exprs,
+  #   command =
+  #     map(plafker_gene_list, extract_pathway_exprs, exprs_mat = vsc_exprs, metadata = study_md),
+  # ),
 
-  tar_target(
-    name = pathway_expr_stats,
-    command = map(pathway_exprs, calc_gex_stats)
-  ),
+  # tar_target(
+  #   name = pathway_expr_stats,
+  #   command = map(pathway_exprs, calc_gex_stats)
+  # ),
 
-  tar_target(
-    name = dds_with_pathway_scores,
-    command =
-      scoreEigengenes(
-        object = dds_with_scores,
-        module_list = plafker_gene_list,
-        score_func = 'rsvd'
-      )
-  ),
+  # tar_target(
+  #   name = dds_with_pathway_scores,
+  #   command =
+  #     scoreEigengenes(
+  #       object = dataset_with_scores,
+  #       module_list = plafker_gene_list,
+  #       score_func = 'rsvd'
+  #     )
+  # ),
 
-  tar_target(
-    name = pathway_eigenvalues,
-    command = extract_module_scores(dds_with_pathway_scores, names(plafker_gene_list))
-  ),
+  # tar_target(
+  #   name = pathway_eigenvalues,
+  #   command = extract_module_scores(dds_with_pathway_scores, names(plafker_gene_list))
+  # ),
 
-  tar_target(
-    name = pathway_eigenvalues_long,
-    command =
-      pathway_eigenvalues %>%
-      pivot_longer(
-        -sample_name,
-        names_to      = "pathway",
-        values_to     = "score"
-      ) %>%
-      left_join(
-        select(
-          .data       = tar_read(study_md),
-          sample_name,
-          study_group
-        )
-      )
-    ),
+  # tar_target(
+  #   name = pathway_eigenvalues_long,
+  #   command =
+  #     pathway_eigenvalues %>%
+  #     pivot_longer(
+  #       -sample_name,
+  #       names_to      = "pathway",
+  #       values_to     = "score"
+  #     ) %>%
+  #     left_join(
+  #       select(
+  #         .data       = tar_read(study_md),
+  #         sample_name,
+  #         study_group
+  #       )
+  #     )
+  #   ),
 
-  tar_target(
-    name = pathway_eigenvalues_stats,
-    command =
-      pathway_eigenvalues_long %>%
-      group_by(pathway) %>%
-      wilcox_test(
-        score ~ study_group,
-        ref.group = "control"
-      ) %>%
-      adjust_pvalue(method = "BH") %>%
-      add_significance() %>%
-      grouped_add_xy_positions(
-        stats_tbl = .,
-        data_tbl = pathway_eigenvalues_long,
-        group_var = pathway,
-        compare_value = score,
-        percent_shift_down = 0.99
-      )
-  ),
+  # tar_target(
+  #   name = pathway_eigenvalues_stats,
+  #   command =
+  #     pathway_eigenvalues_long %>%
+  #     group_by(pathway) %>%
+  #     wilcox_test(
+  #       score ~ study_group,
+  #       ref.group = "control"
+  #     ) %>%
+  #     adjust_pvalue(method = "BH") %>%
+  #     add_significance() %>%
+  #     grouped_add_xy_positions(
+  #       stats_tbl = .,
+  #       data_tbl = pathway_eigenvalues_long,
+  #       group_var = pathway,
+  #       compare_value = score,
+  #       percent_shift_down = 0.99
+  #     )
+  # ),
 
+  # This... did not work out so great.  ICA not the best for figuring out the modules
+  # but this could be adapted for PLIER or NMF or whatever
   # tar_target(
   #   name = ica_res,
   #   command =
   #     icafast(
-  #       X = vsd_top,
+  #       X = vsc_top,
   #       nc = 25,
   #       alg = "par"
   #       ),
@@ -1252,7 +1272,7 @@ list(
   #       "S"
   #     ) %>%
   #     as.data.frame() %>%
-  #     set_rownames(rownames(vsd_top)) %>%
+  #     set_rownames(rownames(vsc_top)) %>%
   #     set_colnames(str_glue("IC{1:25}"))
   # ),
   #
@@ -1308,7 +1328,7 @@ list(
   #       "M"
   #       ) %>%
   #     as.data.frame() %>%
-  #     set_rownames(colnames(vsd_top)) %>%
+  #     set_rownames(colnames(vsc_top)) %>%
   #     set_colnames(str_glue("IC{1:25}"))
   #   ),
   #
@@ -1364,7 +1384,11 @@ list(
     name     = output_expression,
     command  =
       save_table_to_disk(
-        file_to_output = as_tibble(vsd_exprs, rownames = "sample_name"),
+        file_to_output =
+          as_tibble(
+            x = vsc_exprs,
+            rownames = "sample_name"
+          ),
         output_name    = "processed_data/variance_stabilized_expression.csv.gz"
         ),
     format   = "file"
@@ -1374,7 +1398,11 @@ list(
     name     = output_metadata,
     command  =
       save_table_to_disk(
-        file_to_output = as_tibble(colData(dds_with_scores), rownames = "sample_name"),
+        file_to_output =
+          as_tibble(
+            x        = colData(dataset_with_scores),
+            rownames = "sample_name"
+          ),
         output_name    = "processed_data/sample_metadata.csv.gz"
       ),
     format   = "file"

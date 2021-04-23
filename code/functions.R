@@ -328,61 +328,6 @@ alt_summary <- function(object){
   )
 }
 
-calc_sva <- function(dds, model_design = NULL, n.sva = NULL){
-  model_design_factors <-
-    model_design %||% as.character(design(dds))[[2]] %>%
-    str_remove(pattern = "~")
-
-  n.sva <- n.sva %||% 2
-
-  dat <-
-    counts(
-      dds,
-      normalized = TRUE
-      )
-
-  non_zero_genes = which(rowMeans2(dat) > 1)
-
-  filtered_dat = dat[non_zero_genes, ]
-
-  model_design <-
-    as.formula(
-      paste("~",
-            paste(
-              unlist(model_design_factors),
-              collapse = " + "),
-            collapse = " ")
-      )
-
-  mod  <- model.matrix(design(dds), colData(dds))
-
-  mod0 <- model.matrix(~ 1, colData(dds))
-
-  svseq <- svaseq(filtered_dat, mod, mod0, n.sv = n.sva)
-
-  colnames(svseq$sv) <- paste0("SV", seq(ncol(svseq$sv)))
-
-  for (i in seq(ncol(svseq$sv))){
-      dds[[paste0("SV",i)]] <- svseq$sv[,i]
-  }
-
-  design(dds) <-
-    as.formula(
-      paste("~",
-            paste(model_design_factors,
-                  paste(colnames(svseq$sv),
-                        collapse = " + "),
-                  sep = " + "),
-            collapse = " "))
-
-  dds <- DESeq(dds, parallel = TRUE)
-
-  ret_vals = list(
-    dds = dds,
-    sva = svseq
-  )
-  return(ret_vals)
-}
 
 plot_sva <- function(sva_graph_data){
   sva_graph_data %>%
@@ -434,13 +379,16 @@ drake_recode <- function(
 
 # An improved version of rstatix::add_y_position
 # that doesn't take 30 minutes to run
-grouped_add_xy_positions <- function(stats_tbl,
-                                     data_tbl,
-                                     group_var,
-                                     compare_value,
-                                     cutoff = 0.05,
-                                     step_increase = 0.1,
-                                     percent_shift_down = 0.95){
+grouped_add_xy_positions <-
+  function(
+    stats_tbl,
+    data_tbl,
+    group_var,
+    compare_value,
+    cutoff = 0.05,
+    step_increase = 0.1,
+    percent_shift_down = 0.95
+  ){
 
   unique_groups <- stats_tbl %>% pull({{group_var}}) %>% unique()
 
