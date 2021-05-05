@@ -13,7 +13,7 @@ BPPARAM                         = BiocParallel::SnowParam(workers=parallel::dete
 BiocParallel::register(BPPARAM)
 
 #### Setup project variables ####
-params = list(
+project_params = list(
   sequencing_file_directory       = "/home/rstudio/workspace/datasets/rnaseq/narch_advanta/data/results/aligned/",
   metadata_file                   = "metadata/narch_rnaseq_targets_metadata.csv",
   annotation_file                 = "references/gencode_v32_virus_tx2gene_v1.2.csv",
@@ -32,8 +32,8 @@ params = list(
   aligner                      = "salmon",
   minimum_gene_count           = 1,
   pc1_zscore_threshold         = 2,
-  pc2_zscore_threshold.        = 2,
-  BPPARAM.                     = BPPARAM,
+  pc2_zscore_threshold         = 2,
+  BPPARAM                      = BPPARAM,
   sva_num                      = 2,
   use_combat                   = FALSE,
   process_method               = "DESeq2",
@@ -41,5 +41,11 @@ params = list(
 
   initial_concentration_threshold = 1.5,
   pc1_zscore_threshold            = 2,
-  pc2_zscore_threshold            = 2
+  pc2_zscore_threshold            = 2,
+
+  # TODO: generalize the module import functions so that things are not explicit?
+  banchereau_modules            = "references/banchereau_modules.csv",
+  banchereau_module_annotations = "references/banchereau_module_annotations.csv",
+  ldg_modules                   = "references/ldg_modules.csv",
+  metasignature_modules         = "references/metasignature_module.csv"
 )

@@ -139,31 +139,43 @@ extract_de_genes <- function(
       pull(gene)
   }) %>%
   set_names(
-    map_chr(
-      .x = comparison_list,
-      .f = str_remove,
-      pattern = str_glue("{grouping_variable}_")
-    )
+    nm = comparison_list
   )
 }
 
 
-group_degs <- function(degs){
+group_degs <- function(degs, comparison_vars){
+  comparison_vars_regex = paste0(comparison_vars, "_", collapse="|")
+
   enframe(degs) %>%
     unnest(cols = c(value)) %>%
-    group_by(value) %>%
-    mutate(count = n()) %>%
-    mutate(
-      name =
-        case_when(
-          count == 1 ~ name,
-          count > 1 ~ "multiple"
-          )
+    transmute(
+      group =
+        str_extract(
+          string = name,
+          pattern = comparison_vars_regex
+          ) %>%
+        str_remove(pattern = "_$"),
+      comparison =
+        str_remove(
+          string = name,
+          pattern = comparison_vars_regex
+        ),
+      gene_symbol = value
       ) %>%
+    group_by(gene_symbol) %>%
+    summarize(
+      gene_symbol = gene_symbol,
+      count = n(),
+      comparison =
+        case_when(
+          count == 1 ~ comparison,
+          count > 1 ~ "multiple"
+        )
+    ) %>%
     select(-count) %>%
     distinct() %>%
-    column_to_rownames(var = "value") %>%
-    set_names("comparison")
+    column_to_rownames(var = "gene_symbol")
 }
 
 
@@ -179,7 +191,7 @@ calc_deg_means <- function(
     exprs %>%
     t() %>%
     as_tibble(rownames = "name") %>%
-    select(name, one_of(rownames(deg_class))) %>%
+    select(name, one_of(deg_class[["gene_symbol"]])) %>%
     pivot_longer(
       -name,
       names_to = "gene",
@@ -200,3 +212,27 @@ calc_deg_means <- function(
     column_to_rownames("study_group")
 }
 
+
+extract_top_degs <- function(up_tables, down_tables){
+  up_degs <-
+    map(names(up_tables), function(i){
+      up_tables[[i]] %>%
+        filter(padj < 0.05) %>%
+        top_n(25, log2FoldChange) %>%
+        pull(gene)
+      }) %>%
+    set_names(names(up_tables)) %>%
+    unlist()
+
+  down_degs <-
+    map(names(up_tables), function(i){
+      up_tables[[i]] %>%
+        filter(padj < 0.05) %>%
+        top_n(25, log2FoldChange) %>%
+        pull(gene)
+    }) %>%
+    set_names(names(up_tables)) %>%
+    unlist()
+
+  unique(c(up_degs, down_degs))
+  }

@@ -75,7 +75,7 @@ tar_option_set(
 list(
   tar_target(
     name       = raw_metadata,
-    command    = params[["metadata_file"]],
+    command    = project_params[["metadata_file"]],
     format     = "file",
     deployment = "main"
   ),
@@ -85,10 +85,10 @@ list(
     command    =
       import_metadata(
         metadata_file = raw_metadata,
-        projects_to_include     = params[["projects_to_include"]],
-        projects_to_exclude     = params[["projects_to_exclude"]],
-        study_groups_to_include = params[["study_groups_to_include"]],
-        study_groups_to_exclude = params[["study_groups_to_exclude"]]
+        projects_to_include     = project_params[["projects_to_include"]],
+        projects_to_exclude     = project_params[["projects_to_exclude"]],
+        study_groups_to_include = project_params[["study_groups_to_include"]],
+        study_groups_to_exclude = project_params[["study_groups_to_exclude"]]
       ),
     packages   =
       c(
@@ -103,7 +103,7 @@ list(
 
   tar_target(
     name       = seq_file_directory,
-    command    = params[["sequencing_file_directory"]],
+    command    = project_params[["sequencing_file_directory"]],
     format     = "file"
   ),
 
@@ -124,7 +124,7 @@ list(
 
   tar_target(
     name       = annotation_file,
-    command    = params[["annotation_file"]],
+    command    = project_params[["annotation_file"]],
     format     = "file"
   ),
 
@@ -140,8 +140,8 @@ list(
       create_final_md(
         md               = md,
         tx_files         = tx_files,
-        comparison_group = params[["comparison_grouping_variable"]],
-        control_group    = params[["control_group"]]
+        comparison_group = project_params[["comparison_grouping_variable"]],
+        control_group    = project_params[["control_group"]]
       ),
     packages   = c(
       "forcats",
@@ -174,18 +174,18 @@ list(
     command = process_counts(
       count_files                  = tx_counts,
       sample_metadata              = final_md,
-      study_design                 = params[["study_design"]],
-      batch_variable               = params[["batch_variable"]],
-      comparison_grouping_variable = params[["comparison_groups"]],
+      study_design                 = project_params[["study_design"]],
+      batch_variable               = project_params[["batch_variable"]],
+      comparison_grouping_variable = project_params[["comparison_groups"]],
       reference_gene_annotation    = annot,
-      aligner                      = params[["aligner"]],
-      minimum_gene_count           = params[["minimum_gene_count"]],
-      pc1_zscore_threshold         = params[["pc1_zscore_threshold"]],
-      pc2_zscore_threshold         = params[["pc2_zscore_threshold"]],
+      aligner                      = project_params[["aligner"]],
+      minimum_gene_count           = project_params[["minimum_gene_count"]],
+      pc1_zscore_threshold         = project_params[["pc1_zscore_threshold"]],
+      pc2_zscore_threshold         = project_params[["pc2_zscore_threshold"]],
       BPPARAM                      = BPPARAM,
-      num_sva                      = params[["sva_num"]],
-      use_combat                   = params[["use_combar"]],
-      method                       = params[["process_method"]]
+      num_sva                      = project_params[["sva_num"]],
+      use_combat                   = project_params[["use_combat"]],
+      method                       = project_params[["process_method"]]
     ),
     packages =
       c(
@@ -201,71 +201,15 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  # tar_target(
-  #   name = dds_import,
-  #   command =
-  #     DESeqDataSetFromTximport(
-  #       txi = filtered_tx_counts,
-  #       colData = final_md,
-  #       design = ~ study_group
-  #     ),
-  #   packages = "DESeq2"
-  # ),
+  tar_target(
+    name = qc_pca,
+    command = imported_data[["qc_pca"]]
+  ),
 
-  # tar_target(
-  #   name    = no_single_batches_dds,
-  #   command =
-  #     remove_single_batches(
-  #       dds             = dds_import,
-  #       batch_variable  = batch_variable,
-  #       number_of_items = 2
-  #     )
-  # ),
-#
-#   tar_target(
-#     name = corrected_counts,
-#     command =
-#       ComBat_seq(
-#         counts      = counts(no_single_batches_dds),
-#         batch       = fct_drop(colData(no_single_batches_dds)[[batch_variable]]),
-#         group       = colData(no_single_batches_dds)[[comparison_grouping_variable]],
-#         shrink      = TRUE,
-#         shrink.disp = TRUE,
-#         full_mod    = TRUE
-#       ) %>%
-#       `storage.mode<-`("integer")
-#   ),
-#
-#   tar_target(
-#     name = dds_import_combat,
-#     command =
-#       DESeqDataSetFromMatrix(
-#         countData = corrected_counts,
-#         colData = colData(dds_import),
-#         design = study_design
-#       )
-#   ),
-
-  # tar_target(
-  #   dds_qc,
-  #   DESeq(
-  #     outlier_qc$dds,
-  #     parallel = TRUE,
-  #     BPPARAM = BPPARAM
-  #   ),
-  #   cue = tar_cue(mode = "never")
-  # ),
-
-  # tar_target(
-  #   name = sva_res,
-  #   command =
-  #     calc_sva(
-  #       dds = dds_qc,
-  #       model_design = comparison_grouping_variable,
-  #       n.sva = num_sva
-  #     ),
-  #   cue = tar_cue(mode = "never")
-  # ),
+  tar_target(
+    name = outlier_samples,
+    command = imported_data[["outlier_samples"]]
+  ),
 
   tar_target(
     name       = sva_graph_data,
@@ -293,25 +237,25 @@ list(
   # This should be changed into a list that we can walk through
   tar_target(
     name = banchereau_module_file,
-    command = params[["banchereau_modules"]],
+    command = project_params[["banchereau_modules"]],
     format = "file"
   ),
 
   tar_target(
     name = banchereau_module_annotations_file,
-    command = params[["banchereau_module_annotations_file"]],
+    command = project_params[["banchereau_module_annotations"]],
     format = "file"
   ),
 
   tar_target(
     name = ldg_module_file,
-    command = params[["ldg_module_file"]],
+    command = project_params[["ldg_modules"]],
     format = "file"
   ),
 
   tar_target(
     name = metasignature_module_file,
-    command = params[["metasignature_module_file"]],
+    command = project_params[["metasignature_modules"]],
     format = "file"
   ),
 
@@ -529,25 +473,26 @@ list(
     )
   ),
 
-  tar_target(
-    name = comparison_results_list,
-    keep(
-      resultsNames(dataset_with_scores),
-      str_detect(
-        string = resultsNames(dataset_with_scores),
-        pattern = comparison_grouping_variable
-      )
-    )
-  ),
+  # tar_target(
+  #   name = comparison_results_list,
+  #   keep(
+  #     resultsNames(dataset_with_scores),
+  #     str_detect(
+  #       string = resultsNames(dataset_with_scores),
+  #       pattern = project_params[["comparison_grouping_variable"]]
+  #     )
+  #   )
+  # ),
 
   tar_target(
     name = res,
     command =
       create_results_list(
-        comparison_list = comparison_results_list,
+        comparison_list = imported_data[["comparisons"]],
         dds = dataset_with_scores,
-        comparison_grouping_variable = comparison_grouping_variable
-      )
+        comparison_grouping_variable = project_params[["comparison_groupings"]]
+      ),
+    cue = tar_cue(mode = "never")
   ),
 
   # TODO: generalize create_deg_tables?
@@ -555,8 +500,8 @@ list(
     name = down_tables,
     command = create_deg_tables(
       deg_res = imported_data[["res"]],
-      comparison_list = comparison_results_list,
-      grouping_variable = comparison_grouping_variable,
+      comparison_list = imported_data[["comparisons"]],
+      grouping_variable = project_params[["comparison_groups"]],
       direction = "down"
     )
   ),
@@ -565,8 +510,8 @@ list(
     name = up_tables,
     command = create_deg_tables(
       deg_res = imported_data[["res"]],
-      comparison_list = comparison_results_list,
-      grouping_variable = comparison_grouping_variable,
+      comparison_list = imported_data[["comparisons"]],
+      grouping_variable = project_params[["comparison_groups"]],
       direction = "up"
     )
   ),
@@ -575,33 +520,46 @@ list(
     name = degs,
     command = extract_de_genes(
       results = imported_data[["res"]],
-      comparison_list = comparison_results_list,
-      grouping_variable = comparison_grouping_variable
+      comparison_list = imported_data[["comparisons"]],
+      grouping_variable = project_params[["comparison_groups"]]
     )
   ),
 
   tar_target(
     name = deg_class,
-    command = group_degs(degs)
+    command =
+      group_degs(
+        degs = degs,
+        comparison_vars = project_params[["comparison_groups"]]
+        )
   ),
 
+  # tar_target(
+  #   name = deg_means,
+  #   command = calc_deg_means(
+  #     exprs = vsc_exprs,
+  #     deg_class = deg_class,
+  #     metadata = as_tibble(
+  #       colData(dataset_with_scores),
+  #       rownames = "name"
+  #     ) %>%
+  #       select(
+  #         name,
+  #         sex,
+  #         ethnicity,
+  #         one_of(project_params[["comparison_groups"]])
+  #       ),
+  #     grouping_variable = study_group
+  #   )
+  # ),
+
   tar_target(
-    name = deg_means,
-    command = calc_deg_means(
-      exprs = vsc_exprs,
-      deg_class = deg_class,
-      metadata = as_tibble(
-        colData(dataset_with_scores),
-        rownames = "name"
-      ) %>%
-        select(
-          name,
-          sex,
-          ethnicity,
-          study_group
-        ),
-      grouping_variable = study_group
-    )
+    name    = top_degs,
+    command =
+      extract_top_degs(
+        up_tables   = up_tables,
+        down_tables = down_tables
+      )
   ),
 
   tar_target(
@@ -1428,15 +1386,15 @@ list(
     format   = "file"
   ),
 
-  tar_target(
-    name     = output_pathway_eigenvalues,
-    command  =
-      save_table_to_disk(
-        file_to_output = pathway_eigenvalues,
-        output_name    = "processed_data/plafker_pathway_scores.csv.gz"
-      ),
-    format   = "file"
-  ),
+  # tar_target(
+  #   name     = output_pathway_eigenvalues,
+  #   command  =
+  #     save_table_to_disk(
+  #       file_to_output = pathway_eigenvalues,
+  #       output_name    = "processed_data/plafker_pathway_scores.csv.gz"
+  #     ),
+  #   format   = "file"
+  # ),
 
   tar_target(
     name     = output_wgcna_module_genes,
@@ -1466,16 +1424,16 @@ list(
       set_author  = "Miles Smith"
     ),
     output_dir    = "reports/"
-  ),
-
-  tar_render(
-    name          = pathway_report,
-    path          =  "analysis/pathway_gex_plots.rmd",
-    params        = list(
-      set_title   = "Expression of pathway genes",
-      set_author  = "Miles Smith"
-    ),
-    output_dir    = "reports/",
-    packages      = c("tidyverse", "markdown", "knitr", "ComplexHeatmap", "targets", "grid", "magrittr", "rlang", "viridis", "circlize", "ggpubr", "ggbeeswarm", "paletteer", "ggtext", "tidyHeatmap")
   )
+
+  # tar_render(
+  #   name          = pathway_report,
+  #   path          =  "analysis/pathway_gex_plots.rmd",
+  #   params        = list(
+  #     set_title   = "Expression of pathway genes",
+  #     set_author  = "Miles Smith"
+  #   ),
+  #   output_dir    = "reports/",
+  #   packages      = c("tidyverse", "markdown", "knitr", "ComplexHeatmap", "targets", "grid", "magrittr", "rlang", "viridis", "circlize", "ggpubr", "ggbeeswarm", "paletteer", "ggtext", "tidyHeatmap")
+  # )
 )
