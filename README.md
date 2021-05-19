@@ -1,5 +1,9 @@
 {targets}-based RNAseq analysis pipeline
 
+# Warning
+
+Some aspects of this still have hardcoded variable names that are a hold over from my previous {drake}-based[rnaseq_drake](https://github.com/milescsmith/rnaseq_drake) pipeline.  Consider this still something of a work-in-progress.
+
 # Metadata
 
 You will need to supply a metadata file describing the samples for processing.
