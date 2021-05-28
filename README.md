@@ -1,8 +1,8 @@
-{targets}-based RNAseq analysis pipeline
+{[targets](https://docs.ropensci.org/targets/)}-based RNAseq analysis pipeline
 
 # Warning
 
-Some aspects of this still have hardcoded variable names that are a hold over from my previous {drake}-based [rnaseq_drake](https://github.com/milescsmith/rnaseq_drake) pipeline.  Consider this still something of a work-in-progress.
+Some aspects of this still have hardcoded variable names that are a hold over from my previous {[drake](https://github.com/ropensci/drake)}-based [rnaseq_drake](https://github.com/milescsmith/rnaseq_drake) pipeline.  Consider this still something of a work-in-progress.
 
 # Metadata
 
