@@ -1,10 +1,17 @@
 import_metadata <- function(
   metadata_file,
+  comparison_grouping_variable,
   metadata_sheet = "main",
   extra_controls_metadata_file = NULL,
   extra_controls_metadata_sheet = "main",
   groups_to_include = NULL,
-  groups_to_exclude = NULL){
+  groups_to_exclude = NULL,
+  samples_to_exclude = NULL
+  ){
+
+  comparison_sym <- sym(comparison_grouping_variable)
+  comparison_sym <- enquo(comparison_sym)
+
     study_metadata <-
       read_excel(
         path    = metadata_file,
@@ -15,43 +22,32 @@ import_metadata <- function(
         .name_repair = janitor::make_clean_names
       ) %>%
       select(
-        -cytokine_loc_idx,
-        -cytokine_sample_id,
-        -study_group
+        -matches("cytokine_loc_idx"),
+        -matches("cytokine_sample_id")
       ) %>%
       rename(
         sample_name = novaseq_exs_id,
         ethnicity = race_code,
-        age = age_at_enroll
+        age = age_at_sample
       ) %>%
       filter(
         !is.na(sample_name),
-        project_group %in% (project_groups_to_include %||% unique(.data$project_group)),
-        !project_group %in% project_groups_to_exclude
+        {{comparison_sym}} %in% (groups_to_include %||% unique(.data[[comparison_grouping_variable]])),
+        !{{comparison_sym}} %in% groups_to_exclude,
+        !sample_name %in% samples_to_exclude
       ) %>%
       mutate(
         age = as.integer(age),
-        disease_class =
-          case_when(
-            project_group == "PCV Control" ~ "control",
-            project_group == "PCV Case" ~ "infected",
-            project_group == "OSCTR Case" ~ "infected",
-            TRUE ~ "unknown"
-            ),
         sample_name =
           janitor::make_clean_names(
             string = sample_name,
             case = "all_caps"
             ),
-        project_group =
-          janitor::make_clean_names(
-            string = sample_name,
-            case = "all_caps"
-          ),
+        {{comparison_sym}} := tolower({{comparison_sym}}) %>% make_clean_names(allow_duplicates = TRUE),
         across(
           .cols =
             c(
-              project_group,
+              {{comparison_sym}},
               sex,
               ethnicity,
               grant_defined_severity,
@@ -72,15 +68,13 @@ import_metadata <- function(
           .name_repair = janitor::make_clean_names
           ) %>%
         mutate(
-          disease_class = tolower(disease_class),
-          project_group = "control"
+          {{comparison_sym}} := tolower({{comparison_sym}}),
           ) %>%
-        filter(disease_class == "control") %>%
+        filter({{comparison_sym}} == "control") %>%
         #Select the portions of the metadata that are useful:
         select(
           sample_name = nova_seq_sample_id,
-          disease_class,
-          project_group,
+          {{comparison_sym}},
           sex,
           ethnicity = race_code,
           visit_ref,
@@ -135,6 +129,7 @@ import_counts <- function(directory, metadata){
 
   tx_files
 }
+
 
 create_final_md <- function(
   md,

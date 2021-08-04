@@ -11,7 +11,7 @@ source("code/functions.R")       # Define your custom code as a bunch of functio
 # source("code/extant_modules.R")  # Banchereau, Kegerreis, and Metagene modules
 
 
-c5 <- clusterProfiler::read.gmt("references/c5.all.v6.2.symbols.gmt")
+c5 <- clusterProfiler::read.gmt("references/c5.all.v7.4.symbols.gmt")
 
 #### Set options ####
 options(future.globals.maxSize = +Inf)
@@ -22,16 +22,15 @@ BPPARAM                         = BiocParallel::SnowParam(workers=parallel::dete
 BiocParallel::register(BPPARAM)
 
 #### Setup project variables ####
-project_groups_to_include       = c("PCV Case", "control")
-project_groups_to_exclude       = c("OSCTR Case")
-disease_classes_to_include      = NULL
-disease_classes_to_exclude      = NULL
-study_design                    = ~ disease_class
-comparison_grouping_variable    = "disease_class"
+groups_to_include               = c("Unaffected Control", "Vaccinated", "Infected + Vaccine", "Infected")
+groups_to_exclude               = c("OSCTR Case")
+study_design                    = ~ study_group
+comparison_grouping_variable    = "study_group"
 batch_variable                  = "run_id"
-control_group                   = "control"
-experimental_group              = "infected"
+control_group                   = "Unaffected Control"
+# experimental_group              = "infected"
 num_sva                         = 3
+manual_sample_removal           = c("AA05222")
 
 initial_concentration_threshold = 1.5
 pc1_zscore_threshold            = 2

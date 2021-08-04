@@ -173,7 +173,8 @@ calc_deg_means <- function(
   metadata,
   grouping_variable
 ){
-  grouping_variable = enquo(grouping_variable)
+  grouping_sym = sym(grouping_variable)
+  grouping_sym = enquo(grouping_sym)
 
   deg_means <-
     exprs %>%
@@ -190,13 +191,13 @@ calc_deg_means <- function(
     ) %>%
     group_by(
       gene,
-      {{grouping_variable}}
+      {{grouping_sym}}
     ) %>%
     summarise(avg = mean(expr)) %>%
     pivot_wider(
       names_from = gene,
       values_from = avg
       ) %>%
-    column_to_rownames("disease_class")
+    column_to_rownames(grouping_variable)
 }
 

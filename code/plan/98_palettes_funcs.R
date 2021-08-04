@@ -17,9 +17,12 @@ create_palettes <- function(
   chr_pal = c("Y" = "#E41A1C",
               "X" = "#377EB8")
 
-  sex_pal = c("Male" = "coral3",
-              "Female" = "azure2",
-              "unk" = "#333333")
+  sex_pal = paletteer_d(
+    "ggsci::lanonc_lancet",
+    n = length(levels(annotation_info$sex))
+    ) %>%
+    as.character() %>%
+    set_names(levels(annotation_info$sex))
 
   cluster_pal =
     ifelse(
@@ -53,28 +56,30 @@ create_palettes <- function(
     as.character() %>%
     set_names(levels(clusters$cluster))
 
-  project_pal =
-    colorRampPalette(
-      brewer.pal(9, "Set1"))(length(levels(annotation_info$project))) %>%
-    set_names(levels(annotation_info$project))
-
-  number_disease_classes =
+  number_project_groups =
     length(
       unique(
-        annotation_info$disease_class
+        annotation_info[[comparison_grouping_variable]]
       )
     )
 
-  disease_class_pal =
+  comparison_group_pal =
     if_else(
-      number_disease_classes > 2,
-      list(brewer.pal(number_disease_classes, "Set1")),
-      list(c("black", "grey75"))
+      condition = number_project_groups > 2,
+      true      = list(paletteer_d(
+                    palette = "ggthemes::colorblind",
+                    n = length(
+                      levels(
+                        annotation_info[[comparison_grouping_variable]]
+                      )
+                    )
+                  )),
+      false     = list(c("black", "grey75"))
     ) %>%
     unlist() %>%
     set_names(
       unique(
-        annotation_info$disease_class
+        annotation_info[[comparison_grouping_variable]]
       )
     )
 
@@ -85,10 +90,10 @@ create_palettes <- function(
   comparison_pal =
     oaPalette(
       length(
-        unique(deg_class$comparison)
+        unique(deg_class[["comparison"]])
       )
     ) %>%
-    set_names(unique(deg_class$comparison))
+    set_names(unique(deg_class[["comparison"]]))
 
   group_pal =
     list(
@@ -96,21 +101,17 @@ create_palettes <- function(
       chr_pal,
       sex_pal,
       cluster_pal,
-      project_pal,
-      disease_class_pal,
-      comparison_pal ) %>% #,
+      comparison_group_pal,
+      comparison_pal) %>% #,
     # cell_type_pal) %>%
     set_names(c(
       "type",
       "chr",
       "sex",
       "cluster",
-      "project",
-      "disease_class",
+      comparison_grouping_variable,
       "comparison"))
 
   group_pal
 }
 
-#,
-#"cell_type")),

@@ -9,6 +9,8 @@ source("code/plan/07_differential_expression_funcs.R")
 source("code/plan/08_WGCNA_funcs.R")
 source("code/plan/10_viral_transcript_funcs.R")
 source("code/plan/11_stats_testing_funcs.R")
+# source("code/plan/12_table_outputs.R")
+source("code/plan/13_ml_functions.R")
 source("code/plan/98_palettes_funcs.R")
 source("code/plan/99_output_funcs.R")
 
@@ -89,10 +91,10 @@ list(
       import_metadata(
         metadata_file = raw_metadata,
         metadata_sheet = "main",
-        extra_controls_metadata_file = raw_sample_list,
-        extra_controls_metadata_sheet = "main",
-        groups_to_include = project_groups_to_include,
-        groups_to_exclude = project_groups_to_exclude
+        comparison_grouping_variable = comparison_grouping_variable,
+        groups_to_include = groups_to_include,
+        groups_to_exclude = groups_to_exclude,
+        samples_to_exclude = manual_sample_removal
       ),
     packages =
       c(
@@ -143,7 +145,7 @@ list(
       create_final_md(
         md = md,
         tx_files = tx_files,
-        comparison_group = disease_class,
+        comparison_group = comparison_grouping_variable,
         control_group = "control"
       ),
     packages = c(
@@ -179,43 +181,9 @@ list(
       DESeqDataSetFromTximport(
         txi = tx_counts,
         colData = final_md,
-        design = ~ disease_class
+        design = as.formula(paste("~", comparison_grouping_variable))
       ),
     packages = "DESeq2"
-  ),
-
-  tar_target(
-    name    = no_single_batches_dds,
-    command =
-      remove_single_batches(
-        dds             = dds_import,
-        batch_variable  = batch_variable,
-        number_of_items = 2
-      )
-  ),
-
-  tar_target(
-    name = corrected_counts,
-    command =
-      ComBat_seq(
-        counts      = counts(no_single_batches_dds),
-        batch       = fct_drop(colData(no_single_batches_dds)[[batch_variable]]),
-        group       = colData(no_single_batches_dds)[[comparison_grouping_variable]],
-        shrink      = TRUE,
-        shrink.disp = TRUE,
-        full_mod    = TRUE
-      ) %>%
-      `storage.mode<-`("integer")
-  ),
-
-  tar_target(
-    name = dds_import_combat,
-    command =
-      DESeqDataSetFromMatrix(
-        countData = corrected_counts,
-        colData = colData(dds_import),
-        design = study_design
-      )
   ),
 
   tar_target(
@@ -239,12 +207,14 @@ list(
   ),
 
   tar_target(
-    dds_qc,
-    DESeq(
-      outlier_qc$dds,
-      parallel = TRUE,
-      BPPARAM = BPPARAM
-    )
+    name = dds_qc,
+    command =
+      DESeq(
+        outlier_qc$dds,
+        parallel = TRUE,
+        BPPARAM = BPPARAM
+      ),
+    cue = tar_cue(mode = "never")
   ),
 
   tar_target(
@@ -428,14 +398,14 @@ list(
       ident_clusters(
         irlba(
           A = vsd_exprs,
-          nv = 100
+          nv = 50
           ) %>%
           pluck("v") %>%
           as.data.frame() %>%
           set_colnames(
             paste0(
               "PC",
-              seq(100)
+              seq(50)
               )
             ) %>%
           set_rownames(
@@ -470,9 +440,10 @@ list(
     command =
       column_to_rownames(
         select(.data = study_md,
-               disease_class,
+               {{comparison_grouping_variable}},
                sex,
                cluster,
+               wd_visit,
                sample_name
         ),
         var = "sample_name"
@@ -573,9 +544,9 @@ list(
           name,
           sex,
           ethnicity,
-          disease_class
+          {{comparison_grouping_variable}}
         ),
-      grouping_variable = disease_class
+      grouping_variable = comparison_grouping_variable
     )
   ),
 
@@ -668,7 +639,7 @@ list(
     name = wgcna_scores,
     command =
       left_join(
-        x = select(.data = as_tibble(x = wgcna_modules$MEs, rownames="sample_name"), -MEgrey),
+        x = select(.data = as_tibble(x = wgcna_modules[["MEs"]], rownames="sample_name"), -MEgrey),
         y = as_tibble(x = annotation_info, rownames="sample_name")
       )
   ),
@@ -677,15 +648,14 @@ list(
     name = wgcna_cluster_split,
     command =
       initial_split(
-        data = wgcna_scores %>%
-          mutate(disease_class = fct_drop(disease_class)) %>%
-          select(
-            cluster,
-            starts_with("ME")
-          ),
-        prop = 0.75,
-        strata = "cluster"
-      )
+          data = wgcna_scores %>%
+            select(
+              cluster,
+              starts_with("ME")
+            ),
+          prop = 0.75,
+          strata = "cluster"
+        )
   ),
 
   tar_target(
@@ -728,40 +698,36 @@ list(
   ),
 
   tar_target(
-    name = wgcna_disease_class_split,
-    command =
-      initial_split(
-        data =
-          select(
-            .data = mutate(
-              .data = wgcna_scores,
-              disease_class = fct_drop(disease_class)
-            ),
-            disease_class,
-            starts_with("ME")
-          ),
-        prop = 0.75,
-        strata = "disease_class"
-      )
+    name = wgcna_module_names,
+    command = colnames(wgcna_modules[["MEs"]]) %>% discard(~.x == "MEgrey")
   ),
 
   tar_target(
-    name = wgcna_disease_class_train,
-    command = training(wgcna_disease_class_split)
+    name = wgcna_group_split,
+    command = split_data(
+      scores_and_metadata = wgcna_scores,
+      strata_var = comparison_grouping_variable,
+      module_names = wgcna_module_names
+    )
   ),
 
   tar_target(
-    name = wgcna_disease_class_test,
-    command = testing(wgcna_disease_class_split)
+    name = wgcna_group_train,
+    command = training(wgcna_group_split)
   ),
 
   tar_target(
-    name = wgcna_disease_class_rf_cv,
+    name = wgcna_group_test,
+    command = testing(wgcna_group_split)
+  ),
+
+  tar_target(
+    name = wgcna_group_rf_cv,
     command =
       train(
-        form = disease_class ~ .,
+        form = as.formula(paste(comparison_grouping_variable, "~ .")),
         method = "parRF",
-        data = wgcna_disease_class_train,
+        data = wgcna_group_train,
         trControl =
           trainControl(
             method = "repeatedcv",
@@ -774,10 +740,10 @@ list(
   ),
 
   tar_target(
-    name = wgcna_disease_class_rf_cv_varImp,
+    name = wgcna_group_rf_cv_varImp,
     command =
       varImp(
-        object = wgcna_disease_class_rf_cv,
+        object = wgcna_group_rf_cv,
         scale = FALSE,
         importance=TRUE
       )
@@ -834,11 +800,7 @@ list(
       initial_split(
         data =
           select(
-            .data =
-              mutate(
-                .data = module_scores_with_md,
-                disease_class = fct_drop(disease_class)
-              ),
+            .data = module_scores_with_md,
             cluster,
             one_of(names(banchereau_modules))
           ),
@@ -887,41 +849,32 @@ list(
   ),
 
   tar_target(
-    name = module_disease_class_split,
+    name = module_group_split,
     command =
-      initial_split(
-        data =
-          select(
-            .data =
-              mutate(
-                .data = module_scores_with_md,
-                disease_class = fct_drop(disease_class)
-              ),
-            disease_class,
-            one_of(names(banchereau_modules))
-          ),
-        prop = 0.75,
-        strata = "disease_class"
-      )
+      split_data(
+        scores_and_metadata = module_scores_with_md,
+        strata_var = comparison_grouping_variable,
+        module_names = names(banchereau_modules)
+        )
   ),
 
   tar_target(
-    name = module_disease_class_train,
-    command = training(module_disease_class_split)
+    name = module_group_train,
+    command = training(module_group_split)
   ),
 
   tar_target(
-    name = module_disease_class_test,
-    command = testing(module_disease_class_split)
+    name = module_group_test,
+    command = testing(module_group_split)
   ),
 
   tar_target(
-    name = module_disease_class_rf_cv,
+    name = module_group_rf_cv,
     command =
       train(
-        form = disease_class ~ .,
+        form = as.formula(paste(comparison_grouping_variable, "~ .")),
         method = "parRF",
-        data = module_disease_class_train,
+        data = module_group_train,
         trControl =
           trainControl(
             method = "repeatedcv",
@@ -935,10 +888,10 @@ list(
   ),
 
   tar_target(
-    name = module_disease_class_rf_cv_varImp,
+    name = module_group_rf_cv_varImp,
     command =
       varImp(
-        object = module_disease_class_rf_cv,
+        object = module_group_rf_cv,
         scale = FALSE,
         importance = TRUE
       )
@@ -1005,7 +958,7 @@ list(
             cluster = as_factor(cluster)
           ),
         cluster,
-        disease_class,
+        {{comparison_grouping_variable}},
         one_of(annotated_modules$module)
       )
   ),
@@ -1047,13 +1000,18 @@ list(
     command =
       modules_compare_with_stats(
         module_score_table = annotated_module_scores_pivot,
-        compare_by = "disease_class"
+        compare_by = comparison_grouping_variable
       )
   ),
 
   tar_target(
     name = module_scores_pivot,
-    command = pivot_module_scores(module_scores = module_scores_with_viral)
+    command =
+      pivot_module_scores(
+        module_scores = module_scores_with_viral,
+        cluster_var   = "cluster",
+        grouping_var  = comparison_grouping_variable
+        )
   ),
 
   tar_target(
@@ -1070,7 +1028,7 @@ list(
     command =
       modules_compare_with_stats(
         module_score_table = module_scores_pivot,
-        compare_by = "disease_class"
+        compare_by = comparison_grouping_variable
       )
   ),
 
@@ -1112,14 +1070,13 @@ list(
             data =
               select(
                 .data = module_scores_with_viral,
-                disease_class,
+                {{comparison_grouping_variable}},
                 matches("^ME")
               ),
-            -disease_class,
+            -{{comparison_grouping_variable}},
             names_to     = "module",
             values_to    = "score"
-          ),
-        disease_class = as_factor(disease_class)
+          )
       )
   ),
 
@@ -1128,7 +1085,7 @@ list(
     command =
       modules_compare_with_stats(
         module_score_table = module_scores_with_viral_by_disease,
-        compare_by         = "disease_class"
+        compare_by         = comparison_grouping_variable
       )
   ),
 
@@ -1150,6 +1107,16 @@ list(
         file_to_output = as_tibble(vsd_exprs, rownames = "sample_name"),
         output_name    = "processed_data/variance_stabilized_expression.csv.gz"
         ),
+    format   = "file"
+  ),
+
+  tar_target(
+    name     = raw_counts,
+    command  =
+      save_table_to_disk(
+        file_to_output = as_tibble(counts(dds_with_scores), rownames = "sample_name"),
+        output_name    = "processed_data/raw_counts.csv.gz"
+      ),
     format   = "file"
   ),
 
