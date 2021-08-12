@@ -15,3 +15,7 @@ results/*.RData
 *._*
 .drake/
 _targets/
+processed_data/
+*.gmt
+metadata/
+*.csv

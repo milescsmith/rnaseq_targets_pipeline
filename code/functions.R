@@ -28,11 +28,18 @@ deduplicate_samples <- function(md, samples){
 remove_outliers <- function(dds,
                             pc1_zscore_cutoff,
                             pc2_zscore_cutoff = NULL){
-  dds  <- estimateSizeFactors(dds,
-                              locfun = genefilter::shorth,
-                              type = "poscounts")
+  dds <-
+    estimateSizeFactors(
+      object = dds,
+      locfun = genefilter::shorth,
+      type = "poscounts"
+      )
+
   vsd <- assay(vst(dds))
-  pca_res = irlba::prcomp_irlba(vsd)[['rotation']] %>%
+
+  pca_res <-
+    prcomp_irlba(x = vsd, center = TRUE, scale. = FALSE) %>%
+    pluck('rotation') %>%
     as_tibble() %>%
     mutate(sample_name = colnames(vsd),
            pc1_zscore = abs((PC1 - mean(PC1))/sd(PC1)),
@@ -56,7 +63,8 @@ remove_outliers <- function(dds,
   if (length(outliers > 0)){
     dds <- dds[,colnames(dds) %nin% outliers]
   }
-  return(list(dds = dds, pca = pca_res, removed = outliers))
+
+  list(dds = dds, pca = pca_res, removed = outliers)
 }
 
 

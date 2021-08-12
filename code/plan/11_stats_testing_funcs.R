@@ -17,13 +17,11 @@ modules_compare_with_stats <- function(module_score_table, compare_by){
 pivot_module_scores <- function(module_scores){
   mutate(
     .data = module_scores,
-    cluster       = as_factor(cluster),
-    disease_class = as_factor(disease_class)
+    responder = as_factor(responder)
   ) %>%
   select(
     sample_name,
-    cluster,
-    disease_class,
+    responder,
     matches("^M[[:digit:]]+"),
     mg,
     starts_with("ldg")

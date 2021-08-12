@@ -38,10 +38,10 @@ module_gsea <- function(module_genes, module_of_interest){
 }
 
 
-module_gsea_plots <- function(enriched_genes){
+module_gsea_plots <- function(enriched_genes, cutoff = 0.05){
   filter(
     .data = enriched_genes,
-    p.adjust < 0.05,
+    p.adjust < cutoff,
     module != "grey") %>%
   mutate(
     GeneRatio = map_dbl(

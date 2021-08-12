@@ -1,111 +1,59 @@
 import_metadata <- function(
   metadata_file,
-  metadata_sheet = "main",
-  extra_controls_metadata_file = NULL,
-  extra_controls_metadata_sheet = "main",
+  group_to_filter_on,
   groups_to_include = NULL,
-  groups_to_exclude = NULL){
-    study_metadata <-
-      read_excel(
-        path    = metadata_file,
-        sheet   = metadata_sheet,
-        skip    = 1,
-        trim_ws = TRUE,
-        na      = "n/a",
-        .name_repair = janitor::make_clean_names
-      ) %>%
-      select(
-        -cytokine_loc_idx,
-        -cytokine_sample_id,
-        -study_group
-      ) %>%
-      rename(
-        sample_name = novaseq_exs_id,
-        ethnicity = race_code,
-        age = age_at_enroll
-      ) %>%
-      filter(
-        !is.na(sample_name),
-        project_group %in% (project_groups_to_include %||% unique(.data$project_group)),
-        !project_group %in% project_groups_to_exclude
-      ) %>%
-      mutate(
-        age = as.integer(age),
-        disease_class =
-          case_when(
-            project_group == "PCV Control" ~ "control",
-            project_group == "PCV Case" ~ "infected",
-            project_group == "OSCTR Case" ~ "infected",
-            TRUE ~ "unknown"
-            ),
-        sample_name =
-          janitor::make_clean_names(
-            string = sample_name,
-            case = "all_caps"
-            ),
-        project_group =
-          janitor::make_clean_names(
-            string = sample_name,
-            case = "all_caps"
+  groups_to_exclude = NULL,
+  samples_to_exclude = NULL
+  ){
+    read_csv(
+      file    = metadata_file,
+      skip    = 0,
+      trim_ws = TRUE,
+      na      = "n/a"
+    ) %>%
+    janitor::clean_names() %>%
+    select(
+      -ord,
+      -pos,
+      -i7_index,
+      -index,
+      -i5_index,
+      -index2,
+      -correction_needed,
+      -study_group,
+      -rin,
+      -mess,
+      -abc_or_mess_or_control
+    ) %>%
+    rename(
+      sample_name = nova_seq_sample_id,
+      ethnicity = race_code,
+    ) %>%
+    filter(
+      !is.na(sample_name),
+      {{ group_to_filter_on }} %in% groups_to_include,
+      !sample_name %in% samples_to_exclude
+    ) %>%
+    mutate(
+      age = as.integer(age),
+      sample_name =
+        janitor::make_clean_names(
+          string = sample_name,
+          case = "all_caps"
           ),
-        across(
-          .cols =
-            c(
-              project_group,
-              sex,
-              ethnicity,
-              grant_defined_severity,
-              j_james_severity,
-              k_smith_severity
-              ),
-          .fns = as_factor
-          )
-        ) %>%
-      distinct() %>%
-      mutate(run_id = "S4_011_1")
-
-    if (!is.null(extra_controls_metadata_file)){
-      non_project_controls =
-        read_excel(
-          path = extra_controls_metadata_file,
-          sheet = extra_controls_metadata_sheet,
-          .name_repair = janitor::make_clean_names
-          ) %>%
-        mutate(
-          disease_class = tolower(disease_class),
-          project_group = "control"
-          ) %>%
-        filter(disease_class == "control") %>%
-        #Select the portions of the metadata that are useful:
-        select(
-          sample_name = nova_seq_sample_id,
-          disease_class,
-          project_group,
-          sex,
-          ethnicity = race_code,
-          visit_ref,
-          subject_ref,
-          age,
-          run_id
-          ) %>%
-        mutate(
-          age = as.integer(age),
-          across(
-            .cols =
-              c(
-                sex,
-                ethnicity
-              ),
-            .fns = as_factor
+      project = str_to_upper(project),
+      across(
+        .cols =
+          c(
+            sex,
+            ethnicity,
+            run_id,
+            disease_class
             ),
-          age = as.numeric(age)
-          ) %>%
-        distinct()
-
-      study_metadata <- bind_rows(study_metadata, non_project_controls)
-    }
-
-    study_metadata
+        .fns = as_factor
+        )
+      ) %>%
+    distinct()
   }
 
 

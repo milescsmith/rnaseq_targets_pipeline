@@ -1,7 +1,6 @@
 # we manually setup the palettes for pheatmap because letting it automatically pick the colors results in terrible choices
 create_palettes <- function(
   annotated_modules,
-  clusters,
   annotation_info,
   deg_class
 ){
@@ -21,60 +20,28 @@ create_palettes <- function(
               "Female" = "azure2",
               "unk" = "#333333")
 
-  cluster_pal =
-    ifelse(
-      test = length(levels(clusters$cluster)) > 12,
-      yes = list(
-        colorRampPalette(
-          paletteer_d(
-            palette = "ggthemes::calc",
-            n = 12
-          )
-        )(
-          length(
-            levels(
-              clusters$cluster
-            )
-          )
-        )
-      ),
-      no = list(
-        paletteer_d(
-          palette = "ggthemes::calc",
-          n = length(
-            levels(
-              clusters$cluster
-            )
-          )
-        )
-      )
-    ) %>%
-    unlist() %>%
-    as.character() %>%
-    set_names(levels(clusters$cluster))
-
   project_pal =
     colorRampPalette(
       brewer.pal(9, "Set1"))(length(levels(annotation_info$project))) %>%
     set_names(levels(annotation_info$project))
 
-  number_disease_classes =
+  number_responders =
     length(
       unique(
-        annotation_info$disease_class
+        annotation_info$responder
       )
     )
 
-  disease_class_pal =
-    if_else(
-      number_disease_classes > 2,
-      list(brewer.pal(number_disease_classes, "Set1")),
-      list(c("black", "grey75"))
+  responder_pal =
+    case_when(
+      number_responders > 2 ~ list(brewer.pal(number_responders, "Set1")),
+      number_responders == 2 ~ list(c("black", "grey75")),
+      number_responders == 1 ~ list(c("grey75"))
     ) %>%
     unlist() %>%
     set_names(
       unique(
-        annotation_info$disease_class
+        annotation_info$responder
       )
     )
 
@@ -95,18 +62,16 @@ create_palettes <- function(
       type_pal,
       chr_pal,
       sex_pal,
-      cluster_pal,
       project_pal,
-      disease_class_pal,
+      responder_pal,
       comparison_pal ) %>% #,
     # cell_type_pal) %>%
     set_names(c(
       "type",
       "chr",
       "sex",
-      "cluster",
       "project",
-      "disease_class",
+      "responder",
       "comparison"))
 
   group_pal
