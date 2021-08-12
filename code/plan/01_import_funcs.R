@@ -345,36 +345,34 @@ process_counts.limma <-
     study_design,
     batch_variable,
     comparison_grouping_variable,
+    reference_gene_annotation,
     aligner                      = "salmon",
     minimum_gene_count           = 1,
     pc1_zscore_threshold         = 2,
     pc2_zscore_threshold.        = 2,
     BPPARAM.                     = BPPARAM,
-    sva_num                      = 2,
-    use_combat                   = FALSE
+    use_combat                   = FALSE,
+    gene_removal_pattern         = "^RNA5",
+    only_hugo_named_genes        = TRUE,
+    num_sva                      = 2,
+    ...
   ){
-    common_names <-
-      intersect(
-        x = names(count_files),
-        y = rownames(sample_metadata)
-      )
-
-    count_files <- magrittr::extract(count_files, common_names)
-
-    counts <-
-      tximport(
-        files    = count_files,
-        type     = aligner,
-        txIn     = TRUE,
-        txOut    = FALSE,
-        tx2gene  = annot,
-        importer = fread
-      )
+    
+    message("Importing counts...")
+    prepared_data <- prep_data_import(
+      count_files     = count_files,
+      sample_metadata = sample_metadata,
+      aligner         = aligner,
+      annotations     = reference_gene_annotation,
+      min_counts      = minimum_gene_count,
+      removal_pattern = gene_removal_pattern,
+      only_hugo       = only_hugo_named_genes
+    )
 
     message("Correcting for effective library sizes")
     # Obtaining per-observation scaling factors for length, adjusted to avoid
     # changing the magnitude of the counts.
-    normCts <- counts[["counts"]]/counts[["length"]]
+    normCts <- prepared_data[["counts"]][["counts"]]/prepared_data[["counts"]][["length"]]
 
     # Computing effective library sizes from scaled counts, to account for
     # composition biases between samples.
@@ -384,7 +382,7 @@ process_counts.limma <-
     # (sweep applies a function either rowwise or column wise; STATS is a vector
     # equal in length to the chosen axis to use as an argument to the applied function)
     normMat <-
-      sweep(x      = counts[["length"]]/exp(rowMeans(log(counts[["length"]]))),
+      sweep(x      = prepared_data[["counts"]][["length"]]/exp(rowMeans(log(prepared_data[["counts"]][["length"]]))),
             MARGIN = 2,
             STATS  = eff.lib,
             FUN    = "*"
@@ -393,12 +391,12 @@ process_counts.limma <-
 
     # Combining effective library sizes with the length factors, and calculating
     # offsets for a log-link GLM.
-
+    message("Creating initial data object...")
     pre_qc_dge <-
       DGEList(
-        counts       = magrittr::extract(counts[["counts"]], ,rownames(sample_metadata)),
-        samples      = sample_metadata,
-        group        = sample_metadata[[comparison_grouping_variable]],
+        counts       = prepared_data[["counts"]],
+        samples      = prepared_data[["metadata"]],
+        group        = prepared_data[["metadata"]][[comparison_grouping_variable]],
         lib.size     = eff.lib,
         remove.zeros = TRUE
       ) %>%
