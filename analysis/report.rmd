@@ -41,12 +41,12 @@ theme_set(theme_pubr())
 ```
 
 ```{r}
-tar_load(dds_with_scores)
+tar_load(dataset_with_scores)
 tar_load(res)
 ```
 
 ```{r study_group_table}
-md <- colData(dds_with_scores) %>% as_tibble(rownames = "sample_name")
+md <- colData(dataset_with_scores) %>% as_tibble(rownames = "sample_name")
 if (knitr::is_html_output()){
   md %>%
     tabyl(study_group) %>%

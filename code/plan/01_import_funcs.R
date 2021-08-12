@@ -224,18 +224,21 @@ remove_outliers.DGEList <-
         pc1_zscore = abs((PC1 - mean(PC1))/sd(PC1)),
         pc2_zscore = abs((PC2 - mean(PC2))/sd(PC2)),
       ) %>%
-      inner_join(as_tibble(v$targets, rownames = "sample_name")) %>%
-      rename(sample_name = sample)
+      inner_join(as_tibble(v$targets, rownames = "sample_name"))
 
     pc1_outliers <-
-      pca_res %>%
-      filter(PC1 >= pc1_zscore_cutoff) %>%
+      filter(
+        .data = pca_res,
+        pc1_zscore >= pc1_zscore_cutoff
+        ) %>%
       pull(sample_name)
 
     if (!is.null(pc2_zscore_cutoff)){
       pc2_outliers <-
-        pca_res %>%
-        filter(PC2 >= pc2_zscore_cutoff) %>%
+        filter(
+          .data = pca_res,
+          pc2_zscore >= pc2_zscore_cutoff
+          ) %>%
         pull(sample_name)
     } else {
       pc2_outliers <- NULL
@@ -288,13 +291,19 @@ remove_outliers.DESeqDataSet <-
         ) %>%
       inner_join(as_tibble(colData(object), rownames = "sample_name"))
 
-    pc1_outliers <- pca_res %>%
-      filter(pc1_zscore >= pc1_zscore_cutoff) %>%
+    pc1_outliers <-
+      filter(
+        .data = pca_res,
+        pc1_zscore >= pc1_zscore_cutoff
+        ) %>%
       pull(sample_name)
 
     if (!is.null(pc2_zscore_cutoff)){
-      pc2_outliers <- pca_res %>%
-        filter(pc2_zscore >= pc2_zscore_cutoff) %>%
+      pc2_outliers <-
+        filter(
+          .data = pca_res,
+          pc2_zscore >= pc2_zscore_cutoff
+          ) %>%
         pull(sample_name)
     } else {
       pc2_outliers <- NULL
@@ -357,7 +366,6 @@ process_counts.limma <-
     num_sva                      = 2,
     ...
   ){
-    
     message("Importing counts...")
     prepared_data <- prep_data_import(
       count_files     = count_files,
@@ -389,14 +397,22 @@ process_counts.limma <-
       ) %>%
       log()
 
+    sample_grouping <-
+      unite(
+        data = prepared_data[["metadata"]],
+        col = "grouping",
+        {{comparison_grouping_variable}}
+        ) %>%
+      pull(grouping)
+
     # Combining effective library sizes with the length factors, and calculating
     # offsets for a log-link GLM.
     message("Creating initial data object...")
     pre_qc_dge <-
       DGEList(
-        counts       = prepared_data[["counts"]],
+        counts       = prepared_data[["counts"]][["counts"]],
         samples      = prepared_data[["metadata"]],
-        group        = prepared_data[["metadata"]][[comparison_grouping_variable]],
+        group        = sample_grouping,
         lib.size     = eff.lib,
         remove.zeros = TRUE
       ) %>%
@@ -407,20 +423,27 @@ process_counts.limma <-
       magrittr::extract(
         filterByExpr(
           y               = .,
-          group           = sample_metadata[[comparison_grouping_variable]],
+          group           = sample_grouping,
           keep.lib.sizes  = FALSE,
           min.count       = minimum_gene_count,
           min.total.count = 10
         ),
       )
 
+    concentration_col <-
+      grep(
+        x = colnames(prepared_data[["metadata"]]),
+        pattern="concentration",
+        value = TRUE
+        )
+
     preliminary_design <-
       model.matrix(
         object = study_design,
         data   = magrittr::extract(
-          sample_metadata,
+          prepared_data[["metadata"]],
           colnames(pre_qc_dge),
-          c("final_concentration_ng_ul",
+          c(concentration_col,
             batch_variable,
             comparison_grouping_variable)
         )
@@ -445,7 +468,7 @@ process_counts.limma <-
           magrittr::extract(
             sample_metadata,
             colnames(outlier_qc$count_object),
-            c("final_concentration_ng_ul",
+            c(concentration_col,
               batch_variable,
               comparison_grouping_variable)
           )
@@ -472,7 +495,7 @@ process_counts.limma <-
         pre_sva_dge,
         filterByExpr(
           y               = pre_sva_dge,
-          group           = sample_metadata[[comparison_grouping_variable]],
+          group           = sample_grouping,
           keep.lib.sizes  = FALSE,
           min.count       = minimum_gene_count,
           min.total.count = 10
@@ -489,9 +512,13 @@ process_counts.limma <-
     post_qc_dge <-
       calcNormFactors(sva_res[["dge"]])
 
-    groups <- sva_res[["dge"]][["samples"]][[comparison_grouping_variable]]
+    groups <- paste(c("0", comparison_grouping_variable), collapse = " + ")
 
-    mm <- model.matrix(~0 + groups)
+    mm <-
+      model.matrix(
+        object = as.formula(paste("~", groups)),
+        data = sva_res[["dge"]][["samples"]]
+        )
 
     voom_exprs <-
       voomWithQualityWeights(
@@ -567,15 +594,15 @@ process_counts.limma <-
       )
 
     list(
-      raw_counts         = counts[["counts"]],
-      normalized_counts  = cpm(post_qc_dge, log = TRUE),
+      raw_counts                 = counts[["counts"]],
+      normalized_counts          = cpm(post_qc_dge, log = TRUE),
       variance_stabilized_counts = voom_exprs[["E"]],
-      outlier_samples    = outlier_qc[["removed"]],
-      qc_pca             = outlier_qc[["pca"]],
-      sva_graph_data     = sva_res[["sva"]],
-      degs               = res,
-      dataset            = post_qc_dge,
-      comparisons        = comparisons
+      outlier_samples            = outlier_qc[["removed"]],
+      qc_pca                     = outlier_qc[["pca"]],
+      sva_graph_data             = sva_res[["sva"]],
+      degs                       = res,
+      dataset                    = post_qc_dge,
+      comparisons                = comparisons
     )
   }
 
@@ -585,6 +612,7 @@ process_counts.edgeR <-
     sample_metadata,
     study_design,
     comparison_grouping_variable,
+    reference_gene_annotation,
     batch_variable               = NULL,
     aligner                      = "salmon",
     minimum_gene_count           = 1,
@@ -592,7 +620,8 @@ process_counts.edgeR <-
     pc2_zscore_threshold.        = 2,
     BPPARAM                      = BPPARAM,
     sva_num                      = 2,
-    use_combat                   = FALSE
+    use_combat                   = FALSE,
+    ...
   ){
     common_names <-
       intersect(
@@ -810,7 +839,7 @@ process_counts.deseq2 <-
     study_design,
     batch_variable,
     comparison_grouping_variable,
-    reference_gene_annotation    = annotations,
+    reference_gene_annotation,
     aligner                      = "salmon",
     minimum_gene_count           = 1,
     pc1_zscore_threshold         = 2,
@@ -819,7 +848,8 @@ process_counts.deseq2 <-
     use_combat                   = FALSE,
     gene_removal_pattern         = "^RNA5",
     only_hugo_named_genes        = TRUE,
-    num_sva                      = 2
+    num_sva                      = 2,
+    ...
   ){
 
     message("Importing counts...")
@@ -934,7 +964,8 @@ process_counts.deseq2 <-
       sva_graph_data             = sva_res[["sva"]],
       degs                       = res,
       dataset                    = sva_res[["dds"]],
-      comparisons                = comparison_results_list
+      comparisons                = comparison_results_list,
+      res                        = res
     )
   }
 
