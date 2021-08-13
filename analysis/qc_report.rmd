@@ -51,14 +51,9 @@ theme_set(theme_pubr())
 
 ## Overview of sample characteristics:
 
-```{r sample characteristics, fig.height=15, fig.width=10}
-loadd(md_cat_data)
-inspectdf::show_plot(md_cat_data, high_cardinality=1, col_palette = 3) +
-  labs(title = "Frequency of categorical levels")
-```
-
 ```{r}
-loadd(final_md, tx_files)
+tar_load(final_md)
+tar_load(tx_files)
 final_md <- as_tibble(final_md, rownames = "sample_name")
 ```
 
@@ -84,7 +79,8 @@ if (!all(final_md$sample_name %in% names(tx_files))){
 
 Samples with a PC1 > 2 (the red lines) and/or PC2 zscore > 2.5 (the green lines) were dropped from analysis.  Points in red represent samples that were dropped.
 ```{r QC PCA, fig.width=6, fig.height=6}
-loadd(pca_qc)
+tar_load(outlier_qc)
+
 vline <- function(x = 0, color = "red") {
   list(
     type = "line", 
@@ -109,7 +105,7 @@ hline <- function(y = 0, color = "green") {
   )
 }
 
-pca_qc %>%
+outlier_qc$pca %>%
   mutate(
     kept = as_factor(
       if_else(
@@ -132,7 +128,7 @@ pca_qc %>%
     text = ~paste('<br>Subject: ', sample_name,
                   '<br>Sex: ', sex,
                   '<br>Ethnicity: ', ethnicity,
-                  '<br>Disease class: ', disease_class,
+                  '<br>Disease class: ', study_group,
                   '<br>Run: ', run_id,
                   '<br>In dataset? ', kept),
     hovertemplate = '%{text}',
@@ -142,44 +138,53 @@ pca_qc %>%
   ) %>%
   layout(
     shapes = list(
-      vline(pc1_zscore_threshold*sd(pca_qc$PC1) + mean(pca_qc$PC1)),
-      vline(-pc1_zscore_threshold*sd(pca_qc$PC1) + mean(pca_qc$PC1)),
+      vline(pc1_zscore_threshold*sd(outlier_qc$pca$PC1) + mean(outlier_qc$pca$PC1)),
+      vline(-pc1_zscore_threshold*sd(outlier_qc$pca$PC1) + mean(outlier_qc$pca$PC1)),
       
-      hline(pc2_zscore_threshold*sd(pca_qc$PC2) + mean(pca_qc$PC2)),
-      hline(-pc2_zscore_threshold*sd(pca_qc$PC2) + mean(pca_qc$PC2))
+      hline(pc2_zscore_threshold*sd(outlier_qc$pca$PC2) + mean(outlier_qc$pca$PC2)),
+      hline(-pc2_zscore_threshold*sd(outlier_qc$pca$PC2) + mean(outlier_qc$pca$PC2))
       )
     )
 ```
 
 ```{r removed in PCA qc}
-loadd(removed_outliers)
-if (length(removed_outliers) > 0) {
-  filter(final_md, sample_name %in% removed_outliers) %>%
-  kable(caption = "Removing the following samples:") %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-    full_width = FALSE)
+if (length(outlier_qc$outliers) > 0) {
+  filter(final_md, sample_name %in% outlier_qc$outliers) %>%
+    select(sample_name, visit_ref, subject_ref, sex, ethnicity, age) %>%
+    kable(caption = "Removing the following samples:") %>%
+    kable_styling(
+      bootstrap_options =
+        c(
+          "striped",
+          "hover",
+          "condensed",
+          "responsive"
+        ),
+     full_width = FALSE
+     )
 }
 ```
 
 ### Overall correlation between samples
 ```{r overall correlation, fig.width=12, fig.height=9}
-loadd(sampleDistMatrix, sample_dists, annotation_info, group_pal)
-pheatmap(sampleDistMatrix,
-         clustering_distance_rows = sample_dists,
-         clustering_distance_cols = sample_dists, 
-         annotation_row = annotation_info,
-         show_rownames = FALSE,
-         show_colnames = TRUE,
-         annotation_colors = group_pal, fontsize_col = 6,
-         angle_col = 45)
+tar_load(c(sample_dists, annotation_info, group_pal))
+pheatmap(
+  as.matrix(sample_dists),
+  clustering_distance_rows = sample_dists,
+  clustering_distance_cols = sample_dists, 
+  annotation_row = annotation_info,
+  show_rownames = FALSE,
+  show_colnames = TRUE,
+  annotation_colors = group_pal, fontsize_col = 6,
+  angle_col = 45
+)
 ```
 
 # Data quality
 
 ## MA-plot
 ```{r}
-loadd(res)
+tar_load(res)
 ```
 
 This MA plot is of shrunken log2 fold changes (using the *apeglm* package), in which actual fold changes are adjusted to compensate for the high variablity of genes with few counts.
@@ -223,7 +228,7 @@ for(m in seq_along(res)){
 
 ## Dispersion estimates
 ```{r dispersion}
-loadd(disp_plot)
+tar_load(disp_plot)
 disp_plot
 ```
 
@@ -241,41 +246,49 @@ plot_sva(sva_graph_data = sva_graph_data)
 To determine the optimal *k*, the gap statistic was calculated for *k* = (3,20) (*k* = 2 was ignored because it just returns the two disease clusters).  A higher coefficient means better intracluster simliarity and intercluster differences.
 
 ```{r kmeans optimization}
-loadd(sample_cluster_info)
+tar_load(sample_cluster_info)
 
-k_clusters <- sample_cluster_info$kmeans_res
-rf_distance_mat <- sample_cluster_info$rf_distance
-gap_stat <- sample_cluster_info$gap_stat
+fviz_gap_stat(sample_cluster_info$gap_stat, maxSE = list(method = "Tibs2001SEmax", SE.factor = 1))
 
-fviz_gap_stat(gap_stat, maxSE = list(method = "Tibs2001SEmax", SE.factor = 1))
-
-fviz_cluster(k_clusters,
-               data = rf_distance_mat,
-               ellipse.type = "convex",
-               geom = "point",
-               pointsize = 1,
-               ggtheme = theme_cowplot(),
-               main = "K-mean cluster for determined modules"
-  )
+fviz_cluster(
+  sample_cluster_info$kmeans_res,
+  data = sample_cluster_info$rf_distance,
+  ellipse.type = "convex",
+  geom = "point",
+  pointsize = 1,
+  ggtheme = theme_pubr(),
+  main = "K-mean cluster for determined modules"
+)
 
 ```
 
 # Sample Sanity check
 
 To determine if there is a gross mixup of samples, examine the expression of sex-specific transcripts to ensure that only female-subject samples express "XIST" and male-subject samples "DDX3Y:
+```{r message=FALSE, warning=FALSE, include=FALSE}
+tar_load(vsd_exprs)
+```
 
 ```{r sex-specific gene expression}
-loadd(vsd_exprs)
-sex_specific_genes <- tibble(chr = c(rep("Y",16), rep("X",2)),
-                             symbol = c("DDX3Y","EIF1AY",
-                                       "KDM5D","NLGN4Y",
-                                       "PCDH11Y","PRORY",
-                                       "PRY","PRY2",
-                                       "RPS4Y1","RPS4Y2",
-                                       "TBL1Y","TMSB4Y",
-                                       "USP9Y","UTY",
-                                       "VCY","ZFY",
-                                       "XIST","ZFX")) %>%
+sex_specific_genes <- tibble(
+  chr =
+    c(
+      rep("Y",16),
+      rep("X",2)
+      ),
+  symbol =
+    c(
+      "DDX3Y","EIF1AY",
+      "KDM5D","NLGN4Y",
+      "PCDH11Y","PRORY",
+      "PRY","PRY2",
+      "RPS4Y1","RPS4Y2",
+      "TBL1Y","TMSB4Y",
+      "USP9Y","UTY",
+      "VCY","ZFY",
+      "XIST","ZFX"
+      )
+  ) %>%
   filter(symbol %in% rownames(vsd_exprs))
 
 range_bound = 5
@@ -286,7 +299,7 @@ t(vsd_exprs)[,c(sex_specific_genes[['symbol']])] %>%
     scale='column',
     fontsize = 6,
     show_rownames = FALSE,
-    annotation_row = annotation_info[,c("sex", "disease_class")],
+    annotation_row = annotation_info[,c("sex", "study_group")],
     annotation_colors = group_pal,
     annotation_col = column_to_rownames(sex_specific_genes, "symbol"),
     cluster_cols = FALSE,
@@ -296,7 +309,6 @@ t(vsd_exprs)[,c(sex_specific_genes[['symbol']])] %>%
     angle=315)
 ```
 
-These all appear to be correct.
 
 ```{r}
 sessioninfo::session_info()
