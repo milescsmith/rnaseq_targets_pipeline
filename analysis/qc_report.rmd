@@ -53,6 +53,7 @@ theme_set(theme_pubr())
 
 ```{r}
 tar_load(final_md)
+tar_load(md)
 tar_load(tx_files)
 final_md <- as_tibble(final_md, rownames = "sample_name")
 ```
@@ -60,24 +61,17 @@ final_md <- as_tibble(final_md, rownames = "sample_name")
 ```{r echo=FALSE}
 message(str_glue("{nrow(final_md)} samples selected for analysis"))
 message(str_glue("{length(names(tx_files))} files found"))
-if (!all(names(tx_files) %in% final_md$sample_name)){
-  message("The following files do not have a matching metadata entry:")
-  print(setdiff(names(tx_files),final_md$sample_name))
+if (!all(md$sample_name %in% names(tx_files))){
+  message("The following samples did not have a matching sequencing file:")
+  message(md$sample_name[which(md$sample_name %nin% names(tx_files))])
 } else {
   message("All files match a metadata entry.")
-}
-
-if (!all(final_md$sample_name %in% names(tx_files))){
-  message("A count file was not found for the following selected samples:")
-  print(setdiff(final_md$sample_name, names(tx_files)))
-} else {
-  message("All expected files found.")
 }
 ```
 
 ## Sample QC filtering
 
-Samples with a PC1 > 2 (the red lines) and/or PC2 zscore > 2.5 (the green lines) were dropped from analysis.  Points in red represent samples that were dropped.
+Samples with a PC1 > `r pc1_zscore_threshold` (the red lines) and/or PC2 zscore > `r pc2_zscore_threshold` (the green lines) were dropped from analysis.  Points in red represent samples that were dropped.
 ```{r QC PCA, fig.width=6, fig.height=6}
 tar_load(outlier_qc)
 
@@ -128,7 +122,7 @@ outlier_qc$pca %>%
     text = ~paste('<br>Subject: ', sample_name,
                   '<br>Sex: ', sex,
                   '<br>Ethnicity: ', ethnicity,
-                  '<br>Disease class: ', study_group,
+                  '<br>Disease class: ', comparison_grouping_variable,
                   '<br>Run: ', run_id,
                   '<br>In dataset? ', kept),
     hovertemplate = '%{text}',
@@ -241,26 +235,6 @@ loadd(dds_with_scores, sva_graph_data)
 plot_sva(sva_graph_data = sva_graph_data)
 ```
 
-## K-means clustering optimization
-
-To determine the optimal *k*, the gap statistic was calculated for *k* = (3,20) (*k* = 2 was ignored because it just returns the two disease clusters).  A higher coefficient means better intracluster simliarity and intercluster differences.
-
-```{r kmeans optimization}
-tar_load(sample_cluster_info)
-
-fviz_gap_stat(sample_cluster_info$gap_stat, maxSE = list(method = "Tibs2001SEmax", SE.factor = 1))
-
-fviz_cluster(
-  sample_cluster_info$kmeans_res,
-  data = sample_cluster_info$rf_distance,
-  ellipse.type = "convex",
-  geom = "point",
-  pointsize = 1,
-  ggtheme = theme_pubr(),
-  main = "K-mean cluster for determined modules"
-)
-
-```
 
 # Sample Sanity check
 
@@ -299,7 +273,7 @@ t(vsd_exprs)[,c(sex_specific_genes[['symbol']])] %>%
     scale='column',
     fontsize = 6,
     show_rownames = FALSE,
-    annotation_row = annotation_info[,c("sex", "study_group")],
+    annotation_row = annotation_info[,c("sex", comparison_grouping_variable)],
     annotation_colors = group_pal,
     annotation_col = column_to_rownames(sex_specific_genes, "symbol"),
     cluster_cols = FALSE,

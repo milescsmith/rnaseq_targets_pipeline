@@ -1,62 +1,52 @@
 import_metadata <- function(
   metadata_file,
+  comparison_grouping_variable,
   metadata_sheet = "main",
   extra_controls_metadata_file = NULL,
   extra_controls_metadata_sheet = "main",
-  projects_to_include = NULL,
-  projects_to_exclude = NULL,
-  study_groups_to_include = NULL,
-  study_groups_to_exclude = NULL){
+  groups_to_include = NULL,
+  groups_to_exclude = NULL,
+  samples_to_exclude = NULL
+  ){
+
+  comparison_sym <- sym(comparison_grouping_variable)
+  comparison_sym <- enquo(comparison_sym)
+
     study_metadata <-
       read_csv(
         file = metadata_file,
         trim_ws = TRUE,
-        na      = "n/a"
+        na      = "n/a",
+        .name_repair = janitor::make_clean_names
+      ) %>%
+      select(
+        -matches("cytokine_loc_idx"),
+        -matches("cytokine_sample_id")
+      ) %>%
+      rename(
+        sample_name = novaseq_exs_id,
+        ethnicity = race_code,
+        age = age_at_sample
+      ) %>%
+      filter(
+        !is.na(sample_name),
+        {{comparison_sym}} %in% (groups_to_include %||% unique(.data[[comparison_grouping_variable]])),
+        !{{comparison_sym}} %in% groups_to_exclude,
+        !sample_name %in% samples_to_exclude
       ) %>%
       janitor::clean_names() %>%
       mutate(
         age = as.integer(age),
-        study_group =
-          case_when(
-            str_detect(
-              string  = tolower(study_group),
-              pattern = "patient"
-              ) ~ str_remove(
-                string  = study_group,
-                pattern = " [Pp]atient") %>% tolower(),
-            str_detect(
-              string = tolower(study_group),
-              pattern = "control"
-              ) ~ "control"
-          ),
         sample_name =
           janitor::make_clean_names(
             string = sample_name,
             case = "all_caps"
             ),
-        project =
-          tolower(x = project),
-        visit_date =
-          str_split(
-            string= visit_ref,
-            pattern = "\\|"
-            ) %>%
-          map(magrittr::extract(3)) %>%
-          unlist() %>%
-          as_date(),
-        ethnicity =
-          str_replace(
-            string = ethnicity,
-            pattern = "\\[([[:alpha:]]{1,2})\\]",
-            replacement = "\\1"
-            ) %>%
-          str_remove(pattern = "-noGSA"),
+        {{comparison_sym}} := tolower({{comparison_sym}}) %>% make_clean_names(allow_duplicates = TRUE),
         across(
           .cols =
             c(
-              project,
-              study_group,
-              subject_ref,
+              {{comparison_sym}},
               sex,
               ethnicity,
               sample_type,
@@ -82,15 +72,13 @@ import_metadata <- function(
           .name_repair = janitor::make_clean_names
           ) %>%
         mutate(
-          study_group = tolower(study_group),
-          project_group = "control"
+          {{comparison_sym}} := tolower({{comparison_sym}}),
           ) %>%
-        filter(study_group == "control") %>%
+        filter({{comparison_sym}} == "control") %>%
         #Select the portions of the metadata that are useful:
         select(
           sample_name = nova_seq_sample_id,
-          study_group,
-          project_group,
+          {{comparison_sym}},
           sex,
           ethnicity = race_code,
           visit_ref,
@@ -108,14 +96,10 @@ import_metadata <- function(
               ),
             .fns = as_factor
             ),
-          age = as.numeric(age)
-          ) %>%
-        distinct()
-
-      study_metadata <- bind_rows(study_metadata, non_project_controls)
-    }
-
-    study_metadata
+        .fns = as_factor
+        )
+      ) %>%
+    distinct()
   }
 
 
@@ -145,6 +129,7 @@ import_counts <- function(directory, metadata){
 
   tx_files
 }
+
 
 create_final_md <- function(
   md,

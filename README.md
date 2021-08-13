@@ -49,7 +49,7 @@ In the directory containing this project, run:
 docker run -it --rm --mount type=bind,source=<location_of_files>,target=<location_entered_in_drake.r> us-central1-docker.pkg.dev/guthridge-nih-strides-projects/utopia-planitia/workerbee-rnaseq:4.1.0b /bin/Rscript "targets::tar_make()"
 ```
 
-(Note: this analysis may require a lot of memory.  It has been sucessfully run with 64G, but I am unclear how much is actually required.)
+(Note: this analysis may require a lot of memory.  It has been successfully run with 64G, but I am unclear how much is actually required.)
 
 ### Analysis on the OMRF HPC
 

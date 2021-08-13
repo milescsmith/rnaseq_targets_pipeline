@@ -173,7 +173,11 @@ calc_deg_means <- function(
   metadata,
   grouping_variable
 ){
-  grouping_variable = enquo(grouping_variable)
+  if(is.character(grouping_variable)){
+    diffused_grouping_variable <- sym(grouping_variable)
+  }
+
+  diffused_grouping_variable <- enquo(diffused_grouping_variable)
 
   deg_means <-
     exprs %>%
@@ -190,13 +194,13 @@ calc_deg_means <- function(
     ) %>%
     group_by(
       gene,
-      {{grouping_variable}}
+      {{diffused_grouping_variable}}
     ) %>%
     summarise(avg = mean(expr)) %>%
     pivot_wider(
       names_from = gene,
       values_from = avg
       ) %>%
-    column_to_rownames("study_group")
+    column_to_rownames(grouping_variable)
 }
 
