@@ -16,32 +16,69 @@ create_palettes <- function(
   chr_pal = c("Y" = "#E41A1C",
               "X" = "#377EB8")
 
-  sex_pal = c("Male" = "coral3",
-              "Female" = "azure2",
-              "unk" = "#333333")
+  sex_pal = paletteer_d(
+    "ggsci::lanonc_lancet",
+    n = length(levels(annotation_info$sex))
+    ) %>%
+    as.character() %>%
+    set_names(levels(annotation_info$sex))
 
-  project_pal =
-    colorRampPalette(
-      brewer.pal(9, "Set1"))(length(levels(annotation_info$project))) %>%
-    set_names(levels(annotation_info$project))
+  cluster_pal =
+    ifelse(
+      test = length(levels(clusters$cluster)) > 12,
+      yes = list(
+        colorRampPalette(
+          paletteer_d(
+            palette = "ggthemes::calc",
+            n = 12
+          )
+        )(
+          length(
+            levels(
+              clusters$cluster
+            )
+          )
+        )
+      ),
+      no = list(
+        paletteer_d(
+          palette = "ggthemes::calc",
+          n = length(
+            levels(
+              clusters$cluster
+            )
+          )
+        )
+      )
+    ) %>%
+    unlist() %>%
+    as.character() %>%
+    set_names(levels(clusters$cluster))
 
-  number_responders =
+  number_project_groups =
     length(
       unique(
-        annotation_info$responder
+        annotation_info[[comparison_grouping_variable]]
       )
     )
 
-  responder_pal =
-    case_when(
-      number_responders > 2 ~ list(brewer.pal(number_responders, "Set1")),
-      number_responders == 2 ~ list(c("black", "grey75")),
-      number_responders == 1 ~ list(c("grey75"))
+  comparison_group_pal =
+    if_else(
+      condition = number_project_groups > 2,
+      true      = list(paletteer_d(
+                    palette = "ggthemes::colorblind",
+                    n = length(
+                      levels(
+                        annotation_info[[comparison_grouping_variable]]
+                      )
+                    )
+                  )),
+      false     = list(c("black", "grey75"))
     ) %>%
     unlist() %>%
     set_names(
       unique(
-        annotation_info$responder
+        annotation_info[[comparison_grouping_variable]]
       )
     )
 
@@ -52,30 +89,28 @@ create_palettes <- function(
   comparison_pal =
     oaPalette(
       length(
-        unique(deg_class$comparison)
+        unique(deg_class[["comparison"]])
       )
     ) %>%
-    set_names(unique(deg_class$comparison))
+    set_names(unique(deg_class[["comparison"]]))
 
   group_pal =
     list(
       type_pal,
       chr_pal,
       sex_pal,
-      project_pal,
-      responder_pal,
-      comparison_pal ) %>% #,
+      cluster_pal,
+      comparison_group_pal,
+      comparison_pal) %>% #,
     # cell_type_pal) %>%
     set_names(c(
       "type",
       "chr",
       "sex",
-      "project",
-      "responder",
+      "cluster",
+      comparison_grouping_variable,
       "comparison"))
 
   group_pal
 }
 
-#,
-#"cell_type")),

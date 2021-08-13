@@ -23,13 +23,12 @@ module_gsea <- function(module_genes, module_of_interest){
       enricher(
         gene = .,
         TERM2GENE = c5
-      ) %>%
-    slot("result")
+      )
 
   if(!is.null(enriched_module_genes)){
     enriched_module_genes <-
       mutate(
-        .data = enriched_module_genes,
+        .data = enriched_module_genes@result,
         module = module_of_interest
         )
   }

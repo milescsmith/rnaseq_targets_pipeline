@@ -1,54 +1,96 @@
 import_metadata <- function(
   metadata_file,
-  group_to_filter_on,
+  comparison_grouping_variable,
+  metadata_sheet = "main",
+  extra_controls_metadata_file = NULL,
+  extra_controls_metadata_sheet = "main",
   groups_to_include = NULL,
   groups_to_exclude = NULL,
   samples_to_exclude = NULL
   ){
-    read_csv(
-      file    = metadata_file,
-      skip    = 0,
-      trim_ws = TRUE,
-      na      = "n/a"
-    ) %>%
-    janitor::clean_names() %>%
-    select(
-      -ord,
-      -pos,
-      -i7_index,
-      -index,
-      -i5_index,
-      -index2,
-      -correction_needed,
-      -study_group,
-      -rin,
-      -mess,
-      -abc_or_mess_or_control
-    ) %>%
-    rename(
-      sample_name = nova_seq_sample_id,
-      ethnicity = race_code,
-    ) %>%
-    filter(
-      !is.na(sample_name),
-      {{ group_to_filter_on }} %in% groups_to_include,
-      !sample_name %in% samples_to_exclude
-    ) %>%
-    mutate(
-      age = as.integer(age),
-      sample_name =
-        janitor::make_clean_names(
-          string = sample_name,
-          case = "all_caps"
-          ),
-      project = str_to_upper(project),
-      across(
-        .cols =
-          c(
-            sex,
-            ethnicity,
-            run_id,
-            disease_class
+
+  comparison_sym <- sym(comparison_grouping_variable)
+  comparison_sym <- enquo(comparison_sym)
+
+    study_metadata <-
+      read_excel(
+        path    = metadata_file,
+        sheet   = metadata_sheet,
+        skip    = 1,
+        trim_ws = TRUE,
+        na      = "n/a",
+        .name_repair = janitor::make_clean_names
+      ) %>%
+      select(
+        -matches("cytokine_loc_idx"),
+        -matches("cytokine_sample_id")
+      ) %>%
+      rename(
+        sample_name = novaseq_exs_id,
+        ethnicity = race_code,
+        age = age_at_sample
+      ) %>%
+      filter(
+        !is.na(sample_name),
+        {{comparison_sym}} %in% (groups_to_include %||% unique(.data[[comparison_grouping_variable]])),
+        !{{comparison_sym}} %in% groups_to_exclude,
+        !sample_name %in% samples_to_exclude
+      ) %>%
+      mutate(
+        age = as.integer(age),
+        sample_name =
+          janitor::make_clean_names(
+            string = sample_name,
+            case = "all_caps"
+            ),
+        {{comparison_sym}} := tolower({{comparison_sym}}) %>% make_clean_names(allow_duplicates = TRUE),
+        across(
+          .cols =
+            c(
+              {{comparison_sym}},
+              sex,
+              ethnicity,
+              grant_defined_severity,
+              j_james_severity,
+              k_smith_severity
+              ),
+          .fns = as_factor
+          )
+        ) %>%
+      distinct() %>%
+      mutate(run_id = "S4_011_1")
+
+    if (!is.null(extra_controls_metadata_file)){
+      non_project_controls =
+        read_excel(
+          path = extra_controls_metadata_file,
+          sheet = extra_controls_metadata_sheet,
+          .name_repair = janitor::make_clean_names
+          ) %>%
+        mutate(
+          {{comparison_sym}} := tolower({{comparison_sym}}),
+          ) %>%
+        filter({{comparison_sym}} == "control") %>%
+        #Select the portions of the metadata that are useful:
+        select(
+          sample_name = nova_seq_sample_id,
+          {{comparison_sym}},
+          sex,
+          ethnicity = race_code,
+          visit_ref,
+          subject_ref,
+          age,
+          run_id
+          ) %>%
+        mutate(
+          age = as.integer(age),
+          across(
+            .cols =
+              c(
+                sex,
+                ethnicity
+              ),
+            .fns = as_factor
             ),
         .fns = as_factor
         )
@@ -83,6 +125,7 @@ import_counts <- function(directory, metadata){
 
   tx_files
 }
+
 
 create_final_md <- function(
   md,

@@ -1,10 +1,11 @@
-# BLAST Optimal Responders RNAseq data - 2021/08/10
+# COVID RNAseq data - 2021/08/04
 
 ## Goals
-- Differential gene analysis of transcripts from a small set of patients (as chosen by Joan Merrill) at baseline that responded to belimumab treatment vs those that failed to respond
+- Examine transcriptional differences between infected, infected and vaccinated, uninfected, and uninfected and vaccinated samples
+- Differential gene analysis
 - Score previously described gene modules (Banchereau, et al. 2016 10.1016/j.cell.2016.03.008; Kegerreis, et al. 2019 10.4049/jimmunol.1801512; Haynes, et al. 2019  10.1101/834093)
-- Perform WGCNA and map to pathways using GSEA
-- Identify gene expression modules associated with responder/non-responder status
+- Identify sample clusters
+- Identify gene expression modules associated with particular clusters, disease-classifications
 
 ## Analyst
 - Miles Smith <miles-smith@omrf.org>
@@ -44,7 +45,7 @@ In the directory containing this project, run:
 docker run -it --rm --mount type=bind,source=<location_of_files>,target=<location_entered_in_drake.r> us-central1-docker.pkg.dev/guthridge-nih-strides-projects/utopia-planitia/workerbee-rnaseq:4.1.0b /bin/Rscript "targets::tar_make()"
 ```
 
-(Note: this analysis may require a lot of memory.  It has been sucessfully run with 64G, but I am unclear how much is actually required.)
+(Note: this analysis may require a lot of memory.  It has been successfully run with 64G, but I am unclear how much is actually required.)
 
 ### Analysis on the OMRF HPC
 

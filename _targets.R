@@ -9,6 +9,8 @@ source("code/plan/07_differential_expression_funcs.R")
 source("code/plan/08_WGCNA_funcs.R")
 source("code/plan/10_viral_transcript_funcs.R")
 source("code/plan/11_stats_testing_funcs.R")
+# source("code/plan/12_table_outputs.R")
+source("code/plan/13_ml_functions.R")
 source("code/plan/98_palettes_funcs.R")
 source("code/plan/99_output_funcs.R")
 
@@ -158,7 +160,7 @@ list(
       create_final_md(
         md = md,
         tx_files = tx_files,
-        comparison_group = experimental_group,
+        comparison_group = comparison_grouping_variable,
         control_group = "control"
       ),
     packages = c(
@@ -194,7 +196,7 @@ list(
       DESeqDataSetFromTximport(
         txi     = tx_counts,
         colData = final_md,
-        design  = study_design
+        design = as.formula(paste("~", comparison_grouping_variable))
       ),
     packages = "DESeq2"
   ),
@@ -263,12 +265,13 @@ list(
   ),
 
   tar_target(
-    dds_qc,
-    DESeq(
-      outlier_qc$dds,
-      BPPARAM = BPPARAM,
-      parallel = TRUE
-    ),
+    name = dds_qc,
+    command =
+      DESeq(
+        outlier_qc$dds,
+        parallel = TRUE,
+        BPPARAM = BPPARAM
+      ),
     cue = tar_cue(mode = "never")
   ),
 
@@ -448,6 +451,38 @@ list(
   ),
 
   tar_target(
+    name = sample_cluster_info,
+    command =
+      ident_clusters(
+        irlba(
+          A = vsd_exprs,
+          nv = 50
+          ) %>%
+          pluck("v") %>%
+          as.data.frame() %>%
+          set_colnames(
+            paste0(
+              "PC",
+              seq(50)
+              )
+            ) %>%
+          set_rownames(
+            colnames(vsd_exprs)
+            ),
+        K.max = 20
+      )
+  ),
+
+  tar_target(
+    name = clusters,
+    command =
+      mutate(
+        .data = sample_cluster_info$clusters,
+        cluster = as_factor(cluster)
+      )
+  ),
+
+  tar_target(
     name = study_md,
     command =
       as_tibble(
@@ -461,8 +496,10 @@ list(
     command =
       column_to_rownames(
         select(.data = study_md,
-               responder,
+               {{comparison_grouping_variable}},
                sex,
+               cluster,
+               wd_visit,
                sample_name
         ),
         var = "sample_name"
@@ -562,9 +599,9 @@ list(
           name,
           sex,
           ethnicity,
-          responder
+          {{comparison_grouping_variable}}
         ),
-      grouping_variable = "responder"
+      grouping_variable = comparison_grouping_variable
     )
   ),
 
@@ -610,20 +647,20 @@ list(
   ),
 
   tar_target(
-    name = wgcna_modules,
+    name    = wgcna_modules,
     command = blockwiseModules(
-      datExpr = vsd_top,
-      power = find_softPower(sft),
-      maxBlockSize = 20000,
-      mergeCutHeight = 0.3,
-      minModuleSize = 20,
-      pamStage = TRUE,
+      datExpr           = vsd_top,
+      power             = find_softPower(sft),
+      maxBlockSize      = 20000,
+      mergeCutHeight    = 0.3,
+      minModuleSize     = 20,
+      pamStage          = TRUE,
       pamRespectsDendro = TRUE,
-      saveTOMs = FALSE,
-      verbose = 3,
-      detectCutHeight = 0.99,
-      TOMDenom = "min",
-      networkType = "signed hybrid",
+      saveTOMs          = FALSE,
+      verbose           = 3,
+      detectCutHeight   = 0.99,
+      TOMDenom          = "min",
+      networkType       = "signed hybrid",
       reassignThreshold = 1e-6
     )
   ),
@@ -658,46 +695,95 @@ list(
     name = wgcna_scores,
     command =
       left_join(
-        x = select(.data = as_tibble(x = wgcna_modules$MEs, rownames="sample_name"), -MEgrey),
+        x = select(.data = as_tibble(x = wgcna_modules[["MEs"]], rownames="sample_name"), -MEgrey),
         y = as_tibble(x = annotation_info, rownames="sample_name")
       )
   ),
 
   tar_target(
-    name = wgcna_responder_split,
+    name = wgcna_cluster_split,
     command =
       initial_split(
-        data =
-          select(
-            .data = mutate(
-              .data = wgcna_scores,
-              responder = fct_drop(responder)
+          data = wgcna_scores %>%
+            select(
+              cluster,
+              starts_with("ME")
             ),
-            responder,
-            starts_with("ME")
+          prop = 0.75,
+          strata = "cluster"
+        )
+  ),
+
+  tar_target(
+    name = wgcna_cluster_train,
+    command =  training(wgcna_cluster_split)
+  ),
+
+  tar_target(
+    name = wgcna_cluster_test,
+    command = testing(wgcna_cluster_split)
+  ),
+
+  tar_target(
+    name = wgcna_cluster_rf_cv,
+    command =
+      train(
+        cluster ~ .,
+        method = "parRF",
+        data = wgcna_cluster_train,
+        trControl =
+          trainControl(
+            method = "repeatedcv",
+            number = 10,
+            repeats = 10,
+            search = "grid",
+            allowParallel = TRUE
           ),
-        prop = 0.75,
-        strata = "responder"
+        importance=TRUE
       )
   ),
 
   tar_target(
-    name = wgcna_responder_train,
-    command = training(wgcna_responder_split)
+    name = wgcna_cluster_rf_cv_varImp,
+    command =
+      varImp(
+        object = wgcna_cluster_rf_cv,
+        scale = FALSE,
+        importance = TRUE
+      )
   ),
 
   tar_target(
-    name = wgcna_responder_test,
-    command = testing(wgcna_responder_split)
+    name = wgcna_module_names,
+    command = colnames(wgcna_modules[["MEs"]]) %>% discard(~.x == "MEgrey")
   ),
 
   tar_target(
-    name = wgcna_responder_rf_cv,
+    name = wgcna_group_split,
+    command = split_data(
+      scores_and_metadata = wgcna_scores,
+      strata_var = comparison_grouping_variable,
+      module_names = wgcna_module_names
+    )
+  ),
+
+  tar_target(
+    name = wgcna_group_train,
+    command = training(wgcna_group_split)
+  ),
+
+  tar_target(
+    name = wgcna_group_test,
+    command = testing(wgcna_group_split)
+  ),
+
+  tar_target(
+    name = wgcna_group_rf_cv,
     command =
       train(
-        form = responder ~ .,
+        form = as.formula(paste(comparison_grouping_variable, "~ .")),
         method = "parRF",
-        data = wgcna_responder_train,
+        data = wgcna_group_train,
         trControl =
           trainControl(
             method = "repeatedcv",
@@ -710,10 +796,10 @@ list(
   ),
 
   tar_target(
-    name = wgcna_responder_rf_cv_varImp,
+    name = wgcna_group_rf_cv_varImp,
     command =
       varImp(
-        object = wgcna_responder_rf_cv,
+        object = wgcna_group_rf_cv,
         scale = FALSE,
         importance=TRUE
       )
@@ -765,41 +851,37 @@ list(
   ),
 
   tar_target(
-    name = module_responder_split,
+    name = module_cluster_split,
     command =
       initial_split(
         data =
           select(
-            .data =
-              mutate(
-                .data = module_scores_with_md,
-                responder = fct_drop(responder)
-              ),
-            responder,
+            .data = module_scores_with_md,
+            cluster,
             one_of(names(banchereau_modules))
           ),
         prop = 0.75,
-        strata = "responder"
+        strata = "cluster"
       )
   ),
 
   tar_target(
-    name = module_responder_train,
-    command = training(module_responder_split)
+    name = module_cluster_train,
+    command = training(module_cluster_split)
   ),
 
   tar_target(
-    name = module_responder_test,
-    command = testing(module_responder_split)
+    name = module_cluster_test,
+    command = testing(module_cluster_split)
   ),
 
   tar_target(
-    name = module_responder_rf_cv,
+    name = module_cluster_rf_cv,
     command =
       train(
-        form = responder ~ .,
+        form = cluster ~ .,
         method = "parRF",
-        data = module_responder_train,
+        data = module_cluster_train,
         trControl =
           trainControl(
             method = "repeatedcv",
@@ -813,10 +895,59 @@ list(
   ),
 
   tar_target(
-    name = module_responder_rf_cv_varImp,
+    name = module_cluster_rf_cv_varImp,
     command =
       varImp(
-        object = module_responder_rf_cv,
+        object = module_cluster_rf_cv,
+        scale = FALSE,
+        importance = TRUE
+      )
+  ),
+
+  tar_target(
+    name = module_group_split,
+    command =
+      split_data(
+        scores_and_metadata = module_scores_with_md,
+        strata_var = comparison_grouping_variable,
+        module_names = names(banchereau_modules)
+        )
+  ),
+
+  tar_target(
+    name = module_group_train,
+    command = training(module_group_split)
+  ),
+
+  tar_target(
+    name = module_group_test,
+    command = testing(module_group_split)
+  ),
+
+  tar_target(
+    name = module_group_rf_cv,
+    command =
+      train(
+        form = as.formula(paste(comparison_grouping_variable, "~ .")),
+        method = "parRF",
+        data = module_group_train,
+        trControl =
+          trainControl(
+            method = "repeatedcv",
+            number = 10,
+            repeats = 10,
+            search = "grid",
+            allowParallel = TRUE
+          ),
+        importance = TRUE
+      )
+  ),
+
+  tar_target(
+    name = module_group_rf_cv_varImp,
+    command =
+      varImp(
+        object = module_group_rf_cv,
         scale = FALSE,
         importance = TRUE
       )
@@ -875,8 +1006,13 @@ list(
     name = annotated_module_scores_class,
     command =
       select(
-        .data = module_scores_with_viral,
-        responder,
+        .data =
+          mutate(
+            .data = module_scores_with_viral,
+            cluster = as_factor(cluster)
+          ),
+        cluster,
+        {{comparison_grouping_variable}},
         one_of(annotated_modules$module)
       )
   ),
@@ -909,13 +1045,18 @@ list(
     command =
       modules_compare_with_stats(
         module_score_table = annotated_module_scores_pivot,
-        compare_by = "responder"
+        compare_by = comparison_grouping_variable
       )
   ),
 
   tar_target(
     name = module_scores_pivot,
-    command = pivot_module_scores(module_scores = module_scores_with_viral)
+    command =
+      pivot_module_scores(
+        module_scores = module_scores_with_viral,
+        cluster_var   = "cluster",
+        grouping_var  = comparison_grouping_variable
+        )
   ),
 
   tar_target(
@@ -923,7 +1064,36 @@ list(
     command =
       modules_compare_with_stats(
         module_score_table = module_scores_pivot,
-        compare_by = "responder"
+        compare_by = comparison_grouping_variable
+      )
+  ),
+
+  tar_target(
+    name = module_scores_with_viral_by_cluster,
+    command =
+      mutate(
+        .data =
+          pivot_longer(
+            data =
+              select(
+                .data = module_scores_with_viral,
+                cluster,
+                matches("^ME")
+              ),
+            -cluster,
+            names_to     = "module",
+            values_to    = "score"
+          ),
+        cluster = as_factor(cluster)
+      )
+  ),
+
+  tar_target(
+    name = module_scores_with_viral_by_cluster_stats,
+    command =
+      modules_compare_with_stats(
+        module_score_table = module_scores_with_viral_by_cluster,
+        compare_by         = "cluster"
       )
   ),
 
@@ -936,14 +1106,13 @@ list(
             data =
               select(
                 .data = module_scores_with_viral,
-                responder,
+                {{comparison_grouping_variable}},
                 matches("^ME")
               ),
-            -responder,
+            -{{comparison_grouping_variable}},
             names_to     = "module",
             values_to    = "score"
-          ),
-        responder = as_factor(responder)
+          )
       )
   ),
 
@@ -952,7 +1121,7 @@ list(
     command =
       modules_compare_with_stats(
         module_score_table = module_scores_with_viral_by_disease,
-        compare_by         = "responder"
+        compare_by         = comparison_grouping_variable
       )
   ),
 
@@ -966,13 +1135,22 @@ list(
       )
   ),
 
-
   tar_target(
     name     = output_expression,
     command  =
       save_table_to_disk(
         file_to_output = as_tibble(vsd_exprs, rownames = "sample_name"),
         output_name    = "processed_data/variance_stabilized_expression.csv.gz"
+        ),
+    format   = "file"
+  ),
+
+  tar_target(
+    name     = raw_counts,
+    command  =
+      save_table_to_disk(
+        file_to_output = as_tibble(counts(dds_with_scores), rownames = "sample_name"),
+        output_name    = "processed_data/raw_counts.csv.gz"
       ),
     format   = "file"
   ),

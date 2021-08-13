@@ -14,14 +14,30 @@ modules_compare_with_stats <- function(module_score_table, compare_by){
     )
 }
 
-pivot_module_scores <- function(module_scores){
+pivot_module_scores <- function(module_scores, cluster_var, grouping_var){
+  if (is.character(grouping_var)){
+    grouping_sym <- sym(grouping_var)
+    grouping_sym <- enquo(grouping_sym)
+  } else {
+    grouping_sym <- enquo(grouping_var)
+  }
+
+  if (is.character(cluster_var)){
+    cluster_sym <- sym(cluster_var)
+    cluster_sym <- enquo(cluster_sym)
+  } else {
+    cluster_sym <- enquo(cluster_var)
+  }
+
   mutate(
     .data = module_scores,
-    responder = as_factor(responder)
+    {{cluster_sym}}  := as_factor({{cluster_sym}}),
+    {{grouping_sym}} := as_factor({{grouping_sym}})
   ) %>%
   select(
     sample_name,
-    responder,
+    {{cluster_sym}},
+    {{grouping_sym}},
     matches("^M[[:digit:]]+"),
     mg,
     starts_with("ldg")

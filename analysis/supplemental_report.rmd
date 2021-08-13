@@ -54,7 +54,7 @@ number_of_pages <-
 
 module_cluster_graphs <-
   module_scores_pivot %>%
-  select(-responder) %>%
+  select(-project_group) %>%
   mutate(cluster = as_factor(cluster)) %>%
   ggviolin(
     x = "cluster",
@@ -112,7 +112,7 @@ number_of_pages <-
 
 module_cell_type_graphs <-
   module_scores_pivot %>%
-  select(-responder) %>%
+  select(-project_group) %>%
   mutate(cell_type = as_factor(cell_type)) %>%
   ggviolin(
     x = "cell_type",
@@ -161,14 +161,14 @@ for(i in seq(number_of_pages)){
 
 ## By disease classification
 ```{r echo=FALSE, fig.height=8, fig.width=12, warning=FALSE}
-module_responder_graphs <-
+module_project_group_graphs <-
   module_scores_pivot %>%
   select(-cluster) %>%
-  mutate(responder = as_factor(responder)) %>%
+  mutate(project_group = as_factor(project_group)) %>%
   ggviolin(
-    x = "responder",
+    x = "project_group",
     y = "score",
-    fill = "responder",
+    fill = "project_group",
     draw_quantiles = c(0.25, 0.5, 0.75),
     add = "jitter",
     add.params = list(size = 1, alpha = 0.5)
@@ -199,7 +199,7 @@ module_responder_graphs <-
 
 for(i in seq(number_of_pages)){
   print(
-    module_responder_graphs +
+    module_project_group_graphs +
       facet_wrap_paginate(
         facets = vars(module),
         scales = "free_y",
