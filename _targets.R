@@ -81,23 +81,32 @@ list(
   ),
 
   tar_target(
-    name       = md,
-    command    =
+    name = md,
+    command =
       import_metadata(
-        metadata_file = raw_metadata,
-        projects_to_include     = project_params[["projects_to_include"]],
-        projects_to_exclude     = project_params[["projects_to_exclude"]],
-        study_groups_to_include = project_params[["study_groups_to_include"]],
-        study_groups_to_exclude = project_params[["study_groups_to_exclude"]]
+        metadata_file                = raw_metadata,
+        comparison_grouping_variable = project_params[["comparison_grouping_variable"]],
+        projects_to_include          = project_params[["projects_to_include"]],
+        projects_to_exclude          = project_params[["projects_to_exclude"]],
+        groups_to_include            = project_params[["groups_to_include"]],
+        groups_to_exclude            = project_params[["groups_to_exclude"]],
+        sample_name_column           = project_params[["sample_name_column"]],
+        grouping_column              = project_params[["grouping_column"]],
+        project_column               = project_params[["project_column"]],
+        regression_columns           = project_params[["regression_columns"]],
+        filter_column                = project_params[["filter_column"]],
+        samples_to_exclude           = project_params[["manual_sample_removal"]],
+        extra_controls_metadata_file = raw_metadata
       ),
-    packages   =
+    packages =
       c(
         "readr",
+        "readxl",
         "dplyr",
         "janitor",
         "purrr",
         "forcats",
-        "lubridate"
+        "stringr"
       )
   ),
 
@@ -141,7 +150,8 @@ list(
         md               = md,
         tx_files         = tx_files,
         comparison_group = project_params[["comparison_grouping_variable"]],
-        control_group    = project_params[["control_group"]]
+        control_group    = project_params[["control_group"]],
+        sample_name      = project_params[["sample_name_column"]]
       ),
     packages   = c(
       "forcats",
