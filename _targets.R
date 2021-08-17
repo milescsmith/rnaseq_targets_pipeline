@@ -153,7 +153,7 @@ list(
         control_group    = project_params[["control_group"]],
         sample_name      = project_params[["sample_name_column"]]
       ),
-    packages   = c(
+    packages = c(
       "forcats",
       "stringr",
       "dplyr",
@@ -163,85 +163,89 @@ list(
   ),
 
   tar_target(
-    name       = tx_counts,
-    command    =
-      import_counts(
-        directory = seq_file_directory
+    name = imported_data,
+    command =
+      prep_data_import(
+        count_files        = tx_files,
+        sample_metadata    = final_md,
+        aligner            = project_params[["aligner"]],
+        annotations        = annot,
+        minimum_gene_count = 1,
+        removal_pattern    = "^RNA5",
+        only_hugo          = project_params[["only_hugo_named_genes"]]
       ),
+    cue = tar_cue(mode = "never"),
     packages =
       c(
+        "magrittr",
         "tximport",
         "data.table",
-        "magrittr",
-        "janitor",
+        "glue",
+        "tibble",
+        "dplyr",
         "purrr",
+        "HGNChelper",
         "stringr"
       )
   ),
 
   tar_target(
-    name = imported_data,
+    name = processed_data,
     command = process_counts(
-      count_files                  = tx_counts,
-      sample_metadata              = final_md,
-      study_design                 = project_params[["study_design"]],
+      imported_counts              = imported_data,
       batch_variable               = project_params[["batch_variable"]],
-      comparison_grouping_variable = project_params[["comparison_groups"]],
-      reference_gene_annotation    = annot,
-      aligner                      = project_params[["aligner"]],
-      minimum_gene_count           = project_params[["minimum_gene_count"]],
+      comparison_grouping_variable = project_params[["grouping_column"]],
+      study_design                 = project_params[["study_design"]],
       pc1_zscore_threshold         = project_params[["pc1_zscore_threshold"]],
       pc2_zscore_threshold         = project_params[["pc2_zscore_threshold"]],
       BPPARAM                      = BPPARAM,
-      num_sva                      = project_params[["sva_num"]],
       use_combat                   = project_params[["use_combat"]],
-      method                       = project_params[["process_method"]]
+      minimum_gene_count           = project_params[["minimum_gene_count"]],
+      num_sva                      = project_params[["sva_num"]],
+      method                       = project_params[["process_method"]],
+      control_group                = project_params[["control_group"]]
     ),
     packages =
       c(
+        "edgeR",
+        "Rfast",
+        "limma",
+        "dplyr",
         "purrr",
         "tibble",
-        "HGNChelper",
-        "dplyr",
-        "matrixStats",
-        "tidyselect",
         "stringr",
-        "rlang"
+        "rlang",
+        "tidyr",
+        "magrittr",
+        "gtools"
       ),
     cue = tar_cue(mode = "never")
   ),
 
   tar_target(
-    name = qc_pca,
-    command = imported_data[["qc_pca"]]
+    name    = qc_pca,
+    command = processed_data[["qc_pca"]]
   ),
 
   tar_target(
-    name = outlier_samples,
-    command = imported_data[["outlier_samples"]]
+    name    = outlier_samples,
+    command = processed_data[["outlier_samples"]]
   ),
 
   tar_target(
-    name       = sva_graph_data,
-    command    = plot_sva(imported_data[["sva_graph_data"]])
+    name    = sva_graph_data,
+    command = plot_sva(processed_data[["sva_graph_data"]])
   ),
 
   tar_target(
-    name = vsc_exprs,
-    command =
-      imported_data[["variance_stabilized_counts"]] %>%
-      as_tibble(rownames = "gene") %>%
-      mutate(hugo = checkGeneSymbols(gene)[["Suggested.Symbol"]]) %>%
-      filter(!is.na(hugo)) %>%
-      group_by(hugo) %>%
-      slice(1) %>%
-      ungroup() %>%
-      select(
-        -gene,
-        gene = hugo
-        ) %>%
-      column_to_rownames("gene") %>%
-      as.matrix()
+    name    = vsc_exprs,
+    command = extract_transformed_data(data_obj = processed_data[["variance_stabilized_counts"]]),
+    packages =
+      c(
+        "tibble",
+        "dplyr",
+        "HGNChelper"
+      )
   ),
 
   # This should be changed into a list that we can walk through
@@ -291,12 +295,14 @@ list(
     command = create_module_list(metasignature_module_file)
   ),
 
-  # TODO: can scoreEigengenes handle anything other than a DESeqDataSet or a plain matrix?
+  # TODO: can scoreEigengenes handle anything
+  # other than a DESeqDataSet or a plain matrix?
+  # TODO: Nope, apparently not.
   tar_target(
     name = dataset_with_scores,
     command =
       scoreEigengenes(
-        object = imported_data[["dataset"]],
+        object = processed_data[["dataset"]],
         module_list = banchereau_modules,
         score_func = 'rsvd'
       ) %>%
@@ -498,7 +504,7 @@ list(
     name = res,
     command =
       create_results_list(
-        comparison_list = imported_data[["comparisons"]],
+        comparison_list = processed_data[["comparisons"]],
         dds = dataset_with_scores,
         comparison_grouping_variable = project_params[["comparison_groupings"]]
       ),
@@ -509,8 +515,8 @@ list(
   tar_target(
     name = down_tables,
     command = create_deg_tables(
-      deg_res = imported_data[["res"]],
-      comparison_list = imported_data[["comparisons"]],
+      deg_res = processed_data[["res"]],
+      comparison_list = processed_data[["comparisons"]],
       grouping_variable = project_params[["comparison_groups"]],
       direction = "down"
     )
@@ -519,8 +525,8 @@ list(
   tar_target(
     name = up_tables,
     command = create_deg_tables(
-      deg_res = imported_data[["res"]],
-      comparison_list = imported_data[["comparisons"]],
+      deg_res = processed_data[["res"]],
+      comparison_list = processed_data[["comparisons"]],
       grouping_variable = project_params[["comparison_groups"]],
       direction = "up"
     )
@@ -529,8 +535,8 @@ list(
   tar_target(
     name = degs,
     command = extract_de_genes(
-      results = imported_data[["res"]],
-      comparison_list = imported_data[["comparisons"]],
+      results = processed_data[["res"]],
+      comparison_list = processed_data[["comparisons"]],
       grouping_variable = project_params[["comparison_groups"]]
     )
   ),

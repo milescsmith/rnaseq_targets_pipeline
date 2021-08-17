@@ -37,7 +37,7 @@ project_params = list(
   study_design                    = NULL, # ~ Disease_Class,
 
   comparison_grouping_variable    = "Disease_Class",
-  batch_variable                  = "plate_id",
+  batch_variable                  = "run_id",
   control_group                   = "control",
   experimental_group              = c("sle", "ra"),
   num_sva                         = 3,
@@ -45,17 +45,16 @@ project_params = list(
   manual_sample_removal           = NULL,
 
   aligner                         = "salmon",
+  only_hugo_named_genes           = TRUE,
   minimum_gene_count              = 1,
-  pc1_zscore_threshold            = 2,
-  pc2_zscore_threshold            = 2,
-  BPPARAM                         = BPPARAM,
-  sva_num                         = 2,
-  use_combat                      = FALSE,
-  process_method                  = "DESeq2",
-
   initial_concentration_threshold = 1.5,
   pc1_zscore_threshold            = 2,
   pc2_zscore_threshold            = 2.5,
+  sva_num                         = 2,
+  use_combat                      = FALSE,
+  process_method                  = "limma",
+
+  BPPARAM                         = BPPARAM,
 
   # number of top variable genes to use for WGCNA
   n_var_genes                     = 20000,

@@ -14,7 +14,7 @@ import_metadata <- function(
   projects_to_include           = NULL,
   projects_to_exclude           = NULL,
   samples_to_exclude            = NULL
-  ){
+){
 
   # Setup variables for non-standard evaluation
   diffused_comparison_sym <- rlang::sym(comparison_grouping_variable)
@@ -31,7 +31,7 @@ import_metadata <- function(
       path = metadata_file
     ) %>%
     select(
-      one_of(
+      all_of(
         c(
           sample_name_column,
           grouping_column,
@@ -51,9 +51,9 @@ import_metadata <- function(
     ) %>%
     dplyr::mutate(
       dplyr::across(
-        where(is.character) & -sample_name_column,
+        where(is.character) & -all_of(sample_name_column),
         forcats::as_factor
-        ),
+      ),
       {{diffused_sample_name}} :=
         make_clean_names(
           string = {{diffused_sample_name}},
@@ -62,7 +62,7 @@ import_metadata <- function(
       {{diffused_comparison_sym}} :=
         tolower({{diffused_comparison_sym}}) %>%
         make_clean_names(allow_duplicates = TRUE)
-      )
+    )
 
   if (!is.null(extra_controls_metadata_file)){
     non_project_controls =
@@ -100,9 +100,9 @@ import_metadata <- function(
       dplyr::bind_rows(
         study_metadata,
         non_project_controls
-        )
+      )
 
-  dplyr::distinct(study_metadata)
+    dplyr::distinct(study_metadata)
   }
 }
 
@@ -133,9 +133,116 @@ import_counts <- function(directory, metadata){
     magrittr::set_names(
       x = tx_files,
       nm = tx_sample_names
-      )
+    )
 
   tx_files
+}
+
+prep_data_import <- function(
+  count_files,
+  sample_metadata,
+  annotations,
+  aligner            = "salmon",
+  minimum_gene_count = 1,
+  removal_pattern    = "^RNA5",
+  only_hugo          = TRUE
+){
+
+  common_names <-
+    intersect(
+      x = names(count_files),
+      y = rownames(sample_metadata)
+    )
+
+  count_files <- magrittr::extract(count_files, common_names)
+  filtered_metadata <- magrittr::extract(sample_metadata, common_names,)
+
+  message("Importing count files")
+  counts <-
+    tximport::tximport(
+      files    = count_files,
+      type     = aligner,
+      txIn     = TRUE,
+      txOut    = FALSE,
+      tx2gene  = annotations,
+      importer = data.table::fread
+    )
+
+  message(glue::glue("Filtering genes with fewer than {minimum_gene_count} reads"))
+  genes_with_passing_counts <-
+    counts[["counts"]] %>%
+    tibble::as_tibble(rownames = "gene_symbol") %>%
+    dplyr::mutate(
+      rowsum = rowSums(dplyr::across(where(is.numeric)))
+    ) %>%
+    dplyr::filter(
+      rowsum > minimum_gene_count
+    ) %>%
+    dplyr::pull(gene_symbol)
+
+  filtered_counts <-
+    purrr::map(
+      .x = c("abundance", "counts", "length"),
+      .f = function(x){
+        cleaned_counts <-
+          counts[[x]] %>%
+          tibble::as_tibble(rownames = "gene_symbol") %>%
+          dplyr::mutate(
+            hugo = HGNChelper::checkGeneSymbols(gene_symbol)[["Suggested.Symbol"]]
+          ) %>%
+          dplyr::filter(
+            gene_symbol %in% genes_with_passing_counts,
+            stringr::str_detect(
+              string = gene_symbol,
+              pattern = removal_pattern,
+              negate = TRUE
+            )
+          )
+
+        if (isTRUE(only_hugo)){
+          cleaned_counts <-
+            dplyr::filter(
+              .data = cleaned_counts,
+              !is.na(hugo)
+            ) %>%
+            dplyr::group_by(hugo) %>%
+            dplyr::slice(1) %>%
+            dplyr::ungroup() %>%
+            dplyr::select(
+              -gene_symbol,
+              gene_symbol = hugo
+            ) %>%
+            tibble::column_to_rownames("gene_symbol") %>%
+            as.matrix()
+        } else {
+          cleaned_counts <-
+            dplyr::mutate(
+              .data = cleaned_counts,
+              gene_symbol =
+                dplyr::if_else(
+                  condition = is.na(hugo),
+                  true = gene_symbol,
+                  false = hugo
+                )
+            ) %>%
+            dplyr::select(
+              -hugo
+            ) %>%
+            tibble::column_to_rownames("gene_symbol") %>%
+            as.matrix()
+        }
+      })
+  filtered_counts[["countsFromAbundance"]] <- counts[["countsFromAbundance"]]
+  filtered_counts <-
+    magrittr::set_names(
+      x = filtered_counts,
+      nm = names(counts)
+    )
+
+  list(
+    metadata = filtered_metadata,
+    counts   = filtered_counts
+  )
 }
 
 create_final_md <- function(
@@ -158,21 +265,21 @@ create_final_md <- function(
   diffused_sample_name <- rlang::enquo(diffused_sample_name)
 
   final_md <-
-   dplyr::filter(
-    .data = md,
-    {{diffused_sample_name}} %in% names(tx_files),
-    stringr::str_detect(
-      string = {{diffused_sample_name}},
-      pattern = "_2$",
-      negate = TRUE
-    )
-  ) %>%
-  dplyr::mutate(
-    {{diffused_comparison_group}} :=
-      forcats::as_factor({{diffused_comparison_group}}) %>%
-      forcats::fct_relevel(control_group),
-  ) %>%
-  tibble::column_to_rownames(var=sample_name)
+    dplyr::filter(
+      .data = md,
+      {{diffused_sample_name}} %in% names(tx_files),
+      stringr::str_detect(
+        string = {{diffused_sample_name}},
+        pattern = "_2$",
+        negate = TRUE
+      )
+    ) %>%
+    dplyr::mutate(
+      {{diffused_comparison_group}} :=
+        forcats::as_factor({{diffused_comparison_group}}) %>%
+        forcats::fct_relevel(control_group),
+    ) %>%
+    tibble::column_to_rownames(var=sample_name)
 
   final_md
 }
@@ -225,7 +332,7 @@ remove_outliers.DGEList <-
       dplyr::filter(
         .data = pca_res,
         pc1_zscore >= pc1_zscore_cutoff
-        ) %>%
+      ) %>%
       dplyr::pull(sample_name)
 
     if (!is.null(pc2_zscore_cutoff)){
@@ -233,7 +340,7 @@ remove_outliers.DGEList <-
         dplyr::filter(
           .data = pca_res,
           pc2_zscore >= pc2_zscore_cutoff
-          ) %>%
+        ) %>%
         dplyr::pull(sample_name)
     } else {
       pc2_outliers <- NULL
@@ -283,19 +390,19 @@ remove_outliers.DESeqDataSet <-
         sample_name = colnames(vsd),
         pc1_zscore = abs((PC1 - mean(PC1))/sd(PC1)),
         pc2_zscore = abs((PC2 - mean(PC2))/sd(PC2)),
-        ) %>%
+      ) %>%
       dplyr::inner_join(
         tibble::as_tibble(
           x = SummarizedExperiment::colData(object),
           rownames = "sample_name"
-          )
         )
+      )
 
     pc1_outliers <-
       dplyr::filter(
         .data = pca_res,
         pc1_zscore >= pc1_zscore_cutoff
-        ) %>%
+      ) %>%
       dplyr::pull(sample_name)
 
     if (!is.null(pc2_zscore_cutoff)){
@@ -303,7 +410,7 @@ remove_outliers.DESeqDataSet <-
         dplyr::filter(
           .data = pca_res,
           pc2_zscore >= pc2_zscore_cutoff
-          ) %>%
+        ) %>%
         dplyr::pull(sample_name)
     } else {
       pc2_outliers <- NULL
@@ -349,84 +456,72 @@ process_counts <- function(..., method) {
 
 process_counts.limma <-
   function(
-    count_files,
-    sample_metadata,
-    batch_variable,
+    imported_counts,
     comparison_grouping_variable,
-    reference_gene_annotation,
+    batch_variable               = NULL,
     study_design                 = NULL,
-    aligner                      = "salmon",
-    minimum_gene_count           = 1,
     pc1_zscore_threshold         = 2,
-    pc2_zscore_threshold.        = 2,
-    BPPARAM.                     = BPPARAM,
+    pc2_zscore_threshold         = 2,
+    BPPARAM                      = BPPARAM,
     use_combat                   = FALSE,
-    gene_removal_pattern         = "^RNA5",
-    only_hugo_named_genes        = TRUE,
     num_sva                      = 2,
+    minimum_gene_count           = 1,
+    control_group                = "control",
     ...
   ){
-    if (is_null(study_design)){
+    diffused_grouping_variable <- rlang::sym(comparison_grouping_variable)
+    diffused_grouping_variable <- rlang::enquo(diffused_grouping_variable)
+
+    if (is.null(study_design)){
       study_design = as.formula(paste("~", comparison_grouping_variable))
     }
-
-    message("Importing counts...")
-    prepared_data <- prep_data_import(
-      count_files     = count_files,
-      sample_metadata = sample_metadata,
-      aligner         = aligner,
-      annotations     = reference_gene_annotation,
-      min_counts      = minimum_gene_count,
-      removal_pattern = gene_removal_pattern,
-      only_hugo       = only_hugo_named_genes
-    )
 
     message("Correcting for effective library sizes")
     # Obtaining per-observation scaling factors for length, adjusted to avoid
     # changing the magnitude of the counts.
-    normCts <- prepared_data[["counts"]][["counts"]]/prepared_data[["counts"]][["length"]]
+    normCts <- imported_counts[["counts"]][["counts"]]/imported_counts[["counts"]][["length"]]
 
     # Computing effective library sizes from scaled counts, to account for
     # composition biases between samples.
-    eff.lib <- calcNormFactors(normCts) * colSums(normCts)
+    eff.lib <- edgeR::calcNormFactors(normCts) * matrixStats::colSums2(normCts)
 
     # Multiply each gene by the library size for each sample and take the log
     # (sweep applies a function either rowwise or column wise; STATS is a vector
     # equal in length to the chosen axis to use as an argument to the applied function)
     normMat <-
       sweep(
-        x      = prepared_data[["counts"]][["length"]]/exp(rowMeans(log(prepared_data[["counts"]][["length"]]))),
+        x      = imported_counts[["counts"]][["length"]]/exp(matrixStats::rowMeans2(log(imported_counts[["counts"]][["length"]]))),
         MARGIN = 2,
         STATS  = eff.lib,
         FUN    = "*"
-      ) %>%
+      ) |>
       log()
 
     sample_grouping <-
-      unite(
-        data = prepared_data[["metadata"]],
+      tidyr::unite(
+        data = imported_counts[["metadata"]],
         col = "grouping",
-        {{comparison_grouping_variable}}
-      ) %>%
-      pull(grouping)
+        {{diffused_grouping_variable}}
+      ) |>
+      dplyr::pull(grouping)
 
     # Combining effective library sizes with the length factors, and calculating
     # offsets for a log-link GLM.
     message("Creating initial data object...")
     pre_qc_dge <-
-      DGEList(
-        counts       = prepared_data[["counts"]][["counts"]],
-        samples      = prepared_data[["metadata"]],
+      edgeR::DGEList(
+        counts       = imported_counts[["counts"]][["counts"]],
+        samples      = imported_counts[["metadata"]],
         group        = sample_grouping,
         lib.size     = eff.lib,
         remove.zeros = TRUE
       ) %>%
-      scaleOffset(
+      edgeR::scaleOffset(
         y = .,
         offset = normMat[rownames(.[["counts"]]),]
       ) %>%
       magrittr::extract(
-        filterByExpr(
+        edgeR::filterByExpr(
           y               = .,
           group           = sample_grouping,
           keep.lib.sizes  = FALSE,
@@ -437,16 +532,17 @@ process_counts.limma <-
 
     concentration_col <-
       grep(
-        x = colnames(prepared_data[["metadata"]]),
+        x = colnames(imported_counts[["metadata"]]),
         pattern="concentration",
         value = TRUE
-        )
+      )
 
+    message("Creating preliminary study design...")
     preliminary_design <-
       model.matrix(
         object = study_design,
         data   = magrittr::extract(
-          prepared_data[["metadata"]],
+          imported_counts[["metadata"]],
           colnames(pre_qc_dge),
         )
       ) %>%
@@ -454,7 +550,7 @@ process_counts.limma <-
         c("Intercept", colnames(.)[2:ncol(.)])
       )
 
-    message("Removing outliers")
+    message("Removing outliers...")
     outlier_qc <-
       remove_outliers(
         object            = pre_qc_dge,
@@ -468,14 +564,16 @@ process_counts.limma <-
         object = study_design,
         data   =
           magrittr::extract(
-            sample_metadata,
+            imported_counts[["metadata"]],
             colnames(outlier_qc$count_object),
-            c(concentration_col,
+            c(
+              concentration_col,
               batch_variable,
-              comparison_grouping_variable)
+              comparison_grouping_variable
+            )
           )
       ) %>%
-      set_colnames(
+      magrittr::set_colnames(
         c("Intercept",
           colnames(.)[2:ncol(.)])
       )
@@ -483,7 +581,7 @@ process_counts.limma <-
 
     # Creating a DGEList object for use in edgeR.
     pre_sva_dge <-
-      scaleOffset(
+      edgeR::scaleOffset(
         y                = outlier_qc[["count_object"]],
         offset           =
           normMat[
@@ -495,7 +593,7 @@ process_counts.limma <-
     pre_sva_dge <-
       magrittr::extract(
         pre_sva_dge,
-        filterByExpr(
+        edgeR::filterByExpr(
           y               = pre_sva_dge,
           group           = sample_grouping,
           keep.lib.sizes  = FALSE,
@@ -504,6 +602,7 @@ process_counts.limma <-
         ),
       )
 
+    message("Running surrogate variable analysis...")
     sva_res <-
       calc_sva(
         object       = pre_sva_dge,
@@ -512,7 +611,9 @@ process_counts.limma <-
       )
 
     post_qc_dge <-
-      calcNormFactors(sva_res[["dge"]])
+      edgeR::calcNormFactors(
+        object = sva_res[["dge"]]
+      )
 
     groups <- paste(c("0", comparison_grouping_variable), collapse = " + ")
 
@@ -520,84 +621,94 @@ process_counts.limma <-
       model.matrix(
         object = as.formula(paste("~", groups)),
         data = sva_res[["dge"]][["samples"]]
-        )
+      )
 
+    message("Running voom...")
     voom_exprs <-
-      voomWithQualityWeights(
+      limma::voomWithQualityWeights(
         counts    = post_qc_dge,
         design    = mm,
         plot      = TRUE,
         save.plot = TRUE
       )
 
+    message("Fitting data...")
     fit <-
-      lmFit(
+      limma::lmFit(
         object = voom_exprs,
         design = mm,
         method = "robust"
       )
 
     comparisons <-
-      as_tibble(
-        combinations(
-          n = length(unique(groups)),
+      tibble::as_tibble(
+        gtools::combinations(
+          n = length(unique(imported_counts[["metadata"]][["Disease_Class"]])),
           r = 2,
-          v = unique(groups)
+          v = unique(imported_counts[["metadata"]][["Disease_Class"]]),
+          repeats.allowed = FALSE
         )
       ) %>%
-      set_names(
+      rlang::set_names(
         nm = c("V1","V2")
       ) %>%
-      transmute(
+      dplyr::transmute(
         name = paste0(V2, "_vs_", V1),
         compare = paste(V2, "-", V1)
       ) %>%
-      filter(
-        str_detect(
+      dplyr::filter(
+        stringr::str_detect(
           string = compare,
           pattern = control_group
         )
       ) %>%
-      deframe()
+      tibble::deframe()
 
     contr_matrix <-
-      makeContrasts(
+      limma::makeContrasts(
         contrasts = comparisons,
-        levels = unique(groups)
+        levels    = unique(imported_counts[["metadata"]][["Disease_Class"]])
       )
 
-    colnames(fit$coefficients) <-
-      str_remove(
-        string  = colnames(fit$coefficients),
-        pattern = "groups"
+    fit$coefficients <-
+      magrittr::set_colnames(
+        x = fit$coefficients,
+        value =
+          stringr::str_remove(
+            string  = colnames(fit$coefficients),
+            pattern = comparison_grouping_variable
+          )
       )
 
     treat_res <-
-      contrasts.fit(
+      limma::contrasts.fit(
         fit = fit,
-        contrasts =  contr_matrix
+        contrasts = contr_matrix
       ) %>%
-      treat()
+      limma::treat()
 
-    res = map(colnames(contr_matrix), function(i) {
+    res = purrr::map(colnames(contr_matrix), function(i) {
 
-      topTreat(fit = treat_res, coef = i) %>%
-        as_tibble(rownames = "gene") %>%
-        arrange(desc(logFC)) %>%
-        rename(
+      limma::topTreat(
+        fit = treat_res,
+        coef = i
+      ) %>%
+        tibble::as_tibble(rownames = "gene") %>%
+        dplyr::arrange(dplyr::desc(logFC)) %>%
+        dplyr::rename(
           baseMean       = AveExpr,
           log2FoldChange = logFC,
           pvalue         = P.Value,
           padj           = adj.P.Val
         )
     }) %>%
-      set_names(
+      magrittr::set_names(
         nm = names(comparisons)
       )
 
     list(
-      raw_counts                 = counts[["counts"]],
-      normalized_counts          = cpm(post_qc_dge, log = TRUE),
+      raw_counts                 = edgeR::getCounts(post_qc_dge),
+      normalized_counts          = edgeR::cpm(post_qc_dge, log = TRUE, shrunk = TRUE),
       variance_stabilized_counts = voom_exprs[["E"]],
       outlier_samples            = outlier_qc[["removed"]],
       qc_pca                     = outlier_qc[["pca"]],
@@ -610,72 +721,56 @@ process_counts.limma <-
 
 process_counts.edgeR <-
   function(
-    count_files,
-    sample_metadata,
+    imported_counts,
     comparison_grouping_variable,
-    reference_gene_annotation,
-    study_design                 = NULL,
     batch_variable               = NULL,
-    aligner                      = "salmon",
-    minimum_gene_count           = 1,
+    study_design                 = NULL,
     pc1_zscore_threshold         = 2,
-    pc2_zscore_threshold.        = 2,
+    pc2_zscore_threshold         = 2,
     BPPARAM                      = BPPARAM,
-    sva_num                      = 2,
     use_combat                   = FALSE,
+    num_sva                      = 2,
+    minimum_gene_count           = 1,
+    control_group                = "control",
     ...
   ){
+    diffused_grouping_variable <- rlang::sym(comparison_grouping_variable)
+    diffused_grouping_variable <- rlang::enquo(diffused_grouping_variable)
 
-    if (is_null(study_design)){
+    if (is.null(study_design)){
       study_design = as.formula(paste("~", comparison_grouping_variable))
     }
-
-    common_names <-
-      intersect(
-        x = names(count_files),
-        y = rownames(sample_metadata)
-      )
-
-    count_files <- magrittr::extract(count_files, common_names)
-
-    counts <-
-      tximport(
-        files    = count_files,
-        type     = aligner,
-        txIn     = TRUE,
-        txOut    = FALSE,
-        tx2gene  = annot,
-        importer = data.table::fread
-      )
 
     message("Correcting for effective library sizes")
     # Obtaining per-observation scaling factors for length, adjusted to avoid
     # changing the magnitude of the counts.
-    normCts <- counts[["counts"]]/counts[["length"]]
+    normCts <- imported_counts[["counts"]][["counts"]]/imported_counts[["counts"]][["length"]]
 
     # Computing effective library sizes from scaled counts, to account for
     # composition biases between samples.
-    eff.lib <- edgeR::calcNormFactors(normCts) * Rfast::colsums(normCts)
+    eff.lib <- edgeR::calcNormFactors(normCts) * matrixStats::colSums2(normCts)
 
     # Multiply each gene by the library size for each sample and take the log
     # (sweep applies a function either rowwise or column wise; STATS is a vector
     # equal in length to the chosen axis to use as an argument to the applied function)
     normMat <-
-      sweep(x      = counts[["length"]]/exp(Rfast::rowmeans(log(counts[["length"]]))),
-            MARGIN = 2,
-            STATS  = eff.lib,
-            FUN    = "*"
-      ) %>%
+      sweep(
+        x      = imported_counts[["counts"]][["length"]]/exp(matrixStats::rowMeans2(log(imported_counts[["counts"]][["length"]]))),
+        MARGIN = 2,
+        STATS  = eff.lib,
+        FUN    = "*"
+      ) |>
       log()
 
     # Combining effective library sizes with the length factors, and calculating
     # offsets for a log-link GLM.
 
+    message("Creating initial data object...")
     pre_qc_dge <-
       edgeR::DGEList(
-        counts       = magrittr::extract(counts[["counts"]], ,rownames(sample_metadata)),
-        samples      = sample_metadata,
-        group        = sample_metadata[[comparison_grouping_variable]],
+        counts       = magrittr::extract(imported_counts[["counts"]][["counts"]], ,rownames(imported_counts[["metadata"]])),
+        samples      = imported_counts[["metadata"]],
+        group        = imported_counts[["metadata"]][[comparison_grouping_variable]],
         lib.size     = eff.lib,
         remove.zeros = TRUE
       ) %>%
@@ -686,24 +781,27 @@ process_counts.edgeR <-
       magrittr::extract(
         edgeR::filterByExpr(
           y               = .,
-          group           = sample_metadata[[comparison_grouping_variable]],
+          group           = imported_counts[["metadata"]][[comparison_grouping_variable]],
           keep.lib.sizes  = FALSE,
           min.count       = minimum_gene_count,
           min.total.count = 10
         ),
       )
 
+    message("Creating preliminary study design...")
     preliminary_design <-
       model.matrix(
         object = study_design,
-        sample_metadata[colnames(pre_qc_dge),
-        ]
+        data   = magrittr::extract(
+          imported_counts[["metadata"]],
+          colnames(pre_qc_dge)
+        )
       ) %>%
       magrittr::set_colnames(
         c("Intercept", colnames(.)[2:ncol(.)])
       )
 
-    message("Removing outliers")
+    message("Removing outliers...")
     outlier_qc <-
       remove_outliers(
         object            = pre_qc_dge,
@@ -715,11 +813,16 @@ process_counts.edgeR <-
     design =
       model.matrix(
         object = study_design,
-        sample_metadata[colnames(outlier_qc$count_object),
-                        c("initial_concentration_ng_ul",
-                          batch_variable,
-                          comparison_grouping_variable)
-        ]
+        data   =
+          magrittr::extract(
+            imported_counts[["metadata"]],
+            colnames(outlier_qc$count_object),
+            c(
+              concentration_col,
+              batch_variable,
+              comparison_grouping_variable
+            )
+          )
       ) %>%
       magrittr::set_colnames(
         c("Intercept",
@@ -744,13 +847,14 @@ process_counts.edgeR <-
         pre_sva_dge,
         edgeR::filterByExpr(
           y               = pre_sva_dge,
-          group           = sample_metadata[[comparison_grouping_variable]],
+          group           = imported_counts[["metadata"]][[comparison_grouping_variable]],
           keep.lib.sizes  = FALSE,
           min.count       = minimum_gene_count,
           min.total.count = 10
         ),
       )
 
+    message("Running surrogate variable analysis...")
     sva_res <-
       calc_sva(
         object       = pre_sva_dge,
@@ -819,6 +923,7 @@ process_counts.edgeR <-
           paste0("_vs_", control_group)
       )
 
+    message("Running voom...")
     v <-
       limma::voomWithQualityWeights(
         counts = post_qc_dge,
@@ -826,11 +931,12 @@ process_counts.edgeR <-
       )
 
     list(
-      raw_counts                 = counts(counts[["counts"]]),
-      normalized_counts          = lcpm(post_qc_dge, log = TRUE),
+      raw_counts                 = edgeR::getCounts(counts[["counts"]]),
+      normalized_counts          = edgeR::cpm(post_qc_dge, log = TRUE, shrunk = TRUE),
       variance_stabilized_counts = v[["E"]],
       outlier_samples            = outlier_qc[["removed"]],
       qc_pca                     = outlier_qc[["pca"]],
+      sva_graph_data             = sva_res[["sva"]],
       degs                       = res,
       dataset                    = post_qc_dge,
       comparisons                = comparison_results_list
@@ -839,44 +945,28 @@ process_counts.edgeR <-
 
 process_counts.deseq2 <-
   function(
-    count_files,
-    sample_metadata,
-    batch_variable,
+    imported_counts,
     comparison_grouping_variable,
-    reference_gene_annotation,
+    batch_variable               = NULL,
     study_design                 = NULL,
-    aligner                      = "salmon",
-    minimum_gene_count           = 1,
     pc1_zscore_threshold         = 2,
     pc2_zscore_threshold         = 2,
     BPPARAM                      = BPPARAM,
     use_combat                   = FALSE,
-    gene_removal_pattern         = "^RNA5",
-    only_hugo_named_genes        = TRUE,
+    minimum_gene_count           = 1,
     num_sva                      = 2,
     ...
   ){
 
-    if (is_null(study_design)){
+    if (is.null(study_design)){
       study_design = as.formula(paste("~", comparison_grouping_variable))
     }
-
-    message("Importing counts...")
-    prepared_data <- prep_data_import(
-      count_files     = count_files,
-      sample_metadata = sample_metadata,
-      aligner         = aligner,
-      annotations     = reference_gene_annotation,
-      min_counts      = minimum_gene_count,
-      removal_pattern = gene_removal_pattern,
-      only_hugo       = only_hugo_named_genes
-    )
 
     message("Creating initial data object...")
     dds_import <-
       DESeqDataSetFromTximport(
-        txi     = prepared_data[["counts"]],
-        colData = prepared_data[["metadata"]],
+        txi     = imported_counts[["counts"]],
+        colData = imported_counts[["metadata"]],
         design  = study_design
       )
 
@@ -998,7 +1088,7 @@ calc_sva.DESeqDataSet <- function(object, model_design = NULL, n.sva = NULL){
       normalized = TRUE
     )
 
-  non_zero_genes = which(Rfast::rowmeans(dat) > 1)
+  non_zero_genes = which(matrixStats::rowMeans2(dat) > 1)
 
   filtered_dat = dat[non_zero_genes, ]
 
@@ -1115,110 +1205,6 @@ plot_sva <- function(sva_graph_data){
     )
 }
 
-prep_data_import <- function(
-  count_files,
-  sample_metadata,
-  annotations,
-  aligner         = "salmon",
-  min_counts      = 1,
-  removal_pattern = "^RNA5",
-  only_hugo       = TRUE
-){
-
-  common_names <-
-    intersect(
-      x = names(count_files),
-      y = rownames(sample_metadata)
-    )
-
-  count_files <- magrittr::extract(count_files, common_names)
-  filtered_metadata <- magrittr::extract(sample_metadata, common_names,)
-
-  counts <-
-    tximport::tximport(
-      files    = count_files,
-      type     = aligner,
-      txIn     = TRUE,
-      txOut    = FALSE,
-      tx2gene  = annotations,
-      importer = data.table::fread
-    )
-
-  genes_with_passing_counts <-
-    counts[["counts"]] %>%
-    tibble::as_tibble(rownames = "gene_symbol") %>%
-    dplyr::mutate(
-      rowsum = rowSums(dplyr::across(where(is.numeric)))
-    ) %>%
-    dplyr::filter(
-      rowsum > min_counts
-    ) %>%
-    dplyr::pull(gene_symbol)
-
-  filtered_counts <-
-    map(
-      .x = c("abundance", "counts", "length"),
-      .f = function(x){
-        cleaned_counts <-
-          counts[[x]] %>%
-          tibble::as_tibble(rownames = "gene_symbol") %>%
-          dplyr::mutate(
-            hugo = HGNChelper::checkGeneSymbols(gene_symbol)[["Suggested.Symbol"]]
-          ) %>%
-          dplyr::filter(
-            gene_symbol %in% genes_with_passing_counts,
-            stringr::str_detect(
-              string = gene_symbol,
-              pattern = removal_pattern,
-              negate = TRUE
-            )
-          )
-
-        if (isTRUE(only_hugo)){
-          cleaned_counts <-
-            dplyr::filter(
-              .data = cleaned_counts,
-              !is.na(hugo)
-            ) %>%
-            dplyr::group_by(hugo) %>%
-            dplyr::slice(1) %>%
-            dplyr::ungroup() %>%
-            dplyr::select(
-              -gene_symbol,
-              gene_symbol = hugo
-            ) %>%
-            tibble::column_to_rownames("gene_symbol") %>%
-            as.matrix()
-        } else {
-          cleaned_counts <-
-            dplyr::mutate(
-              .data = cleaned_counts,
-              gene_symbol =
-                dplyr::if_else(
-                  condition = is.na(hugo),
-                  true = gene_symbol,
-                  false = hugo
-                )
-            ) %>%
-            dplyr::select(
-              -hugo
-            ) %>%
-            tibble::column_to_rownames("gene_symbol") %>%
-            as.matrix()
-        }
-      })
-  filtered_counts[["countsFromAbundance"]] <- counts[["countsFromAbundance"]]
-  filtered_counts <-
-    magrittr::set_names(
-      x = filtered_counts,
-      nm = names(counts)
-    )
-
-  list(
-    metadata = filtered_metadata,
-    counts   = filtered_counts
-  )
-}
 
 read_md_file <- function(path, ...){
   if (!is.na(excel_format(path))){
@@ -1247,4 +1233,21 @@ read_md_file <- function(path, ...){
   }
 
   imported_file
+}
+
+
+extract_transformed_data <- function(data_obj){
+  processed_data[["variance_stabilized_counts"]] %>%
+    tibble::as_tibble(rownames = "gene") %>%
+    dplyr::mutate(hugo = HGNChelper::checkGeneSymbols(gene)[["Suggested.Symbol"]]) %>%
+    dplyr::filter(!is.na(hugo)) %>%
+    dplyr::group_by(hugo) %>%
+    dplyr::slice(1) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(
+      -gene,
+      gene = hugo
+    ) %>%
+    tibble::column_to_rownames("gene") %>%
+    as.matrix()
 }
