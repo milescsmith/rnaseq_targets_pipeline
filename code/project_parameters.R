@@ -1,6 +1,4 @@
 #### Import code and libraries ####
-source("code/functions.R")       # Define your custom code as a bunch of functions.
-
 c5 <- clusterProfiler::read.gmt("references/c5.all.v7.4.symbols.gmt")
 
 #### Set options ####
