@@ -4,12 +4,12 @@ run_pca <- function(
   metadata,
   cluster_info
 ){
-  prcomp_irlba(x = expr_data) %>%
-    pluck("rotation") %>%
-    as_tibble() %>%
-    mutate(sample_name = colnames(expr_data)) %>%
-    inner_join(metadata) %>%
-    inner_join(cluster_info)
+  irlba::prcomp_irlba(x = expr_data) %>%
+    purrr::pluck("rotation") %>%
+    tibble::as_tibble() %>%
+    dplyr::mutate(sample_name = colnames(expr_data)) %>%
+    dplyr::inner_join(metadata) %>%
+    dplyr::inner_join(cluster_info)
 }
 
 run_umap <- function(
@@ -18,18 +18,22 @@ run_umap <- function(
   cluster_info
   ){
   umap_results =
-    umap(
+    uwot::umap(
       t(expr_data),
-      n_threads = detectCores(),
-      n_sgd_threads = detectCores(),
+      n_threads = parallel::detectCores(),
+      n_sgd_threads = parallel::detectCores(),
       verbose = TRUE,
       n_components = 3
     ) %>%
-    as_tibble(.name_repair = "unique") %>%
-    set_names(c("umap_1",
-                "umap_2",
-                "umap_3")) %>%
-    mutate(sample_name = colnames(expr_data)) %>%
-    inner_join(metadata) %>%
-    inner_join(cluster_info)
+    tibble::as_tibble(.name_repair = "unique") %>%
+    magrittr::set_names(
+      c(
+        "umap_1",
+        "umap_2",
+        "umap_3"
+        )
+      ) %>%
+    dplyr::mutate(sample_name = colnames(expr_data)) %>%
+    dplyr::inner_join(metadata) %>%
+    dplyr::inner_join(cluster_info)
 }

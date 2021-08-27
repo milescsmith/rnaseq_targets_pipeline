@@ -1,18 +1,121 @@
-create_results_list <- function(
+#' @title create_results_list
+#'
+#' @param object
+#' @param ...
+#'
+#' @return
+#' @export
+create_results_list <- function(object, ...){
+  UseMethod("create_results_list")
+}
+
+#' @rdname create_results_list
+#' @method create_results_list DESeqDataSet
+#' @importFrom DESeq2 lfcShrink
+#' @importFrom rlang set_names
+#' @importFrom purrr map map_chr
+#' @importFrom dplyr mutate inner_join filter pull
+#' @return list
+create_results_list.DESeqDataSet <- function(
   comparison_list,
-  dds,
-  comparison_grouping_variable
+  object,
+  comparison_grouping_variable,
+  design = NULL
   ){
-  map(comparison_list, function(i) {
-    lfcShrink(
-      dds = dds,
+  purrr::map(comparison_list, function(i) {
+    DESeq2::lfcShrink(
+      dds = object,
       coef = i,
       parallel = TRUE,
       type = "apeglm"
+      ) %>%
+    tibble::as_tibble(rownames="gene")
+  }) %>%
+    rlang::set_names(
+      purrr::map_chr(
+        comparison_list,
+        str_remove,
+        pattern = paste0(comparison_grouping_variable, "_")
+      )
+  )
+}
+
+# TODO: FINISH HIM!
+#' @rdname create_results_list
+#' @method create_results_list DGEList
+#' @importFrom magrittr use_series
+#' @importFrom edgeR estimateDisp glmQLFit glmQLFTest getCounts
+#' @importFrom rlang set_names
+#' @importFrom purrr map map_chr chuck
+#' @importFrom tibble as_tibble
+#' @importFrom matrixStats rowMeans2
+#' @importFrom rstatix adjust_pvalue
+#' @importFrom dplyr mutate inner_join filter pull rename relocate
+#' @return list
+create_results_list.DGEList <- function(
+  comparison_list,
+  object,
+  comparison_grouping_variable,
+  design = NULL
+  ){
+
+  if (is.null(magrittr::use_series(object, common.dispersion))){
+    message("No dispersion values found.")
+    if (is.null(design)){
+      stop("No design formula or matrix was provided.  The design is necessary
+           to calculate dispersion")
+    } else {
+      message("Calculating dispersion")
+      object <-
+        edgeR::estimateDisp(
+          y = object,
+          design = design,
+          robust = TRUE
+        )
+    }
+  }
+
+  comparisons <-
+    map(
+      comparison_list,
+      \(x) str_split(x, pattern =  " - ") |>
+        chuck(1) |>
+        chuck(1) %>%
+        paste0(comparison_grouping_variable, .)
+    )
+
+  purrr::map(
+    .x = comparisons,
+    .f = \(i) {
+    edgeR::glmQLFit(
+      y           = object,
+      design      = mm,
+      prior.count = 3
+      ) %>%
+    edgeR::glmQLFTest(coef = i) %>%
+    magrittr::use_series(table) %>%
+    tibble::as_tibble(rownames="gene") %>%
+    dplyr::rename(
+      log2FoldChange = logFC,
+      pvalue = PValue
+    ) %>%
+    rstatix::adjust_pvalue(
+      p.col      = "pvalue",
+      output.col = "padj",
+      method     = "fdr"
+    ) %>%
+    dplyr::mutate(baseMean = matrixStats::rowMeans2(edgeR::getCounts(object))) %>%
+    dplyr::relocate(
+      gene,
+      baseMean,
+      log2FoldChange,
+      F,
+      pvalue,
+      padj
       )
   }) %>%
-    set_names(
-      map_chr(
+    rlang::set_names(
+      purrr::map_chr(
         comparison_list,
         str_remove,
         pattern = paste0(comparison_grouping_variable, "_")
@@ -27,55 +130,58 @@ create_deg_tables <- function(
   grouping_variable,
   direction=c("up","down")
 ){
-  direction <- match.arg(direction, choices=c("up", "down"))
+  direction <- match.arg(arg = direction, choices=c("up", "down"))
 
-  map(seq_along(deg_res), function(i){
+  purrr::map(seq_along(deg_res), function(i){
     degs <-
       deg_res[[i]] %>%
-        as_tibble(
+        tibble::as_tibble(
           rownames = "gene"
         )
 
-    if (direction == "up"){
-      degs <-
-        filter(
-          .data = degs,
-          !is.na(padj) & padj <= 0.05,
-          log2FoldChange > 0
-        )
-    } else if (direction == "down"){
-      degs <-
-        filter(
-          .data = degs,
-          !is.na(padj) & padj <= 0.05,
-          log2FoldChange < 0
-        )
-    }
+    degs <-
+      switch(
+        EXPR = direction,
+        up   =
+          dplyr::filter(
+            .data = degs,
+            !is.na(padj) & padj <= 0.05,
+            log2FoldChange > 0
+            ),
+        down =
+          dplyr::filter(
+            .data = degs,
+            !is.na(padj) & padj <= 0.05,
+            log2FoldChange < 0
+          )
+      )
 
     degs %>%
-      mutate(log2FoldChange = abs(log2FoldChange)) %>%
-      mutate_at(
-        .vars = vars(-gene),
-        .funs = list(~signif(x = ., digits =  2))
-      ) %>%
-      top_n(
+      dplyr::mutate(
+        log2FoldChange = abs(log2FoldChange),
+        dplyr::across(
+          .cols = tidyselect::where(is.numeric),
+          .fns = \(x) signif(x = x, digits =  2)
+          )
+        ) %>%
+      dplyr::top_n(
         n = 25,
         wt = log2FoldChange
-      ) %>%
-      arrange(
-        desc(
+        ) %>%
+      dplyr::arrange(
+        dplyr::desc(
           log2FoldChange
+          )
         )
-      )
-  }) %>%
-    set_names(
-      nm = map_chr(
+    }) %>%
+    rlang::set_names(
+      nm = purrr::map_chr(
         .x = comparison_list,
         .f = str_remove,
-        pattern = str_glue("{grouping_variable}_")
+        pattern = stringr::str_glue("{grouping_variable}_")
       )
     ) %>%
-    keep(~ nrow(.x) > 0)
+    purrr::keep(~ nrow(.x) > 0)
 }
 
 
@@ -123,22 +229,16 @@ extract_de_genes <- function(
   comparison_list,
   grouping_variable
 ){
-  map(seq_along(results), function(i){
-    results[[i]] %>%
-      as_tibble(
-        rownames = "gene"
-      ) %>%
-      filter(
-        padj < 0.05
-      ) %>%
-      filter(
-        abs(
-          log2FoldChange
-        ) >= 0.5
-      ) %>%
-      pull(gene)
-  }) %>%
-  set_names(
+  purrr::map(
+    seq_along(results),
+    function(i){
+      results[[i]] %>%
+        tibble::as_tibble(rownames = "gene") %>%
+        dplyr::filter(padj < 0.05) %>%
+        dplyr::filter(abs(log2FoldChange) >= 0.5) %>%
+        dplyr::pull(gene)
+      }) %>%
+  rlang::set_names(
     nm = comparison_list
   )
 }
@@ -147,35 +247,35 @@ extract_de_genes <- function(
 group_degs <- function(degs, comparison_vars){
   comparison_vars_regex = paste0(comparison_vars, "_", collapse="|")
 
-  enframe(degs) %>%
-    unnest(cols = c(value)) %>%
-    transmute(
+  tibble::enframe(degs) %>%
+    tidyr::unnest(cols = c(value)) %>%
+    dplyr::transmute(
       group =
-        str_extract(
+        stringr::str_extract(
           string = name,
           pattern = comparison_vars_regex
           ) %>%
-        str_remove(pattern = "_$"),
+        stringr::str_remove(pattern = "_$"),
       comparison =
-        str_remove(
+        stringr::str_remove(
           string = name,
           pattern = comparison_vars_regex
         ),
       gene_symbol = value
       ) %>%
-    group_by(gene_symbol) %>%
-    summarize(
+    dplyr::group_by(gene_symbol) %>%
+    dplyr::summarise(
       gene_symbol = gene_symbol,
       count = n(),
       comparison =
-        case_when(
+        dplyr::case_when(
           count == 1 ~ comparison,
           count > 1 ~ "multiple"
         )
     ) %>%
-    select(-count) %>%
-    distinct() %>%
-    column_to_rownames(var = "gene_symbol")
+    dplyr::select(-count) %>%
+    dplyr::distinct() %>%
+    tibble::column_to_rownames(var = "gene_symbol")
 }
 
 
@@ -215,23 +315,29 @@ calc_deg_means <- function(
 
 extract_top_degs <- function(up_tables, down_tables){
   up_degs <-
-    map(names(up_tables), function(i){
-      up_tables[[i]] %>%
-        filter(padj < 0.05) %>%
-        top_n(25, log2FoldChange) %>%
-        pull(gene)
-      }) %>%
-    set_names(names(up_tables)) %>%
-    unlist()
+    purrr::map(
+      .x = names(up_tables),
+      .f = function(i){
+        up_tables[[i]] %>%
+          dplyr::filter(padj < 0.05) %>%
+          dplyr::top_n(25, log2FoldChange) %>%
+          dplyr::pull(gene)
+        }
+      ) %>%
+    rlang::set_names(names(up_tables)) %>%
+    unlist() # unlisting a map - should we just use `walk` here instead?
 
   down_degs <-
-    map(names(up_tables), function(i){
-      up_tables[[i]] %>%
-        filter(padj < 0.05) %>%
-        top_n(25, log2FoldChange) %>%
-        pull(gene)
-    }) %>%
-    set_names(names(up_tables)) %>%
+    purrr::map(
+      .x = names(up_tables),
+      .f = function(i){
+        up_tables[[i]] %>%
+          dplyr::filter(padj < 0.05) %>%
+          dplyr::top_n(25, log2FoldChange) %>%
+          dplyr::pull(gene)
+        }
+      ) %>%
+    rlang::set_names(names(up_tables)) %>%
     unlist()
 
   unique(c(up_degs, down_degs))

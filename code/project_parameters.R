@@ -7,7 +7,13 @@ c5 <- clusterProfiler::read.gmt("references/c5.all.v7.4.symbols.gmt")
 options(future.globals.maxSize    = +Inf)
 Sys.setenv('RSTUDIO_PANDOC'       = '/usr/lib/rstudio-server/bin/pandoc')
 WGCNA::allowWGCNAThreads()
-BPPARAM                           = BiocParallel::SnowParam(workers=parallel::detectCores(), type = "SOCK")
+BPPARAM =
+  BiocParallel::SnowParam(
+    workers       = parallel::detectCores()-1,
+    exportglobals = FALSE,
+    progressbar   = TRUE
+    )
+
 BiocParallel::register(BPPARAM)
 
 
@@ -39,7 +45,7 @@ project_params = list(
   comparison_grouping_variable    = "Disease_Class",
   batch_variable                  = "run_id",
   control_group                   = "control",
-  experimental_group              = c("sle", "ra"),
+  experimental_group              = "sle",
   num_sva                         = 3,
   #comparison_groups               = c("study_group", "sample_type"),
   manual_sample_removal           = NULL,
@@ -52,7 +58,7 @@ project_params = list(
   pc2_zscore_threshold            = 2.5,
   sva_num                         = 2,
   use_combat                      = FALSE,
-  process_method                  = "limma",
+  process_method                  = "DESeq2",
 
   BPPARAM                         = BPPARAM,
 

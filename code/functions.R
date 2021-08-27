@@ -126,160 +126,9 @@ plot_resolution_silhouette_coeff <- function(cluster_silhouette){
     theme_cowplot()
 }
 
-ident_clusters <- function(
-  expr_mat,
-  optimal_k_method = "Tibs2001SEmax",
-  nstart = 25,
-  K.max = 50,
-  B = 100,
-  d.power = 2
-){
-  module_rf <-
-    randomForest(
-      x = expr_mat,
-      y = NULL,
-      prox = T)
 
-  rf_distance_mat <-
-    dist(1 - module_rf$proximity) %>%
-    as.matrix()
 
-  kmeans_gap_stat <-
-    clusGap(
-      x = rf_distance_mat,
-      FUNcluster = kmeans,
-      nstart = nstart,
-      K.max = K.max,
-      B = B,
-      d.power = d.power
-    )
 
-  new_optimal_k <-
-    with(
-      data = kmeans_gap_stat,
-      expr = maxSE(
-        Tab[,"gap"],
-        Tab[,"SE.sim"],
-        method=optimal_k_method
-      )
-    )
-
-  k_clusters <-
-    kmeans(
-      x = rf_distance_mat,
-      centers = new_optimal_k,
-      nstart = 25
-    )
-
-  sample_clusters <-
-    enframe(
-      x = k_clusters[["cluster"]],
-      name = "sample_name",
-      value = "cluster"
-    )
-
-  ret_values <-
-    list(
-      kmeans_res = k_clusters,
-      rf_distance = rf_distance_mat,
-      clusters = sample_clusters,
-      gap_stat = kmeans_gap_stat
-    )
-
-  ret_values
-}
-
-plot_dispersion_estimate <- function(object, CV = FALSE){
-  px <- mcols(object)$baseMean
-  sel <- (px > 0)
-  px <- px[sel]
-  f <- ifelse(CV, sqrt, I)
-  py <- f(mcols(object)$dispGeneEst[sel])
-  ymin <- 10^floor(log10(min(py[py > 0], na.rm = TRUE)) - 0.1)
-
-  outlier_shape <-
-    ifelse(
-      test = mcols(object)$dispOutlier[sel],
-      yes = 1,
-      no = 16
-    )
-
-  outlier_size <-
-    ifelse(
-      test = mcols(object)$dispOutlier[sel],
-      yes = 2 * 0.45,
-      no =  0.45
-    )
-
-  outlier_halo <-
-    ifelse(
-      test = mcols(object)$dispOutlier[sel],
-      yes = "final",
-      no = "gene-est"
-    )
-
-  disp_data <-
-    tibble(
-      px = px,
-      py = pmax(py, ymin),
-      outlier_shape = as_factor(outlier_shape),
-      outlier_size = as_factor(outlier_size),
-      outlier_halo = as_factor(outlier_halo),
-      dispersions = f(dispersions(object)[sel]),
-      dispersions_fit = f(mcols(object)$dispFit[sel])
-    )
-
-  disp_plot <- disp_data %>%
-    ggplot(
-      aes(
-        x = px,
-        y = py
-      )
-    ) +
-    geom_point() +
-    geom_point(
-      aes(
-        x = px,
-        y = dispersions,
-        size = outlier_size,
-        shape = outlier_shape,
-        color = outlier_halo
-      )
-    ) +
-    scale_x_log10() +
-    scale_y_log10() +
-    scale_shape_manual(values = c(1, 16)) +
-    scale_size_manual(values = c(1,2)) +
-    scale_color_manual(values = c(
-      "dodgerblue",
-      "red",
-      "black"), ) +
-    geom_line(
-      mapping =
-        aes(
-          x = px,
-          y = dispersions_fit,
-          color = "fitted"
-        ),
-      size = 1
-    ) +
-    labs(
-      x = "mean of normalized counts",
-      y = "dispersion",
-      color = ""
-    ) +
-    guides(
-      size = "none",
-      shape = "none"
-    ) +
-    theme_pubr() +
-    theme(
-      legend.justification=c(1,0),
-      legend.position=c(1,0)
-    )
-
-  return(disp_plot)
-}
 
 fix_antibody_values <- function(i) {
   recode(
@@ -367,64 +216,7 @@ plot_sva <- function(sva_graph_data){
     )
 }
 
-drake_recode <- function(
-  target_list,
-  thing_to_unquote_splice
-){
-  dplyr::recode(
-    .x = target_list,
-    !!! {{thing_to_unquote_splice}}
-  )
-}
 
-# An improved version of rstatix::add_y_position
-# that doesn't take 30 minutes to run
-grouped_add_xy_positions <-
-  function(
-    stats_tbl,
-    data_tbl,
-    group_var,
-    compare_value,
-    cutoff = 0.05,
-    step_increase = 0.1,
-    percent_shift_down = 0.95
-  ){
-
-  unique_groups <- stats_tbl %>% pull({{group_var}}) %>% unique()
-
-  data_min_max <-
-    data_tbl %>%
-    select({{group_var}}, {{compare_value}}) %>%
-    group_by({{group_var}}) %>%
-    summarise(max = max({{compare_value}}),
-              min = min({{compare_value}}),
-              span = max-min,
-              step = span * step_increase)
-
-  tbl_with_positions <- map_dfr(unique_groups, function(x){
-    stats_subset <- stats_tbl %>% filter({{group_var}} == x) %>% add_x_position()
-
-    if ("p.adj" %in% names(stats_subset)){
-      stats_subset <- stats_subset %>% filter(p.adj <= cutoff)
-    } else {
-      stats_subset <- stats_subset %>% filter(p <= cutoff)
-    }
-
-    min_max_subset <- data_min_max %>% filter({{group_var}} == x)
-    if (nrow(stats_subset) > 1){
-      positions <-
-        seq(
-          from = min_max_subset[['max']],
-          by = min_max_subset[['step']],
-          to = min_max_subset[['max']] + nrow(stats_subset)*min_max_subset[['step']])
-      stats_subset[['y.position']] <- positions[2:length(positions)] * percent_shift_down
-    } else {
-      stats_subset[["y.position"]] <- (min_max_subset[["max"]] + nrow(stats_subset)*min_max_subset[['step']]) * percent_shift_down
-    }
-    stats_subset
-  })
-  return(tbl_with_positions)
-}
 
 convert_nuID_to_probeID <- function(
   object,
@@ -438,6 +230,7 @@ convert_nuID_to_probeID <- function(
 }
 
 # Adapted from Seurat::AddModuleScore, which in turn took it from Tirosh (2006)
+# TODO: this should probably be moved to the {moduleScoreR} package
 tirosh_score_modules <- function(
   expr_obj,
   module_list,

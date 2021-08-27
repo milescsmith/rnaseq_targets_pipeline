@@ -285,10 +285,10 @@ create_final_md <- function(
 }
 
 
-#' Remove outliers
+#' @title Remove outliers
 #'
-#' Perform PCA on a dataset and return one in which samples with a PC1
-#' zscore greater than a given cutoff are removed
+#' @description Perform PCA on a dataset and return one in which
+#' samples with a PC1 zscore greater than a given cutoff are removed
 #'
 #' @param object
 #' @param ...
@@ -298,7 +298,7 @@ create_final_md <- function(
 #'
 #' @examples
 remove_outliers <- function(object, ...){
-  UseMethod("remove_outliers")
+  UseMethod("remove_outliers", object)
 }
 
 
@@ -559,26 +559,6 @@ process_counts.limma <-
         design            = preliminary_design
       )
 
-    design =
-      model.matrix(
-        object = study_design,
-        data   =
-          magrittr::extract(
-            imported_counts[["metadata"]],
-            colnames(outlier_qc$count_object),
-            c(
-              concentration_col,
-              batch_variable,
-              comparison_grouping_variable
-            )
-          )
-      ) %>%
-      magrittr::set_colnames(
-        c("Intercept",
-          colnames(.)[2:ncol(.)])
-      )
-
-
     # Creating a DGEList object for use in edgeR.
     pre_sva_dge <-
       edgeR::scaleOffset(
@@ -612,15 +592,15 @@ process_counts.limma <-
 
     post_qc_dge <-
       edgeR::calcNormFactors(
-        object = sva_res[["dge"]]
+        object = sva_res[["data_object"]]
       )
 
     groups <- paste(c("0", comparison_grouping_variable), collapse = " + ")
 
     mm <-
       model.matrix(
-        object = as.formula(paste("~", groups)),
-        data = sva_res[["dge"]][["samples"]]
+        object = sva_res[["design"]],
+        data = sva_res[["data_object"]][["samples"]]
       )
 
     message("Running voom...")
@@ -664,34 +644,42 @@ process_counts.limma <-
       ) %>%
       tibble::deframe()
 
-    contr_matrix <-
+    contra_matrix <-
       limma::makeContrasts(
         contrasts = comparisons,
-        levels    = unique(imported_counts[["metadata"]][["Disease_Class"]])
+        levels =
+          c(
+            levels(post_qc_dge[["samples"]][[comparison_grouping_variable]]),
+            str_extract_all(
+              string  = as.character(sva_res[["design"]])[[2]],
+              pattern = "SV[0-9]")[[1]]
+            )
       )
 
-    fit$coefficients <-
-      magrittr::set_colnames(
-        x = fit$coefficients,
-        value =
-          stringr::str_remove(
-            string  = colnames(fit$coefficients),
-            pattern = comparison_grouping_variable
-          )
-      )
+    # fit$coefficients <-
+    #   magrittr::set_colnames(
+    #     x = fit$coefficients,
+    #     value =
+    #       stringr::str_remove(
+    #         string  = colnames(fit$coefficients),
+    #         pattern = comparison_grouping_variable
+    #       )
+    #   )
 
     treat_res <-
       limma::contrasts.fit(
         fit = fit,
-        contrasts = contr_matrix
+        contrasts = contra_matrix
       ) %>%
       limma::treat()
 
-    res = purrr::map(colnames(contr_matrix), function(i) {
 
+    res = purrr::map(colnames(contra_matrix), function(i) {
+      message(glue::glue("Performing DEG for {i}..."))
       limma::topTreat(
         fit = treat_res,
-        coef = i
+        coef = i,
+        number = Inf
       ) %>%
         tibble::as_tibble(rownames = "gene") %>%
         dplyr::arrange(dplyr::desc(logFC)) %>%
@@ -715,7 +703,8 @@ process_counts.limma <-
       sva_graph_data             = sva_res[["sva"]],
       degs                       = res,
       dataset                    = post_qc_dge,
-      comparisons                = comparisons
+      comparisons                = comparisons,
+      design_matrix              = mm
     )
   }
 
@@ -816,7 +805,7 @@ process_counts.edgeR <-
         data   =
           magrittr::extract(
             imported_counts[["metadata"]],
-            colnames(outlier_qc$count_object),
+            colnames(outlier_qc[["count_object"]]),
             c(
               concentration_col,
               batch_variable,
@@ -864,7 +853,7 @@ process_counts.edgeR <-
 
     post_qc_dge <-
       edgeR::calcNormFactors(
-        object = sva_res[["dge"]]
+        object = sva_res[["data_object"]]
       )
 
     post_qc_design <-
@@ -880,13 +869,14 @@ process_counts.edgeR <-
         robust = TRUE
       )
 
+    message("Fitting data...")
     fit =
       edgeR::glmQLFit(
         y      = post_qc_dge,
         design = post_qc_design
       )
 
-    comparison_results_list <-
+    comparisons <-
       colnames(post_qc_design) %>%
       keep(
         stringr::str_detect(
@@ -895,18 +885,20 @@ process_counts.edgeR <-
         )
       )
 
-    res = purrr::map(comparison_results_list, function(i) {
-      qlf =
-        edgeR::glmQLFTest(
-          glmfit = fit,
-          coef   = i
-        )
-
-      res =
-        edgeR::topTags(qlf, n = Inf) %>%
-        magrittr::use_series('table') %>%
-        tibble::as_tibble(rownames = "gene") %>%
-        dplyr::arrange(dplyr::desc(logFC)) %>%
+    res = purrr::map(
+      .x = comparison_results_list,
+      .f = function(i) {
+        message(glue::glue("Performing DEG for {i}..."))
+        edgeR::topTags(
+          object =
+            edgeR::glmQLFTest(
+              glmfit = fit,
+              coef   = i
+              ),
+          n = Inf) |>
+        magrittr::use_series('table') |>
+        tibble::as_tibble(rownames = "gene") |>
+        dplyr::arrange(dplyr::desc(logFC)) |>
         dplyr::rename(
           baseMean       = logCPM,
           log2FoldChange = logFC,
@@ -931,7 +923,7 @@ process_counts.edgeR <-
       )
 
     list(
-      raw_counts                 = edgeR::getCounts(counts[["counts"]]),
+      raw_counts                 = edgeR::getCounts(post_qc_dge),
       normalized_counts          = edgeR::cpm(post_qc_dge, log = TRUE, shrunk = TRUE),
       variance_stabilized_counts = v[["E"]],
       outlier_samples            = outlier_qc[["removed"]],
@@ -939,7 +931,8 @@ process_counts.edgeR <-
       sva_graph_data             = sva_res[["sva"]],
       degs                       = res,
       dataset                    = post_qc_dge,
-      comparisons                = comparison_results_list
+      comparisons                = comparisons,
+      design_matrix              = post_qc_design
     )
   }
 
@@ -964,7 +957,7 @@ process_counts.deseq2 <-
 
     message("Creating initial data object...")
     dds_import <-
-      DESeqDataSetFromTximport(
+      DESeq2::DESeqDataSetFromTximport(
         txi     = imported_counts[["counts"]],
         colData = imported_counts[["metadata"]],
         design  = study_design
@@ -973,15 +966,15 @@ process_counts.deseq2 <-
     if (isTRUE(use_combat)){
       message("Running ComBat...")
       corrected_counts <-
-        ComBat_seq(
-          counts = counts(dds_import),
-          batch  = fct_drop(colData(dds_import)[[batch_variable]]),
-          group  = colData(dds_import)[[comparison_grouping_variable]]
+        sva::ComBat_seq(
+          counts = DESeq2::counts(dds_import),
+          batch  = forcats::fct_drop(SummarizedExperiment::colData(dds_import)[[batch_variable]]),
+          group  = SummarizedExperiment::colData(dds_import)[[comparison_grouping_variable]]
         ) %>%
         `storage.mode<-`("integer")
 
       dds_import <-
-        DESeqDataSetFromMatrix(
+        DESeq2::DESeqDataSetFromMatrix(
           countData = corrected_counts,
           colData   = colData(dds_import),
           design    = study_design
@@ -1000,8 +993,8 @@ process_counts.deseq2 <-
 
     message("Performing data normalization and modeling...")
     dds <-
-      DESeq(
-        object   = outlier_qc$count_object,
+      DESeq2::DESeq(
+        object   = outlier_qc[["count_object"]],
         parallel = TRUE,
         BPPARAM  = BPPARAM
       )
@@ -1014,18 +1007,24 @@ process_counts.deseq2 <-
         n.sva = num_sva
       )
 
-    sva_graph_data <- sva_res$sva
+    sva_graph_data <- sva_res[["sva"]]
+
+    mm <-
+      model.matrix(
+        object = sva_res[["design"]],
+        data = colData(sva_res[["data_object"]])
+      )
 
     message("Calculating variance stabilized expression...")
-    vsd <- DESeq2::vst(sva_res$dds)
+    vsd <- DESeq2::vst(sva_res[["data_object"]])
 
     message("Creating comparison results list...")
     comparison_results_list <-
       purrr::map(comparison_grouping_variable, function(i){
 
-        resultsNames(object = sva_res$dds) %>%
+        DESeq2::resultsNames(object = sva_res[["data_object"]]) %>%
           keep(
-            str_detect(
+            stringr::str_detect(
               string  = .,
               pattern = i
             )
@@ -1055,14 +1054,14 @@ process_counts.deseq2 <-
       )
 
     list(
-      raw_counts                 = counts(sva_res[["dds"]]),
-      normalized_counts          = counts(sva_res[["dds"]], normalized = TRUE),
+      raw_counts                 = counts(sva_res[["data_object"]]),
+      normalized_counts          = counts(sva_res[["data_object"]], normalized = TRUE),
       variance_stabilized_counts = assay(vsd),
       outlier_samples            = outlier_qc[["removed"]],
       qc_pca                     = outlier_qc[["pca"]],
       sva_graph_data             = sva_res[["sva"]],
       degs                       = res,
-      dataset                    = sva_res[["dds"]],
+      dataset                    = sva_res[["data_object"]],
       comparisons                = comparison_results_list,
       res                        = res
     )
@@ -1116,8 +1115,9 @@ calc_sva.DESeqDataSet <- function(object, model_design = NULL, n.sva = NULL){
   object <- DESeq2::DESeq(object, parallel = TRUE)
 
   ret_vals = list(
-    dds = object,
-    sva = svseq
+    data_object = object,
+    sva = svseq,
+    design = design(object)
   )
 }
 
@@ -1160,7 +1160,7 @@ calc_sva.DGEList <- function(object, model_design = NULL, batch_var = NULL, n.sv
             collapse = " "))
 
   ret_vals = list(
-    dge = object,
+    data_object = object,
     sva = svseq,
     design = design_formula
   )
@@ -1169,34 +1169,34 @@ calc_sva.DGEList <- function(object, model_design = NULL, batch_var = NULL, n.sv
 
 plot_sva <- function(sva_graph_data){
   sva_graph_data %>%
-    pluck("sv") %>%
-    as_tibble(rownames = "sample_name") %>%
-    select(
+    purrr::pluck("sv") %>%
+    tibble::as_tibble(rownames = "sample_name") %>%
+    dplyr::select(
       sample_name,
-      starts_with("SV")
+      tidyselect::starts_with("SV")
     ) %>%
-    pivot_longer(
+    tidyr::pivot_longer(
       -sample_name,
       names_to = "covar"
     ) %>%
-    ggplot(
-      aes(
+    ggplot2::ggplot(
+      ggplot2::aes(
         x = sample_name,
         y = value
       )
     ) +
-    geom_point() +
-    geom_hline(
+    ggplot2::geom_point() +
+    ggplot2::geom_hline(
       yintercept = 0,
       color = "red"
     ) +
-    facet_grid(
-      rows = vars(covar)
+    ggplot2::facet_grid(
+      rows = ggplot2::vars(covar)
     ) +
-    theme_cowplot() +
-    theme(
+    cowplot::theme_cowplot() +
+    ggplot2::theme(
       axis.text.x =
-        element_text(
+        ggplot2::element_text(
           angle = 45,
           size = 9,
           hjust = 1,
@@ -1237,7 +1237,7 @@ read_md_file <- function(path, ...){
 
 
 extract_transformed_data <- function(data_obj){
-  processed_data[["variance_stabilized_counts"]] %>%
+  data_obj %>%
     tibble::as_tibble(rownames = "gene") %>%
     dplyr::mutate(hugo = HGNChelper::checkGeneSymbols(gene)[["Suggested.Symbol"]]) %>%
     dplyr::filter(!is.na(hugo)) %>%
