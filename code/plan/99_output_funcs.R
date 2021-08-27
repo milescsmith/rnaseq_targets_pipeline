@@ -1,22 +1,82 @@
-save_table_to_disk <- function(
-  output_name,
-  file_to_output
+writeData <-
+  function(
+    object,
+    ...
   ){
+    UseMethod("writeData", object)
+  }
 
-  if (is_tibble(file_to_output)){
-    fwrite(
-      x         = file_to_output,
+writeData.tbl_df <-
+  function(
+    object,
+    output_name
+  ){
+      data.table::fwrite(
+        x         = object,
+        file      = output_name,
+        col.names = TRUE
+        )
+      output_name
+  }
+
+writeData.data.frame <-
+  function(
+    object,
+    output_name
+  ){
+    data.table::fwrite(
+      x         = object,
       file      = output_name,
+      row.names = TRUE,
       col.names = TRUE
     )
-  } else if (is.data.frame(file_to_output) | is.matrix(file_to_output)){
-      fwrite(
-        x         = file_to_output,
+  }
+
+writeData.matrix <-
+  function(
+    object,
+    output_name
+  ){
+    data.table::fwrite(
+      x         = object,
+      file      = output_name,
+      row.names = TRUE,
+      col.names = TRUE
+    )
+  }
+
+writeMetaData <-
+  function(
+    object,
+    ...
+  ){
+    UseMethod("writeMetaData", object)
+  }
+
+writeMetaData.DESeqDataSet <-
+  function(
+    object,
+    output_name
+  ){
+    object %>%
+      pluck("colData") %>%
+      data.table::fwrite(
         file      = output_name,
         row.names = TRUE,
         col.names = TRUE
       )
   }
 
-  output_name
-}
+writeMetaData.DGEList <-
+  function(
+    object,
+    output_name
+  ){
+    object %>%
+      pluck("samples") %>%
+      data.table::fwrite(
+        file      = output_name,
+        row.names = TRUE,
+        col.names = TRUE
+      )
+  }

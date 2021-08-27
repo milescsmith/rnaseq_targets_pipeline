@@ -73,7 +73,7 @@ if (!all(md$sample_name %in% names(tx_files))){
 
 Samples with a PC1 > `r pc1_zscore_threshold` (the red lines) and/or PC2 zscore > `r pc2_zscore_threshold` (the green lines) were dropped from analysis.  Points in red represent samples that were dropped.
 ```{r QC PCA, fig.width=6, fig.height=6}
-tar_load(outlier_qc)
+tar_load(qc_pca)
 
 vline <- function(x = 0, color = "red") {
   list(
@@ -99,16 +99,16 @@ hline <- function(y = 0, color = "green") {
   )
 }
 
-outlier_qc$pca %>%
+qc_pca %>%
   mutate(
     kept = as_factor(
       if_else(
         condition = sample_name %in% setdiff(names(tx_files), final_md$sample_name),
         true = "no",
         false = "yes"
-        )
       )
-    ) %>%
+    )
+  ) %>%
   plot_ly(
     type = "scattergl",
     mode = "markers",
@@ -132,18 +132,19 @@ outlier_qc$pca %>%
   ) %>%
   layout(
     shapes = list(
-      vline(pc1_zscore_threshold*sd(outlier_qc$pca$PC1) + mean(outlier_qc$pca$PC1)),
-      vline(-pc1_zscore_threshold*sd(outlier_qc$pca$PC1) + mean(outlier_qc$pca$PC1)),
+      vline(project_params[["pc1_zscore_threshold"]]*sd(qc_pca[["PC1"]]) + mean(qc_pca[["PC1"]])),
+      vline(-project_params[["pc1_zscore_threshold"]]*sd(qc_pca[["PC1"]]) + mean(qc_pca[["PC1"]])),
       
-      hline(pc2_zscore_threshold*sd(outlier_qc$pca$PC2) + mean(outlier_qc$pca$PC2)),
-      hline(-pc2_zscore_threshold*sd(outlier_qc$pca$PC2) + mean(outlier_qc$pca$PC2))
-      )
+      hline(project_params[["pc2_zscore_threshold"]]*sd(qc_pca[["PC2"]]) + mean(qc_pca[["PC2"]])),
+      hline(-project_params[["pc2_zscore_threshold"]]*sd(qc_pca[["PC2"]]) + mean(qc_pca[["PC2"]]))
     )
+  )
 ```
 
 ```{r removed in PCA qc}
-if (length(outlier_qc$outliers) > 0) {
-  filter(final_md, sample_name %in% outlier_qc$outliers) %>%
+tar_load(outlier_samples)
+if (length(outlier_samples) > 0) {
+  filter(final_md, sample_name %in% outlier_samples) %>%
     select(sample_name, visit_ref, subject_ref, sex, ethnicity, age) %>%
     kable(caption = "Removing the following samples:") %>%
     kable_styling(
@@ -240,7 +241,7 @@ plot_sva(sva_graph_data = sva_graph_data)
 
 To determine if there is a gross mixup of samples, examine the expression of sex-specific transcripts to ensure that only female-subject samples express "XIST" and male-subject samples "DDX3Y:
 ```{r message=FALSE, warning=FALSE, include=FALSE}
-tar_load(vsd_exprs)
+tar_load(vsc_exprs)
 ```
 
 ```{r sex-specific gene expression}
@@ -263,12 +264,12 @@ sex_specific_genes <- tibble(
       "XIST","ZFX"
       )
   ) %>%
-  filter(symbol %in% rownames(vsd_exprs))
+  filter(symbol %in% rownames(vsc_exprs))
 
 range_bound = 5
 zscore_range <- c(-range_bound:range_bound)
 
-t(vsd_exprs)[,c(sex_specific_genes[['symbol']])] %>%
+t(vsc_exprs)[,c(sex_specific_genes[['symbol']])] %>%
   pheatmap(
     scale='column',
     fontsize = 6,

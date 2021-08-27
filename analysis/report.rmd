@@ -48,12 +48,12 @@ comparison_sym <- enquo(comparison_sym)
 ```
 
 ```{r}
-tar_load(dds_with_scores)
+tar_load(dataset_with_scores)
 tar_load(res)
 ```
 
-```{r group_table}
-md <- colData(dds_with_scores) %>% as_tibble(rownames = "sample_name")
+```{r study_group_table}
+md <- colData(dataset_with_scores) %>% as_tibble(rownames = "sample_name")
 if (knitr::is_html_output()){
   md %>%
     tabyl(comparison_grouping_variable) %>%
