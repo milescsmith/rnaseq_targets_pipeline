@@ -1,5 +1,5 @@
 #### Import code and libraries ####
-c5 <- clusterProfiler::read.gmt("references/c5.all.v7.4.symbols.gmt")
+# c5 <- clusterProfiler::read.gmt("references/c5.all.v7.4.symbols.gmt")
 
 #### Set options ####
 options(future.globals.maxSize    = +Inf)
@@ -33,7 +33,7 @@ project_params = list(
   filter_value                    = 1.5,
 
   #### Setup project variables ####
-  projects_to_include             = c("BLAST"),
+  projects_to_include             = NULL,
   projects_to_exclude             = NULL,
 
   groups_to_include               = c("Control", "SLE"),
@@ -56,7 +56,7 @@ project_params = list(
   pc2_zscore_threshold            = 2.5,
   sva_num                         = 2,
   use_combat                      = FALSE,
-  process_method                  = "DESeq2",
+  process_method                  = "limma",
 
   BPPARAM                         = BPPARAM,
 

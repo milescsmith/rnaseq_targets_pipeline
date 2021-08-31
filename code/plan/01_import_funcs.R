@@ -125,12 +125,12 @@ import_counts <- function(directory, metadata){
   tx_sample_names <-
     tx_files %>%
     stringr::str_split(pattern = "/") %>%
-    purrr::map_chr(~purrr::pluck(.x, length(.x)-1)) %>%
+    purrr::map_chr(\(x) purrr::pluck(.x = x, length(x)-1)) %>%
     stringr::str_remove(pattern = '(_[L|S][[:digit:]]+)+') %>%
     make_clean_names(case = "all_caps")
 
   tx_files <-
-    magrittr::set_names(
+    rlang::set_names(
       x = tx_files,
       nm = tx_sample_names
     )
@@ -234,7 +234,7 @@ prep_data_import <- function(
       })
   filtered_counts[["countsFromAbundance"]] <- counts[["countsFromAbundance"]]
   filtered_counts <-
-    magrittr::set_names(
+    rlang::set_names(
       x = filtered_counts,
       nm = names(counts)
     )
@@ -690,7 +690,7 @@ process_counts.limma <-
           padj           = adj.P.Val
         )
     }) %>%
-      magrittr::set_names(
+      rlang::set_names(
         nm = names(comparisons)
       )
 
@@ -906,7 +906,7 @@ process_counts.edgeR <-
           padj           = FDR
         )
     }) %>%
-      magrittr::set_names(
+      rlang::set_names(
         nm = purrr::map_chr(
           .x      = comparison_results_list,
           .f      = stringr::str_remove,
@@ -1135,7 +1135,7 @@ calc_sva.DGEList <- function(object, model_design = NULL, batch_var = NULL, n.sv
     )
 
   svseq[["sv"]] <-
-    set_names(
+    rlang::set_names(
       x = tibble::as_tibble(svseq[["sv"]], .name_repair = "unique"),
       nm = paste0("SV", seq(ncol(svseq[["sv"]])))
     ) %>%

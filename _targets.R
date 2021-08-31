@@ -12,6 +12,7 @@ source("code/plan/08_WGCNA_funcs.R")
 source("code/plan/09_ml_funcs.R")
 source("code/plan/10_viral_transcript_funcs.R")
 source("code/plan/11_stats_testing_funcs.R")
+# source("code/plan/12_table_outputs.R")
 source("code/plan/13_pathways.R")
 source("code/plan/97_misc_functions.R")
 source("code/plan/98_palettes_funcs.R")
@@ -52,7 +53,6 @@ list(
         "readr",
         "readxl",
         "dplyr",
-        "janitor",
         "purrr",
         "forcats",
         "stringr"
@@ -176,15 +176,7 @@ list(
         "magrittr",
         "gtools"
       ),
-    packages =
-      c(
-        "irlba",
-        "magrittr",
-        "DESeq2",
-        "tibble",
-        "dplyr",
-        "purrr"
-      )
+    cue = tar_cue(mode = "never")
   ),
 
   tar_target(
@@ -350,12 +342,6 @@ list(
         names(banchereau_modules),
         names(ldg_modules),
         names(metasignature_module)
-      ) %>%
-      left_join(
-        as_tibble(
-          annotation_info,
-          rownames = "sample_name"
-          )
       ),
     packages =
       c(
@@ -837,15 +823,26 @@ list(
   tar_target(
     name = wgcna_scores,
     command  =
+      dplyr::select(
+        .data =
+          tibble::as_tibble(
+            x        = wgcna_modules[["MEs"]],
+            rownames = "sample_name"
+          ),
+        -MEgrey
+      ),
+    packages =
+      c(
+        "dplyr",
+        "tibble"
+      )
+  ),
+
+  tar_target(
+    name = md_with_wgcna_scores,
+    command =
       dplyr::left_join(
-        x = dplyr::select(
-          .data =
-            tibble::as_tibble(
-              x        = wgcna_modules[["MEs"]],
-              rownames = "sample_name"
-            ),
-          -MEgrey
-        ),
+        x = wgcna_scores,
         y =
           tibble::as_tibble(
             x        = annotation_info,
@@ -969,7 +966,7 @@ list(
   ),
 
   tar_target(
-    name = module_scores_with_md,
+    name = md_with_module_scores,
     command =
       dplyr::left_join(
         x = module_scores,
@@ -1383,27 +1380,27 @@ list(
       ),
     format   = "file",
     packages = "data.table"
-  ),
-
-  tar_render(
-    name = primary_report,
-    path          = "analysis/report.rmd",
-    params        = list(
-      set_title   = "BLAST Optimal Responder-vs-Non-responder RNAseq Analysis",
-      set_author  = "Miles Smith"
-    ),
-    output_dir    = "reports/"
-  ),
-
-  tar_render(
-    name = qc_report,
-    path          =  "analysis/qc_report.rmd",
-    params        = list(
-      set_title   = "BLAST Optimal Responder-vs-Non-responder RNAseq QC",
-      set_author  = "Miles Smith"
-    ),
-    output_dir    = "reports/"
   )
+
+  # tar_render(
+  #   name = primary_report,
+  #   path          = "analysis/report.rmd",
+  #   params        = list(
+  #     set_title   = "BLAST Optimal Responder-vs-Non-responder RNAseq Analysis",
+  #     set_author  = "Miles Smith"
+  #   ),
+  #   output_dir    = "reports/"
+  # ),
+  #
+  # tar_render(
+  #   name = qc_report,
+  #   path          =  "analysis/qc_report.rmd",
+  #   params        = list(
+  #     set_title   = "BLAST Optimal Responder-vs-Non-responder RNAseq QC",
+  #     set_author  = "Miles Smith"
+  #   ),
+  #   output_dir    = "reports/"
+  # )
 
   # tar_render(
   #   name = pathway_report,
