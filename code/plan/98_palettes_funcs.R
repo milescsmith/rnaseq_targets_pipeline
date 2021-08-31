@@ -5,13 +5,13 @@ create_palettes <- function(
   deg_class
 ){
   type_pal =
-    paletteer_d(
+    paletteer::paletteer_d(
       "ggsci::category20_d3",
       n = length(levels(annotated_modules$type))
     ) %>%
     as.character() %>%
-    set_names(levels(annotated_modules$type)) %>%
-    inset2("Undetermined", "#000000")
+    rlang::set_names(levels(annotated_modules$type)) %>%
+    magrittr::inset2("Undetermined", "#000000")
 
   chr_pal = c("Y" = "#E41A1C",
               "X" = "#377EB8")
@@ -21,14 +21,14 @@ create_palettes <- function(
     n = length(levels(annotation_info$sex))
     ) %>%
     as.character() %>%
-    set_names(levels(annotation_info$sex))
+    rlang::set_names(nm = levels(annotation_info$sex))
 
   cluster_pal =
     ifelse(
       test = length(levels(clusters$cluster)) > 12,
       yes = list(
-        colorRampPalette(
-          paletteer_d(
+        colorRamp::colorRampPalette(
+          paletteer::paletteer_d(
             palette = "ggthemes::calc",
             n = 12
           )
@@ -41,7 +41,7 @@ create_palettes <- function(
         )
       ),
       no = list(
-        paletteer_d(
+        paletteer::paletteer_d(
           palette = "ggthemes::calc",
           n = length(
             levels(
@@ -53,7 +53,7 @@ create_palettes <- function(
     ) %>%
     unlist() %>%
     as.character() %>%
-    set_names(levels(clusters$cluster))
+    rlang::set_names(nm = levels(clusters$cluster))
 
   number_project_groups =
     length(
@@ -63,7 +63,7 @@ create_palettes <- function(
     )
 
   comparison_group_pal =
-    if_else(
+    dplyr::if_else(
       condition = number_project_groups > 2,
       true      = list(paletteer_d(
                     palette = "ggthemes::colorblind",
@@ -76,7 +76,7 @@ create_palettes <- function(
       false     = list(c("black", "grey75"))
     ) %>%
     unlist() %>%
-    set_names(
+    rlang::set_names(
       unique(
         annotation_info[[comparison_grouping_variable]]
       )
@@ -87,12 +87,12 @@ create_palettes <- function(
   #   set_names(levels(annotation_info$cell_type)),
 
   comparison_pal =
-    oaPalette(
+    oaColors::oaPalette(
       length(
         unique(deg_class[["comparison"]])
       )
     ) %>%
-    set_names(unique(deg_class[["comparison"]]))
+    rlang::set_names(nm = unique(deg_class[["comparison"]]))
 
   group_pal =
     list(

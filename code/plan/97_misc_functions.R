@@ -389,3 +389,5 @@ make_clean_names <- function(string,
   }
   cased_names
 }
+
+`%nin%` <- purrr::negate(`%in%`)

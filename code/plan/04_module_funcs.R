@@ -58,7 +58,7 @@ extract_module_scores.DGEList <-
       purrr::chuck("samples") %>%
       tibble::as_tibble(
         rownames = "sample_name"
-      )
+      ) %>%
       dplyr::select(
         sample_name,
         tidyselect::one_of(!!!module_names)

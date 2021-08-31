@@ -89,3 +89,14 @@ module_gsea_plots <-
       ) %>%
       dplyr::mutate(order = dplyr::row_number())
   }
+
+find_softPower <- function(sft){
+  if (is.na(sft$powerEstimate)){
+    scale_free_topo_fit <- -sign(sft$fitIndices$slope) * sft$fitIndices$SFT.R.sq
+    powerEstimate <- which(scale_free_topo_fit == max(scale_free_topo_fit))
+  } else {
+    powerEstimate <- sft$powerEstimate
+  }
+
+  powerEstimate
+}
