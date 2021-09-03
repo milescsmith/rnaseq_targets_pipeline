@@ -24,9 +24,6 @@ deduplicate_samples <- function(md, samples){
 }
 
 
-
-
-
 fix_antibody_values <- function(i) {
   recode(
     .x = i,
@@ -34,43 +31,6 @@ fix_antibody_values <- function(i) {
     POSITIVE = "positive",
     `no_val` = "no_val",
     Indeterminate = "indeterminate"
-  )
-}
-
-
-#' Title
-#'
-#' @param object DESeqResults object
-#'
-#' @return
-#' @export
-#'
-#' @examples
-alt_summary <- function(object){
-  notallzero <- sum(object$baseMean > 0)
-  up <- sum(object[["padj"]] < 0.05 & object$log2FoldChange >
-              metadata(object)$lfcThreshold, na.rm = TRUE)
-  down <- sum(object[["padj"]] < 0.05 & object$log2FoldChange <
-                metadata(object)$lfcThreshold, na.rm = TRUE)
-  outlier <- sum(object$baseMean > 0 & is.na(object$pvalue))
-  if (is.null(metadata(object)$filterThreshold)) {
-    ft <- 0
-  } else {
-    ft <- round(metadata(object)$filterThreshold)
-  }
-
-  filt <- sum(!is.na(object$pvalue) & is.na(object$padj))
-
-  total <- nrow(object)
-
-
-  tibble(
-    up = up,
-    down = down,
-    outlier = outlier,
-    ft = ft,
-    lowcounts = filt,
-    total = total
   )
 }
 

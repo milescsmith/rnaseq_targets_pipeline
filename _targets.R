@@ -20,6 +20,7 @@ source("code/plan/99_output_funcs.R")
 
 options(tidyverse.quiet = TRUE)
 future::plan(strategy = future::multisession)
+utils::globalVariables("where")
 
 list(
   tar_target(
@@ -45,6 +46,7 @@ list(
         project_column               = project_params[["project_column"]],
         regression_columns           = project_params[["regression_columns"]],
         filter_column                = project_params[["filter_column"]],
+        filter_value                 = project_params[["filter_value"]],
         samples_to_exclude           = project_params[["manual_sample_removal"]],
         extra_controls_metadata_file = raw_metadata
       ),
@@ -105,7 +107,7 @@ list(
         tx_files         = tx_files,
         comparison_group = project_params[["comparison_grouping_variable"]],
         control_group    = project_params[["control_group"]],
-        sample_name = project_params[["sample_name_column"]]
+        sample_name      = project_params[["sample_name_column"]]
       ),
     packages = c(
       "forcats",
@@ -592,7 +594,8 @@ list(
       create_results_list(
         comparison_list              = processed_data[["comparisons"]],
         object                       = dataset_with_scores,
-        comparison_grouping_variable = project_params[["comparison_groupings"]]
+        comparison_grouping_variable = project_params[["comparison_groupings"]],
+        BPPARAM                      = project_params[["BPPARAM"]]
       ),
     packages =
       c(
@@ -604,7 +607,8 @@ list(
         "edgeR",
         "matrixStats",
         "rstatix",
-        "dplyr"
+        "dplyr",
+        "stringr"
       ),
     cue = tar_cue(mode = "never")
   ),
@@ -615,7 +619,7 @@ list(
     command = create_deg_tables(
       deg_res           = processed_data[["res"]],
       comparison_list   = processed_data[["comparisons"]],
-      grouping_variable = project_params[["comparison_groups"]],
+      grouping_variable = project_params[["comparison_grouping_variable"]],
       direction         = "down"
     ),
     packages =
@@ -634,7 +638,7 @@ list(
     command  = create_deg_tables(
       deg_res           = processed_data[["res"]],
       comparison_list   = processed_data[["comparisons"]],
-      grouping_variable = project_params[["comparison_groups"]],
+      grouping_variable = project_params[["comparison_grouping_variable"]],
       direction         = "up"
     ),
     packages =
@@ -659,10 +663,10 @@ list(
       c(
         "purrr",
         "tibble",
-        "filter",
-        "pull",
+        "dplyr",
         "rlang"
-      )
+      ),
+    cue = tar_cue("never")
   ),
 
   tar_target(
@@ -1298,10 +1302,19 @@ list(
     name = group_pal,
     command =
       create_palettes(
-        annotated_modules = annotated_modules,
-        clusters          = clusters,
-        annotation_info   = annotation_info,
-        deg_class         = deg_class
+        comparison_grouping_variable = project_params[["comparison_grouping_variable"]],
+        annotated_modules            = annotated_modules,
+        clusters                     = sample_cluster_info,
+        annotation_info              = annotation_info,
+        deg_class                    = deg_class
+      ),
+    packages =
+      c(
+        "paletteer",
+        "rlang",
+        "magrittr",
+        "grDevices",
+        "dplyr"
       )
   ),
 
@@ -1386,21 +1399,41 @@ list(
   #   name = primary_report,
   #   path          = "analysis/report.rmd",
   #   params        = list(
-  #     set_title   = "BLAST Optimal Responder-vs-Non-responder RNAseq Analysis",
-  #     set_author  = "Miles Smith"
+  #     set_title                    = "BLAST Optimal Responder-vs-Non-responder RNAseq Analysis",
+  #     set_author                   = "Miles Smith",
+  #     comparison_grouping_variable = project_params[["comparison_grouping_variable"]],
+  #     lfcThreshold                 = project_params[["lfcThreshold"]]
   #   ),
-  #   output_dir    = "reports/"
-  # ),
+  #   output_dir    = "reports/",
+  #   packages      = c(
+  #     "rmarkdown",
+  #     "knitr",
+  #     "targets",
+  #     "here",
+  #     "ggplot2",
+  #     "ggpubr",
+  #     "rlang",
+  #     "magrittr",
+  #     "janitor",
+  #     "kableExtra",
+  #     "flextable",
+  #     "genefilter",
+  #     "tidyselect",
+        # "purrr",
+        # "formattable",
   #
-  # tar_render(
-  #   name = qc_report,
-  #   path          =  "analysis/qc_report.rmd",
-  #   params        = list(
-  #     set_title   = "BLAST Optimal Responder-vs-Non-responder RNAseq QC",
-  #     set_author  = "Miles Smith"
-  #   ),
-  #   output_dir    = "reports/"
+  #   )
   # )
+#
+#   tar_render(
+#     name = qc_report,
+#     path          =  "analysis/qc_report.rmd",
+#     params        = list(
+#       set_title   = "BLAST Optimal Responder-vs-Non-responder RNAseq QC",
+#       set_author  = "Miles Smith"
+#     ),
+#     output_dir    = "reports/"
+#   )
 
   # tar_render(
   #   name = pathway_report,

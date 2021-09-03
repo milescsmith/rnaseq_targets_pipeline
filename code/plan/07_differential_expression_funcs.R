@@ -15,26 +15,30 @@ create_results_list <- function(object, ...){
 #' @importFrom rlang set_names
 #' @importFrom purrr map map_chr
 #' @importFrom dplyr mutate inner_join filter pull
+#' @importFrom stringr str_remove
 #' @return list
 create_results_list.DESeqDataSet <- function(
   comparison_list,
   object,
   comparison_grouping_variable,
-  design = NULL
+  design = NULL,
+  BPPARAM = bpparam()
   ){
   purrr::map(comparison_list, function(i) {
+    message(paste("Now comparing", i))
     DESeq2::lfcShrink(
       dds = object,
       coef = i,
       parallel = TRUE,
-      type = "apeglm"
+      type = "apeglm",
+      BPPARAM = BPPARAM
       ) %>%
     tibble::as_tibble(rownames="gene")
   }) %>%
     rlang::set_names(
       purrr::map_chr(
         comparison_list,
-        str_remove,
+        stringr::str_remove,
         pattern = paste0(comparison_grouping_variable, "_")
       )
   )
@@ -56,7 +60,8 @@ create_results_list.DGEList <- function(
   comparison_list,
   object,
   comparison_grouping_variable,
-  design = NULL
+  design = NULL,
+  BPPARAM = bpparam()
   ){
 
   if (is.null(magrittr::use_series(object, common.dispersion))){
@@ -76,11 +81,11 @@ create_results_list.DGEList <- function(
   }
 
   comparisons <-
-    map(
+    purrr::map(
       comparison_list,
-      \(x) str_split(x, pattern =  " - ") |>
-        chuck(1) |>
-        chuck(1) %>%
+      \(x) stringr::str_split(x, pattern =  " - ") |>
+        purrr::chuck(1) |>
+        purrr::chuck(1) %>%
         paste0(comparison_grouping_variable, .)
     )
 
@@ -117,7 +122,7 @@ create_results_list.DGEList <- function(
     rlang::set_names(
       purrr::map_chr(
         comparison_list,
-        str_remove,
+        stringr::str_remove,
         pattern = paste0(comparison_grouping_variable, "_")
       )
   )
@@ -132,9 +137,9 @@ create_deg_tables <- function(
 ){
   direction <- match.arg(arg = direction, choices=c("up", "down"))
 
-  purrr::map(seq_along(deg_res), function(i){
+  purrr::map(deg_res, function(i){
     degs <-
-      deg_res[[i]] %>%
+      i %>%
         tibble::as_tibble(
           rownames = "gene"
         )
@@ -160,7 +165,7 @@ create_deg_tables <- function(
       dplyr::mutate(
         log2FoldChange = abs(log2FoldChange),
         dplyr::across(
-          .cols = tidyselect::where(is.numeric),
+          .cols = where(is.numeric),
           .fns = \(x) signif(x = x, digits =  2)
           )
         ) %>%
@@ -230,9 +235,9 @@ extract_de_genes <- function(
   grouping_variable
 ){
   purrr::map(
-    seq_along(results),
-    function(i){
-      results[[i]] %>%
+    .x = results,
+    .f = \(i){
+      i %>%
         tibble::as_tibble(rownames = "gene") %>%
         dplyr::filter(padj < 0.05) %>%
         dplyr::filter(abs(log2FoldChange) >= 0.5) %>%
@@ -346,3 +351,142 @@ extract_top_degs <- function(up_tables, down_tables){
 
   unique(c(up_degs, down_degs))
   }
+
+
+#' Title
+#'
+#' @param object DESeqResults object
+#'
+#' @return
+#' @export
+#'
+#' @examples
+alt_summary <-
+  function(
+    object,
+    lfcThreshold = 0.25
+    ){
+  notallzero <- sum(object[["baseMean"]] > 0)
+  up <- sum(
+    object[["padj"]] < 0.05 &
+      object[["log2FoldChange"]] > lfcThreshold,
+    na.rm = TRUE
+    )
+  down <- sum(
+    object[["padj"]] < 0.05 &
+      object$log2FoldChange < lfcThreshold,
+    na.rm = TRUE
+    )
+  outlier <-
+    sum(
+      object$baseMean > 0 &
+        is.na(object$pvalue)
+      )
+
+  filterThresh <-
+    filterThreshold(
+      object = object,
+      alfa = 0.1,
+      padj_method = "fdr"
+      )
+
+  ft <-
+    ifelse(
+      test = is.null(filterThresh),
+      yes  = 0,
+      no   = round(filterThresh)
+      )
+
+  filt <- sum(!is.na(object[["pvalue"]]) & is.na(object[["padj"]]))
+
+  total <- nrow(object)
+
+  tibble(
+    up = up,
+    down = down,
+    outlier = outlier,
+    ft = ft,
+    lowcounts = filt,
+    total = total
+  )
+}
+
+
+#' filterThreshold
+#'
+#' @param object tibble from \code{create_results_list}
+#' @param filter the vector of filter statistics over which the independent
+#' filtering will be optimized. By default the mean of normalized counts is
+#' used.
+#' @param alfa the significance cutoff used for optimizing the independent
+#' filtering (by default 0.1). If the adjusted p-value cutoff (FDR) will be a
+#' value other than 0.1, alpha should be set to that value.
+#' @param padj_method the method to use for adjusting p-values, see \code{?p.adjust}
+#'
+#' @return
+#' @export
+filterThreshold <- function(
+  object,
+  filter      = NULL,
+  alfa        = 0.1,
+  padj_method = "fdr"
+){
+  # Borrowed from {DESeq2} results.R `pvalueAdjustment()`
+  filter        <- filter %||% object[["baseMean"]]
+
+  lowerQuantile <- mean(filter == 0)
+  upperQuantile <-
+    ifelse(
+      test = lowerQuantile < .95,
+      yes  = 0.95,
+      no   = 1
+    )
+
+  theta <-
+    seq(
+      lowerQuantile,
+      upperQuantile,
+      length = 50
+    )
+
+
+  # do filtering using genefilter
+  filtPadj <- genefilter::filtered_p(
+    filter = filter,
+    test   = object[["pvalue"]],
+    theta  = theta,
+    method = "fdr"
+  )
+
+  numRej  <-
+    matrixStats::colSums2(
+      x = filtPadj < alfa,
+      na.rm = TRUE
+    )
+
+  lo_fit <-
+    stats::lowess(
+      x = numRej ~ theta,
+      f = 0.2
+    )
+  if (max(numRej) <= 10) {
+    j <- 1
+  } else {
+    residual <- if (all(numRej==0)) {
+      0
+    } else {
+      numRej[numRej > 0] - lo_fit[["y"]][numRej > 0]
+    }
+
+    thresh <- max(lo_fit[["y"]]) - sqrt(mean(residual^2))
+
+    j <- if (any(numRej > thresh)) {
+      which(numRej > thresh)[1]
+    } else {
+      1
+    }
+  }
+
+  cutoffs <- stats::quantile(filter, theta)
+  cutoffs[j]
+}

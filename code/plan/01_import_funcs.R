@@ -6,6 +6,7 @@ import_metadata <- function(
   project_column,
   regression_columns,
   filter_column,
+  filter_value                  = NULL,
   metadata_sheet                = "main",
   extra_controls_metadata_file  = NULL,
   extra_controls_metadata_sheet = "main",
@@ -101,6 +102,22 @@ import_metadata <- function(
         study_metadata,
         non_project_controls
       )
+
+    if (!is.null(filter_value)){
+      if (is.numeric(filter_value)){
+        study_metadata <-
+          dplyr::filter(
+            .data = study_metadata,
+            filter_column > filter_value
+            )
+      } else if (is.character(filter_value)){
+        study_metadata <-
+          dplyr::filter(
+            .data = study_metadata,
+            filter_column %nin% filter_value
+          )
+      }
+    }
 
     dplyr::distinct(study_metadata)
   }
@@ -1207,11 +1224,11 @@ plot_sva <- function(sva_graph_data){
 
 
 read_md_file <- function(path, ...){
-  if (!is.na(excel_format(path))){
+  if (!is.na(readxl::excel_format(path))){
     imported_file <-
       readxl::read_excel(
         path = path,
-        na = c("n/a", "0", "unk", "NA"),
+        na = c("n/a", "0", "unk", "NA", "NaN"),
         ...
       )
   } else {
@@ -1228,7 +1245,7 @@ read_md_file <- function(path, ...){
         file = path,
         delim = delimiter,
         trim_ws = TRUE,
-        na      = c("n/a", "0", "unk", "NA")
+        na      = c("n/a", "0", "unk", "NA", "NaN")
       )
   }
 

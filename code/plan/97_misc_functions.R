@@ -391,3 +391,32 @@ make_clean_names <- function(string,
 }
 
 `%nin%` <- purrr::negate(`%in%`)
+
+
+#' @title conditional_filter
+#' @description Would you like to filter *only* if something else is true?
+#' For example, maybe only filter if another list is not null?
+#'
+#' @param .data A data.frame or tibble to filter
+#' @param .condition The condition that controls whether or not to filter.
+#' Must evaulate to \code{TRUE} or \code{FALSE}
+#' @param ... the unquoted parameters that should be passed on to
+#' \code{dplyr::filter}
+#' @param .negate If \code{TRUE}, filter if \code{.condition} is \code{FALSE}
+#'
+#' @return the filtered (or not) data.frame/tibble
+#' @export
+#'
+#' @examples
+#'
+#' name_list <- NULL
+#'
+#' conditional_filter(df, is.null(name_list), name %in% name_list, .negate = TRUE)
+conditional_filter <- function(.data, .condition, ..., .negate = FALSE){
+  if (ifelse(test = .negate, yes = isFALSE(.condition), no = isTRUE(.condition))){
+    dplyr::filter(.data = .data, ...)
+  } else {
+    .data
+  }
+}
+

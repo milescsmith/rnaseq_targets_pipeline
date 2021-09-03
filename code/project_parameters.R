@@ -6,7 +6,7 @@ options(future.globals.maxSize    = +Inf)
 Sys.setenv('RSTUDIO_PANDOC'       = '/usr/lib/rstudio-server/bin/pandoc')
 WGCNA::allowWGCNAThreads()
 BPPARAM =
-  BiocParallel::SnowParam(
+  BiocParallel::MulticoreParam(
     workers       = parallel::detectCores()-1,
     exportglobals = FALSE,
     progressbar   = TRUE
@@ -57,6 +57,7 @@ project_params = list(
   sva_num                         = 2,
   use_combat                      = FALSE,
   process_method                  = "limma",
+  lfcThreshold                    = 0.25,
 
   BPPARAM                         = BPPARAM,
 

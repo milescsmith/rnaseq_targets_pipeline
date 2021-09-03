@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2021-09-02
+### Added
+  - No longer need to create palettes manually thanks to the new `generatePalettes`
+    function
+  - Functions to generate tables and heatmaps for the report
+### Changed
+  - Added more namespace declarations
+  - Changed several anonymous functions to use the new R4.1-style lamba functions
+  - Stole `filterThreshold` from {DESeq2} so that it works on {limma}/{edgeR} results
+### Fixed
+  - Currently working through the `analysis/report.rmd` to match the new targets
+  - Fix for `read_md_file` so that importing the metadata now accounts for
+    `NaN` values
+  - Imported data now no longer thinks `initial_concentration_ng_ul` is a character
+    column
+  - `import_metadata` now actually filters based on the `filter_column` and `filter_value
+
 ## [2.1.0] - 2021-08-27
 Merging the "generalized" branch
 ### Changed
