@@ -1,0 +1,12 @@
+
+```{r echo=FALSE, fig.height=3.25, fig.width=3}
+violinPanel(
+  expr_tbl     = {{EXPR_TBL}},
+  grouping_col = "{{GROUPING}}",
+  stats_tbl    = {{STATS_TBL}},
+  values       = "{{VALUES_VAR}}",
+  facet_var    = "{{FACET_VAR}}",
+  var_list     = {{BIN}}, 
+  filter_var   = "{{FILTER_VAR}}"
+)
+```

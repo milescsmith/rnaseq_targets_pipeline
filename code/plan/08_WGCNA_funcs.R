@@ -25,15 +25,17 @@ top_variable_genes <-
 module_gsea <-
   function(
     module_genes,
-    module_of_interest
+    module_of_interest,
+    target_species = "org.Hs.eg.db"
   ){
     enriched_module_genes <-
-      module_genes %>%
-      dplyr::filter(module == module_of_interest) %>%
-      dplyr::pull(hugo) %>%
-      clusterProfiler::enricher(
-        gene = .,
-        TERM2GENE = c5
+      module_genes |>
+      dplyr::filter(module == module_of_interest) |>
+      dplyr::pull(hugo) |>
+      clusterProfiler::enrichGO(
+        OrgDb = target_species,
+        keyType = "SYMBOL",
+        ont = "ALL"
       )
     if(!is.null(enriched_module_genes)){
       enriched_module_genes <-

@@ -4,6 +4,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2021-09-24
+### Added 
+  - The function `DimPlotHull` to handle PCA and UMAP plotting
+  - The function `groupedComplexHeatmap` to handle heatmap plotting where the data is
+    split by a group
+  - The function `comparisonHeatMap` to handle heatmap plotting where there is
+    a table of upregulated and one of downregulated genes to plot.
+  - Add a `conditional_left_join` function to handle instances where joining should
+    be conditional on some test (such as "is the right-hand table NULL?")
+  - Several child report templates
+  - New parameters in `project_parameters.R`:
+    "sample_species", "heatmap_row_annotations", "comparison_groups", "row_annotations"
+  - Add rule to use `generatePalettes` instead of the old `create_palettes`
+### Changed
+  - Switched many more instances of the {magrittr} pipe `%>%` to base R pipe `|>`
+  - `group_pal` target now uses the `generatePalettes` function
+  - `groupedHeatMap` no longer tries to use all factor columns to annotate rows, you must
+    specify the row annotation columns
+  - Calculating stats for within comparison_groups comparisons by iterating over targets
+  - Performing random forest modeling by iterating of the targets
+  - `module_gsea` now uses `clusterProfiler::enrichGO` instead of `clusterProfiler::enricher`
+    and takes an optional `target_species` argument to handle mouse RNAseq datasets
+  - Essentially rewrote report.rmd to include use of templates and iterating
+  - Replace usage of {pheatmap} with {ComplexHeatmap}.  Pheatmap was causing
+    an issue with plotting early (stupid gTable objects)
+  - Rewrote the machine learning plotting functions
+  - Now pass `corType = "bicor"` to `WGCNA::blockwiseModules` to avoid a bug in {WGCNA}
+    where it uses the baseR `cor` instead of its own `cor` (which has different parameters)
+  - iterate over `rf_classifier` instead of having one rule per comparison (and allows for
+    parallel computation)
+  - iterate over `modules_compare_with_stats`
+### Fixed
+  - `annotation_info` target now includes extracting the "cluster" column
+  - `pca_results` and `umap_results` no longer try to pass a `cluster_info`
+    argument
+  - `process_counts.limma` now correctly returns a `res` list member and it
+    properly calculates differential gene expression
+  - `process_counts.edgeR` now correctly returns a `res` list member
+  - `create_deg_tables` no longer shits the bed if you pass it a tibble
+  - `getRandomPalette` now actually checks to see if one of the preferred palettes will work,
+
 ## [2.2.0] - 2021-09-02
 ### Added
   - No longer need to create palettes manually thanks to the new `generatePalettes`
@@ -88,6 +129,8 @@ Pulling changes from updates added during BLAST analysis
   - Rearranged directory layout
   - Split analysis plan into parts
 
+[2.3.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.2.0...2.3.0
+[2.2.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.1.0...2.2.0
 [2.1.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/1.0.0...2.1.0
 [2.0.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/1.1.0...2.0.0
 [1.1.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/1.0.0...1.1.0

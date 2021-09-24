@@ -640,9 +640,9 @@ process_counts.limma <-
     comparisons <-
       tibble::as_tibble(
         gtools::combinations(
-          n = length(unique(imported_counts[["metadata"]][["Disease_Class"]])),
+          n = length(unique(imported_counts[["metadata"]][[comparison_grouping_variable]])),
           r = 2,
-          v = unique(imported_counts[["metadata"]][["Disease_Class"]]),
+          v = unique(imported_counts[["metadata"]][[comparison_grouping_variable]]),
           repeats.allowed = FALSE
         )
       ) %>%
@@ -660,6 +660,18 @@ process_counts.limma <-
         )
       ) %>%
       tibble::deframe()
+
+    coeff <-
+      comparisons %>%
+      stringr::str_remove(
+        pattern =
+          paste(
+            "-",
+            control_group
+            )
+        ) %>%
+      stringr::str_trim() %>%
+      paste0(comparison_grouping_variable, .)
 
     contra_matrix <-
       limma::makeContrasts(
@@ -683,19 +695,20 @@ process_counts.limma <-
     #       )
     #   )
 
-    treat_res <-
-      limma::contrasts.fit(
-        fit = fit,
-        contrasts = contra_matrix
-      ) %>%
-      limma::treat()
+    # treat_res <-
+    #   limma::contrasts.fit(
+    #     fit = fit,
+    #     contrasts = contra_matrix
+    #   ) %>%
+    #   limma::treat(fc=1.1)
 
+    efit <- eBayes(fit)
 
-    res = purrr::map(colnames(contra_matrix), function(i) {
+    res = purrr::map2(.x = colnames(contra_matrix), .y = coeff, .f = \(i, j) {
       message(glue::glue("Performing DEG for {i}..."))
       limma::topTreat(
-        fit = treat_res,
-        coef = i,
+        fit = efit,
+        coef = j,
         number = Inf
       ) %>%
         tibble::as_tibble(rownames = "gene") %>%
@@ -721,7 +734,8 @@ process_counts.limma <-
       degs                       = res,
       dataset                    = post_qc_dge,
       comparisons                = comparisons,
-      design_matrix              = mm
+      design_matrix              = mm,
+      res                        = res
     )
   }
 
@@ -949,7 +963,8 @@ process_counts.edgeR <-
       degs                       = res,
       dataset                    = post_qc_dge,
       comparisons                = comparisons,
-      design_matrix              = post_qc_design
+      design_matrix              = post_qc_design,
+      res                        = res
     )
   }
 

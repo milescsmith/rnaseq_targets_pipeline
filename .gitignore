@@ -19,3 +19,4 @@ _targets/
 *.pdf
 *.csv.gz
 *.gmt
+plot_debug.R

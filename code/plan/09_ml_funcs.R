@@ -11,15 +11,20 @@ rf_classifier <- function(
   print              = TRUE
 ){
 
-  v <- rlang::enquo(classification_var)
-
-  if (!rlang::quo_is_symbol(v)){
-    diffused_classification <- rlang::sym(classification_var)
-  } else {
-    diffused_classification <- classification_var
-    classification_var <- as.character(substitute(classification_var))
-  }
-  # diffused_classification <- rlang::enquo(diffused_classification)
+  # The below works, but not if you try to split the pipeline
+  # by classification_var.  Something doesn't exactly map correctly
+  # v <- rlang::enquo(classification_var)
+  #
+  # if (!rlang::quo_is_symbol(v)){
+  #   diffused_classification <- rlang::sym(classification_var)
+  # } else {
+  #   diffused_classification <- classification_var
+  #   classification_var <- as.character(substitute(classification_var))
+  # }
+  #
+  # This, however, does work
+  diffused_classification <- rlang::sym(classification_var)
+  diffused_classification <- rlang::enquo(diffused_classification)
 
   # Create data frames for the two sets:
   message("Preparing data...")
@@ -28,10 +33,10 @@ rf_classifier <- function(
       .data = dataset,
       {{diffused_classification}},
       ...
-    ) %>%
+    ) |>
     dplyr::mutate(
       {{diffused_classification}} := forcats::fct_drop({{diffused_classification}})
-    ) %>%
+    ) |>
     rsample::initial_split(
       prop   = train_proportion,
       strata = {{diffused_classification}}
@@ -78,16 +83,16 @@ rf_classifier <- function(
 
   message("Creating recipe...")
   data_recipe <-
-    recipes::recipe(design_formula, data = train_data) %>%
-    recipes::step_corr(recipes::all_predictors()) %>%
+    recipes::recipe(design_formula, data = train_data) |>
+    recipes::step_corr(recipes::all_predictors()) |>
     recipes::step_center(
       recipes::all_predictors(),
       -recipes::all_outcomes()
-    ) %>%
+    ) |>
     recipes::step_scale(
       recipes::all_predictors(),
       -recipes::all_outcomes()
-    ) %>%
+    ) |>
     recipes::step_zv(recipes::all_predictors())
 
   engine = match.arg(engine)
@@ -97,11 +102,11 @@ rf_classifier <- function(
     parsnip::rand_forest(
       mtry       = dials::tune(),
       trees      = dials::tune(),
-    ) %>%
+    ) |>
     parsnip::set_engine(
       engine     = engine,
       importance = importance
-      ) %>%
+      ) |>
     parsnip::set_mode(mode = "classification")
 
   message("Creating hyperparameter search grid...")
@@ -117,13 +122,13 @@ rf_classifier <- function(
 
   message("Creating workflow...")
   rand_wf <-
-    workflows::workflow() %>%
-    workflows::add_model(rand_spec) %>%
+    workflows::workflow() |>
+    workflows::add_model(rand_spec) |>
     workflows::add_recipe(data_recipe)
 
   message("Testing hyperparameters...")
   rand_res <-
-    rand_wf %>%
+    rand_wf |>
     tune::tune_grid(
       resamples = training_resamples,
       grid      = rand_grid
@@ -131,7 +136,7 @@ rf_classifier <- function(
 
   message("Extracting most accurate model parameters...")
   final_rand_wf <-
-    rand_wf %>%
+    rand_wf |>
     tune::finalize_workflow(
       tune::select_best(
         rand_res,
@@ -141,12 +146,14 @@ rf_classifier <- function(
 
   message("Fitting data...")
   final_rand_fit <-
-    final_rand_wf %>%
+    final_rand_wf |>
     tune::last_fit(data_split)
 
   list(
     model          = final_rand_fit,
+    splits         = data_split,
     parameter_grid = rand_grid,
+    tune_results   = rand_res,
     workflow       = final_rand_wf,
     predictions    =
       tune::collect_predictions(
@@ -157,38 +164,89 @@ rf_classifier <- function(
 }
 
 
-plot_rf_classifier <-
+plotRFClassifier <-
   function(
     rf_fit,
-    classification_var,
-    ...
+    classification_var
   ){
-    if (is.character(substitute(classification_var))){
-      diffused_classification <- rlang::sym(classification_var)
-      diffused_classification <- rlang::enquo(diffused_classification)
-    } else {
-      diffused_classification <- enquo(classification_var)
-    }
+
+    diffused_classification <- rlang::sym(classification_var)
+    diffused_classification <- rlang::enquo(diffused_classification)
+
+    collected_predictions <-
+      roc_plot <-
+        rf_fit %>%
+        tune::collect_predictions()
+
+    prediction_levels <-
+      dplyr::pull(
+        .data = collected_predictions,
+        {{diffused_classification}}
+        ) |>
+      levels()
+
+    roc_data <-
+      if (length(prediction_levels) == 2){
+        yardstick::roc_curve(
+          data = collected_predictions,
+          {{diffused_classification}},
+          paste(
+            ".pred",
+            prediction_levels[[1]],
+            sep = "_"
+            )
+          ) %>%
+          tibble::add_column(.level = "")
+      } else {
+        yardstick::roc_curve(
+          data = collected_predictions,
+          {{diffused_classification}},
+          paste(
+            ".pred",
+            prediction_levels,
+            sep="_"
+            )
+          )
+      }
 
     roc_plot <-
-      rf_fit %>%
-      tune::collect_predictions() %>%
-      yardstick::roc_curve(
-        {{diffused_classification}},
-        ...
-        ) %>%
-      ggplot2::autoplot() +
-      ggpubr::theme_pubr()
+      ggplot2::ggplot(
+        data = roc_data,
+        mapping =
+          ggplot2::aes(
+            y = specificity,
+            x = 1-sensitivity
+            )
+        ) +
+      ggplot2::geom_line() +
+      ggpubr::theme_pubr() +
+      facet_wrap(vars(.level)) +
+      labs(title = "ROC curve")
 
     var_imp_plot <-
       rf_fit %>%
       hardhat::extract_workflow() %>%
       hardhat::extract_fit_parsnip() %>%
-      vip::vip() +
-      ggpubr::theme_pubr()
+      vip::vip(mapping = ggplot2::aes(fill = Importance)) +
+      ggplot2::scale_fill_viridis_c(option = "E") +
+      labs(title = "Variable importance")
+
+    confusion_matrix_plot <-
+      rf_fit %>%
+      tune::collect_predictions(summarize = TRUE) %>%
+      yardstick::conf_mat(
+        truth = {{diffused_classification}},
+        estimate = .pred_class
+        ) |>
+      autoplot() +
+      labs(title = "Confusion matrix")
 
     cowplot::plot_grid(
       roc_plot,
-      var_imp_plot
+      cowplot::plot_grid(
+        confusion_matrix_plot,
+        var_imp_plot
+      ),
+      nrow = 2
       )
   }

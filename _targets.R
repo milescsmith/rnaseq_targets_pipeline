@@ -23,7 +23,18 @@ future::plan(strategy = future::multisession)
 utils::globalVariables("where")
 
 list(
-  tar_target(
+
+  targets::tar_target(
+    name = comparison_groups,
+    command = project_params[["comparison_groups"]]
+  ),
+
+  targets::tar_target(
+    name = sample_species_org,
+    command = findOrgDb(project_params[["sample_species"]]),
+  ),
+
+  targets::tar_target(
     name = raw_metadata,
     command    = project_params[["metadata_file"]],
     format     = "file",
@@ -31,7 +42,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = md,
     command =
       import_metadata(
@@ -62,14 +73,14 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = seq_file_directory,
     command    = project_params[["sequencing_file_directory"]],
     format     = "file",
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = tx_files,
     command    =
       import_counts(
@@ -85,21 +96,21 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = annotation_file,
     command    = project_params[["annotation_file"]],
     format     = "file",
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = annot,
     command    = read_csv(annotation_file),
     packages   = "readr",
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = final_md,
     command    =
       create_final_md(
@@ -119,7 +130,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = imported_data,
     command =
       prep_data_import(
@@ -146,7 +157,7 @@ list(
       )
   ),
 
-  tar_target(
+  targets::tar_target(
     name = processed_data,
     command = process_counts(
       imported_counts              = imported_data,
@@ -181,19 +192,19 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = qc_pca,
     command = processed_data[["qc_pca"]],
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = outlier_samples,
     command = processed_data[["outlier_samples"]],
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = sva_graph_data,
     command = plot_sva(processed_data[["sva_graph_data"]]),
     packages =
@@ -208,7 +219,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = vsc_exprs,
     command =
       extract_transformed_data(
@@ -224,35 +235,35 @@ list(
   ),
 
   # This should be changed into a list that we can walk through
-  tar_target(
+  targets::tar_target(
     name = banchereau_module_file,
     command = project_params[["banchereau_modules"]],
     format = "file",
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = banchereau_module_annotations_file,
     command = project_params[["banchereau_module_annotations"]],
     format = "file",
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = ldg_module_file,
     command = project_params[["ldg_modules"]],
     format = "file",
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = metasignature_module_file,
     command = project_params[["metasignature_modules"]],
     format = "file",
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = banchereau_modules,
     command = create_module_list(banchereau_module_file),
     packages =
@@ -266,7 +277,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = module_annotation,
     command =
       readr::read_csv(banchereau_module_annotations_file) %>%
@@ -281,7 +292,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = ldg_modules,
     command = create_module_list(ldg_module_file),
     packages =
@@ -295,7 +306,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = metasignature_module,
     command = create_module_list(metasignature_module_file),
     packages =
@@ -310,7 +321,7 @@ list(
   ),
 
 
-  tar_target(
+  targets::tar_target(
     name = dataset_with_scores,
     command =
       scoreEigengenes(
@@ -336,7 +347,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = module_scores,
     command =
       extract_module_scores(
@@ -357,13 +368,13 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  # tar_target(
+  # targets::tar_target(
   #   name = disp_plot,
   #   command = plot_dispersion_estimate(dataset_with_scores),
   #   cue = tar_cue(mode = "never")
   # ),
 
-  tar_target(
+  targets::tar_target(
     name = annotated_modules,
     command =
       dplyr::filter(
@@ -380,7 +391,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = annotated_mod_list,
     command = {
       dplyr::mutate(
@@ -404,7 +415,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = annotated_module_scores,
     command =
       dplyr::select(
@@ -420,7 +431,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = module_tbl,
     command =
       create_module_table(
@@ -439,7 +450,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = module_ISGs,
     command =
       extract_module_genes(
@@ -455,20 +466,20 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = sample_dists,
     command = parallelDist(t(vsc_exprs)),
     packages = "parallelDist",
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = sample_dendrogram,
     command = as.dendrogram(hclust(sample_dists)),
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = sample_cluster_info,
     command =
       ident_clusters(
@@ -502,7 +513,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = study_md,
     command =
       dplyr::left_join(
@@ -517,7 +528,7 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = annotation_info,
     command = {
       tibble::column_to_rownames(
@@ -526,7 +537,8 @@ list(
           tidyselect::one_of(
             project_params[["grouping_column"]],
             project_params[["project_column"]],
-            project_params[["regression_columns"]]
+            project_params[["regression_columns"]],
+            "cluster"
           ),
           sample_name
         ),
@@ -542,12 +554,11 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     pca_results,
     run_pca(
       expr_data    = vsc_exprs,
-      metadata     = study_md,
-      cluster_info = clusters
+      metadata     = study_md
     ),
     packages =
       c(
@@ -558,12 +569,11 @@ list(
       )
   ),
 
-  tar_target(
+  targets::tar_target(
     umap_results,
     run_umap(
       expr_data    = vsc_exprs,
-      metadata     = study_md,
-      cluster_info = clusters
+      metadata     = study_md
     ),
     packages =
       c(
@@ -575,27 +585,17 @@ list(
       )
   ),
 
-  # tar_target(
-  #   name = comparison_results_list,
-  #   keep(
-  #     resultsNames(dataset_with_scores),
-  #     str_detect(
-  #       string = resultsNames(dataset_with_scores),
-  #       pattern = project_params[["comparison_grouping_variable"]]
-  #     )
-  #   )
-  # ),
-
   # TODO: {targets} should be able to handle mapping
   # the comparison list to the function instead of us mapping it
-  tar_target(
+  targets::tar_target(
     name = res,
     command =
       create_results_list(
         comparison_list              = processed_data[["comparisons"]],
         object                       = dataset_with_scores,
-        comparison_grouping_variable = project_params[["comparison_groupings"]],
-        BPPARAM                      = project_params[["BPPARAM"]]
+        comparison_grouping_variable = project_params[["comparison_grouping_variable"]],
+        BPPARAM                      = project_params[["BPPARAM"]],
+        design                       = processed_data[['design_matrix']]
       ),
     packages =
       c(
@@ -614,7 +614,7 @@ list(
   ),
 
   # TODO: generalize create_deg_tables?
-  tar_target(
+  targets::tar_target(
     name = down_tables,
     command = create_deg_tables(
       deg_res           = processed_data[["res"]],
@@ -630,10 +630,11 @@ list(
         "tidyselect",
         "rlang",
         "stringr"
-      )
+      ),
+    cue = targets::tar_cue("never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = up_tables,
     command  = create_deg_tables(
       deg_res           = processed_data[["res"]],
@@ -649,10 +650,11 @@ list(
         "tidyselect",
         "rlang",
         "stringr"
-      )
+      ),
+    cue = targets::tar_cue("never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = degs,
     command  = extract_de_genes(
       results           = processed_data[["res"]],
@@ -669,42 +671,7 @@ list(
     cue = tar_cue("never")
   ),
 
-  tar_target(
-    name = deg_class,
-    command  =
-      group_degs(
-        degs            = degs,
-        comparison_vars = project_params[["comparison_groups"]]
-      ),
-    packages =
-      c(
-        "tibble",
-        "tidyr",
-        "dplyr",
-        "stringr"
-      )
-  ),
-
-  # tar_target(
-  #   name = deg_means,
-  #   command = calc_deg_means(
-  #     exprs = vsc_exprs,
-  #     deg_class = deg_class,
-  #     metadata = as_tibble(
-  #       colData(dataset_with_scores),
-  #       rownames = "name"
-  #     ) %>%
-  #       select(
-  #         name,
-  #         sex,
-  #         ethnicity,
-  #         one_of(project_params[["comparison_groups"]])
-  #       ),
-  #     grouping_variable = study_group
-  #   )
-  # ),
-
-  tar_target(
+  targets::tar_target(
     name = top_degs,
     command  =
       extract_top_degs(
@@ -719,7 +686,7 @@ list(
       )
   ),
 
-  tar_target(
+  targets::tar_target(
     name = ISGs,
     command = intersect(
       c(
@@ -736,7 +703,7 @@ list(
     )
   ),
 
-  tar_target(
+  targets::tar_target(
     name = vsc_top,
     command  = top_variable_genes(
       exprs = vsc_exprs,
@@ -751,7 +718,7 @@ list(
       )
   ),
 
-  tar_target(
+  targets::tar_target(
     name = sft,
     command = WGCNA::pickSoftThreshold(
       data = vsc_top,
@@ -769,7 +736,7 @@ list(
     packages = "WGCNA"
   ),
 
-  tar_target(
+  targets::tar_target(
     name = wgcna_modules,
     command = WGCNA::blockwiseModules(
       datExpr           = vsc_top,
@@ -784,12 +751,13 @@ list(
       detectCutHeight   = 0.99,
       TOMDenom          = "min",
       networkType       = "signed hybrid",
-      reassignThreshold = 1e-6
+      reassignThreshold = 1e-6,
+      corType = "bicor"
     ),
     packages = "WGCNA"
   ),
 
-  tar_target(
+  targets::tar_target(
     name = wgcna_module_genes,
     command  =
       tibble::enframe(
@@ -800,7 +768,7 @@ list(
     packages = "tibble"
   ),
 
-  tar_target(
+  targets::tar_target(
     name = wgcna_module_colors,
     command =
       unique(
@@ -812,7 +780,7 @@ list(
     packages = "dplyr"
   ),
 
-  tar_target(
+  targets::tar_target(
     name = wgcna_hub_genes,
     command =
       WGCNA::chooseTopHubInEachModule(
@@ -824,7 +792,7 @@ list(
     packages = "WGCNA"
   ),
 
-  tar_target(
+  targets::tar_target(
     name = wgcna_scores,
     command  =
       dplyr::select(
@@ -842,8 +810,8 @@ list(
       )
   ),
 
-  tar_target(
-    name = md_with_wgcna_scores,
+  targets::tar_target(
+    name = wgcna_scores_with_md,
     command =
       dplyr::left_join(
         x = wgcna_scores,
@@ -860,20 +828,19 @@ list(
       )
   ),
 
-  # TODO: can we vectorize the rf model building so that these could
-  # be run in parallel?
-
-  tar_target(
-    name = cluster_wgcna_rf_model,
-    command  =
+  targets::tar_target(
+    name = unnamed_wgcna_rf_models,
+    command   =
       rf_classifier(
-        dataset            = wgcna_scores,
-        classification_var = "cluster",
+        dataset            = wgcna_scores_with_md,
+        classification_var = comparison_groups,
         starts_with("ME"),
         train_proportion   = 0.75,
         print              = FALSE
       ),
-    packages =
+    pattern   = map(comparison_groups),
+    iteration = "list",
+    packages  =
       c(
         "rlang",
         "ranger",
@@ -890,35 +857,14 @@ list(
     cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
-    name = comparison_wgcna_rf_model,
-    command  =
-      rf_classifier(
-        dataset            = wgcna_scores,
-        classification_var = project_params[["comparison_grouping_variable"]],
-        starts_with("ME"),
-        train_proportion   = 0.75,
-        print              = FALSE
-      ),
-    packages =
-      c(
-        "rlang",
-        "ranger",
-        "randomForest",
-        "dplyr",
-        "forcats",
-        "rsample",
-        "recipes",
-        "parsnip",
-        "dials",
-        "workflows",
-        "tune"
-      ),
-    cue      = tar_cue(mode = "never")
+  targets::tar_target(
+    name = wgcna_rf_models,
+    command = rlang::set_names(x = unnamed_wgcna_rf_models, nm = comparison_groups),
+    packages = "rlang",
+    cue = tar_cue(mode = "never")
   ),
 
-
-  tar_target(
+  targets::tar_target(
     name = filtered_wgcna_module_genes,
     command =
       dplyr::filter(
@@ -933,14 +879,16 @@ list(
       c(
         "dplyr",
         "HGNChelper"
-      )
+      ),
+    cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = MEenriched_list,
     command = module_gsea(
       module_genes       = filtered_wgcna_module_genes,
-      module_of_interest = wgcna_module_colors
+      module_of_interest = wgcna_module_colors,
+      target_species     = sample_species_org
     ),
     pattern   = map(wgcna_module_colors),
     iteration = "list",
@@ -948,16 +896,18 @@ list(
       c(
         "dplyr",
         "clusterProfiler"
-      )
+      ),
+    cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = MEenriched,
     command  = dplyr::bind_rows(MEenriched_list),
-    packages = "dplyr"
+    packages = "dplyr",
+    cue = tar_cue("never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = MEplotting,
     command  = module_gsea_plots(enriched_genes = MEenriched),
     packages =
@@ -966,10 +916,11 @@ list(
         "purrr",
         "stringr",
         "magrittr"
-      )
+      ),
+    cue = tar_cue(mode = "never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = md_with_module_scores,
     command =
       dplyr::left_join(
@@ -983,20 +934,26 @@ list(
       c(
         "dplyr",
         "tibble"
+        ),
+    cue = tar_cue(mode = "never")
+  ),
+
+  targets::tar_target(
+    name = unnamed_module_rf_models,
+    command   =
+      {
+        message(comparison_groups)
+        rf_classifier(
+          dataset            = md_with_module_scores,
+          classification_var = comparison_groups,
+          tidyselect::matches("^M[[:digit:]]+"),
+          train_proportion   = 0.75,
+          print              = FALSE
         )
-  ),
-
-  tar_target(
-    name = cluster_module_rf_model,
-    command  =
-      rf_classifier(
-        dataset            = module_scores,
-        classification_var = "cluster",
-        tidyselect::matches("^M[[:digit:]]+"),
-        train_proportion   = 0.75,
-        print              = FALSE
-      ),
-    packages =
+        },
+    pattern   = map(comparison_groups),
+    iteration = "list",
+    packages  =
       c(
         "rlang",
         "ranger",
@@ -1010,47 +967,15 @@ list(
         "workflows",
         "tune"
       ),
-    cue      = tar_cue(mode = "never")
+    cue       = tar_cue(mode = "never")
   ),
 
-  tar_target(
-    name = comparison_module_rf_model,
-    command  =
-      rf_classifier(
-        dataset            = module_scores,
-        classification_var = project_params[["comparison_grouping_variable"]],
-        tidyselect::matches("^M[[:digit:]]+"),
-        train_proportion   = 0.75,
-        print              = FALSE
-      ),
-    packages =
-      c(
-        "rlang",
-        "ranger",
-        "randomForest",
-        "dplyr",
-        "forcats",
-        "rsample",
-        "recipes",
-        "parsnip",
-        "dials",
-        "workflows",
-        "tune"
-      ),
-    cue      = tar_cue(mode = "never")
+  targets::tar_target(
+    name = module_rf_models,
+    command = rlang::set_names(x = unnamed_module_rf_models, nm = comparison_groups)
   ),
 
-  # tar_target(
-  #   name = viral_exprs,
-  #   command =
-  #     extract_viral_expression(
-  #       annotations = annot,
-  #       exprs = vsc_exprs,
-  #       dds = dataset_with_scores
-  #     )
-  # ),
-
-  tar_target(
+  targets::tar_target(
     name = ifn_modules,
     command =
       dplyr::pull(
@@ -1064,7 +989,7 @@ list(
     packages = "dplyr"
   ),
 
-  tar_target(
+  targets::tar_target(
     name = inflame_modules,
     command =
       dplyr::pull(
@@ -1078,8 +1003,8 @@ list(
     packages = "dplyr"
   ),
 
-  tar_target(
-    name = module_scores_with_viral,
+  targets::tar_target(
+    name = all_module_scores,
     command =
       purrr::reduce(
         .x =
@@ -1096,32 +1021,27 @@ list(
       )
   ),
 
-  tar_target(
-    name = annotated_module_scores_class,
+  targets::tar_target(
+    name = all_module_scores_with_md,
     command =
-      dplyr::select(
-        .data = module_scores_with_viral,
-        cluster,
-        project_params[["comparision_grouping_variable"]],
-        tidyselect::one_of(annotated_modules[["module"]])
+      dplyr::left_join(
+        study_md,
+        all_module_scores
       ),
-    packages =
-      c(
-        "dplyr",
-        "tidyselect"
-      )
+    packages = "dplyr",
+    cue = tar_cue("never")
   ),
 
-  tar_target(
+  targets::tar_target(
     name = renamed_annotated_module_scores,
     command =
       rlang::set_names(
         nm =
           targets_recode(
-            target_list = names(annotated_module_scores_with_cluster_class),
+            target_list = names(all_module_scores_with_md),
             thing_to_unquote_splice = annotated_mod_list
             ),
-        x  = annotated_module_scores_with_cluster_class
+        x  = all_module_scores_with_md
       ),
     packages =
       c(
@@ -1130,195 +1050,207 @@ list(
       )
   ),
 
-  tar_target(
-    name = annotated_module_scores_pivot,
+  targets::tar_target(
+    name = module_scores_mat,
     command =
-      tidyr::pivot_longer(
-        data      = renamed_annotated_module_scores,
-        cols      = tidyselect::matches("^M[[:digit:]]+"),
-        names_to  = "module",
-        values_to = "score"
-      ),
+      module_scores_mat <-
+      all_module_scores |>
+      dplyr::select(
+        sample_name,
+        tidyselect::starts_with("ME"),
+        tidyselect::one_of(
+          c(
+            names(ldg_modules),
+            names(banchereau_modules),
+            names(metasignature_module)
+          )
+        )
+      ) |>
+      tibble::column_to_rownames("sample_name") |>
+      as.matrix() |>
+      t(),
     packages =
       c(
-        "tidyr",
+        "dplyr",
         "tidyselect",
-        "purrr",
-        "rstatix"
+        "tibble"
       )
   ),
 
-  tar_target(
-    name = annotated_module_stats_by_cluster,
-    command =
-      modules_compare_with_stats(
-        module_score_table = annotated_module_scores_pivot,
-        compare_by         = "cluster"
-      ),
-    packages =
-      c(
-        "dplyr",
-        "stringr",
-        "rstatix",
-        "purrr"
-      )
-  ),
-
-  tar_target(
-    name = annotated_module_stats_by_comparison_var,
-    command =
-      modules_compare_with_stats(
-        module_score_table = annotated_module_scores_pivot,
-        compare_by         = project_params[["comparison_grouping_variable"]]
-      ),
-    packages =
-      c(
-        "dplyr",
-        "stringr",
-        "rstatix",
-        "purrr"
-      )
-  ),
-
-  tar_target(
-    name = module_stats_by_cluster,
-    command =
-      modules_compare_with_stats(
-        module_score_table = module_scores_pivot,
-        compare_by = "cluster"
-      ),
-    packages =
-      c(
-        "dplyr",
-        "stringr",
-        "rstatix",
-        "purrr"
-      )
-  ),
-
-  tar_target(
-    name = module_stats_by_comparison,
-    command =
-      modules_compare_with_stats(
-        module_score_table = module_scores_pivot,
-        compare_by         = project_params[["comparison_grouping_variable"]]
-      ),
-    packages =
-      c(
-        "dplyr",
-        "stringr",
-        "rstatix",
-        "purrr"
-      )
-  ),
-
-  tar_target(
-    name = module_scores_with_viral_by_cluster_stats,
-    command =
-      modules_compare_with_stats(
-        module_score_table = module_scores_with_viral_by_cluster,
-        compare_by         = "cluster"
-      ),
-    packages =
-      c(
-        "dplyr",
-        "stringr",
-        "rstatix",
-        "purrr"
-      )
-  ),
-
-  tar_target(
-    name = module_scores_with_viral_by_comparison_stats,
-    command =
-      modules_compare_with_stats(
-        module_score_table = module_scores_with_viral_by_comparison,
-        compare_by         = project_params[["comparison_grouping_variable"]]
-      )
-  ),
-
-  tar_target(
+  targets::tar_target(
     name = module_scores_pivot,
     command =
-      pivot_module_scores(
-        module_scores = module_scores_with_viral,
+      dplyr::select(
+        .data = all_module_scores_with_md,
+        sample_name,
         tidyselect::matches("^M[[:digit:]]+"),
-        mg,
-        tidy_select::starts_with("ldg")
+        tidyselect::matches("mg"),
+        tidyselect::starts_with("ldg"),
+        tidyselect::one_of(comparison_groups)
+      ) %>%
+      tidyr::pivot_longer(
+        cols          = c(
+          tidyselect::matches("^M[[:digit:]]+"),
+          tidyselect::matches("mg"),
+          tidyselect::starts_with("ldg")
+        ),
+        names_to      = "module",
+        values_to     = "score"
+      ),
+    packages =
+      c(
+        "dplyr",
+        "tidyselect",
+        "tidyr"
+      )
+  ),
+
+  targets::tar_target(
+    name = annotated_module_scores_pivot,
+    command =
+      dplyr::filter(
+        .data = module_scores_pivot,
+        module %in% annotated_modules[["module"]]
+        ),
+    packages = "dplyr"
+  ),
+
+  targets::tar_target(
+    name = wgcna_scores_pivot,
+    command =
+      dplyr::select(
+        .data = all_module_scores_with_md,
+        sample_name,
+        tidyselect::starts_with("ME"),
+        tidyselect::one_of(comparison_groups)
+      ) %>%
+      tidyr::pivot_longer(
+        cols          = c(
+          tidyselect::starts_with("ME")
+        ),
+        names_to      = "module",
+        values_to     = "score"
+      ),
+    packages =
+      c(
+        "dplyr",
+        "tidyselect",
+        "tidyr"
+      )
+  ),
+
+  targets::tar_target(
+    name = module_comparisons_stats_unnamed,
+    command =
+      modules_compare_with_stats(
+        module_score_table = module_scores_pivot,
+        compare_by = comparison_groups
+      ),
+    pattern = map(comparison_groups),
+    iteration = "list",
+    packages =
+      c(
+        "dplyr",
+        "stringr",
+        "rstatix",
+        "purrr"
+      )
+  ),
+
+  targets::tar_target(
+    name = module_comparisons_stats,
+    command =
+      rlang::set_names(
+        x = module_comparisons_stats_unnamed,
+        nm = comparison_groups
+      ),
+    packages = "rlang"
+  ),
+
+  targets::tar_target(
+    name = wgcna_comparisons_stats_unnamed,
+    command =
+      modules_compare_with_stats(
+        module_score_table = wgcna_scores_pivot,
+        compare_by = comparison_groups
+      ),
+    pattern = map(comparison_groups),
+    iteration = "list",
+    packages =
+      c(
+        "dplyr",
+        "stringr",
+        "rstatix",
+        "purrr"
+      )
+  ),
+
+  targets::tar_target(
+    name = wgcna_comparisons_stats,
+    command =
+      rlang::set_names(
+        x = wgcna_comparisons_stats_unnamed,
+        nm = comparison_groups
+      ),
+    packages = "rlang"
+  ),
+
+  targets::tar_target(
+    name = annotated_module_comparisons_stats,
+    command =
+      purrr::map(
+        .x = module_comparisons_stats,
+        .f = dplyr::filter,
+        module %in% annotated_modules$module
         ),
     packages =
       c(
         "dplyr",
-        "forcats",
-        "rlang"
+        "purrr"
       )
   ),
 
-  tar_target(
-    name = wgcna_scores_with_viral_by_cluster,
-    command =
-      tidyr::pivot_longer(
-        data =
-          dplyr::select(
-            .data = module_scores_with_viral,
-            cluster,
-            tidyselect::matches("^ME")
-          ),
-        -cluster,
-        names_to     = "module",
-        values_to    = "score"
-      ),
-    packages =
-      c(
-        "tidyr",
-        "tidyselect",
-        "dplyr"
-      )
-  ),
-
-  tar_target(
-    name = module_scores_with_viral_by_comparison,
-    command =
-      tidyr::pivot_longer(
-        data =
-          dplyr::select(
-            .data = module_scores_with_viral,
-            project_params[["comparison_grouping_variable"]],
-            tidyselect::starts_with("M")
-          ),
-        -study_group,
-        names_to     = "module",
-        values_to    = "score"
-      ),
-    packages =
-      c(
-        "tidyr",
-        "tidyselect",
-        "dplyr"
-      )
-  ),
-
-  tar_target(
+  targets::tar_target(
     name = group_pal,
     command =
-      create_palettes(
-        comparison_grouping_variable = project_params[["comparison_grouping_variable"]],
-        annotated_modules            = annotated_modules,
-        clusters                     = sample_cluster_info,
-        annotation_info              = annotation_info,
-        deg_class                    = deg_class
-      ),
+      c(
+        generatePalettes(
+          .data = study_md,
+          .cols =
+            c(
+              "cluster",
+              project_params[["comparison_grouping_variable"]],
+              "sex",
+              "RaceCode"
+              )
+          ),
+        generatePalettes(
+          .data = module_annotation,
+          .cols = "type",
+          use_palettes = "ggsci::default_ucscgb"
+          ),
+        list(
+          "chr" = paletteer::paletteer_d(
+            palette = getRandomPalette(2),
+            n = 2
+            ) |>
+          as.character() |>
+          rlang::set_names(nm = c("X", "Y"))
+          )
+        ),
     packages =
       c(
-        "paletteer",
+        "tidyselect",
         "rlang",
-        "magrittr",
-        "grDevices",
-        "dplyr"
+        "dplyr",
+        "tidyr",
+        "purrr",
+        "paletteer",
+        "tibble"
       )
   ),
 
-  tar_target(
+  targets::tar_target(
     name = output_expression,
     command  =
       writeData(
@@ -1337,7 +1269,7 @@ list(
       )
   ),
 
-  tar_target(
+  targets::tar_target(
     name = output_metadata,
     command  =
       writeMetaData(
@@ -1352,7 +1284,7 @@ list(
       ),
   ),
 
-  tar_target(
+  targets::tar_target(
     name = output_module_scores,
     command  =
       save_table_to_disk(
@@ -1363,7 +1295,7 @@ list(
     format   = "file"
   ),
 
-  tar_target(
+  targets::tar_target(
     name = output_wgcna_scores,
     command  =
       writeData(
@@ -1374,7 +1306,7 @@ list(
     format   = "file"
   ),
 
-  # tar_target(
+  # targets::tar_target(
   #   name = output_pathway_eigenvalues,
   #   command  =
   #     save_table_to_disk(
@@ -1384,7 +1316,7 @@ list(
   #   format   = "file"
   # ),
 
-  tar_target(
+  targets::tar_target(
     name = output_wgcna_module_genes,
     command  =
       writeData(
@@ -1393,36 +1325,64 @@ list(
       ),
     format   = "file",
     packages = "data.table"
+  ),
+
+  tar_render(
+    name = primary_report,
+    path          = "analysis/report.rmd",
+    params        = list(
+      set_author = "Miles Smith",
+      set_title  = "Shakedown run"
+    ),
+    output_dir    = "reports/",
+    packages      =
+      c(
+        "rmarkdown",
+        "knitr",
+        "targets",
+        "here",
+        "ggplot2",
+        "ggpubr",
+        "rlang",
+        "magrittr",
+        "janitor",
+        "kableExtra",
+        "flextable",
+        "genefilter",
+        "tidyselect",
+        "purrr",
+        "formattable"
+    ),
+    quiet = FALSE
   )
 
   # tar_render(
-  #   name = primary_report,
-  #   path          = "analysis/report.rmd",
+  #   name = test_report,
+  #   path          = "analysis/testing.rmd",
   #   params        = list(
-  #     set_title                    = "BLAST Optimal Responder-vs-Non-responder RNAseq Analysis",
-  #     set_author                   = "Miles Smith",
-  #     comparison_grouping_variable = project_params[["comparison_grouping_variable"]],
-  #     lfcThreshold                 = project_params[["lfcThreshold"]]
+  #     set_author = "Miles Smith",
+  #     set_title  = "Shakedown run"
   #   ),
   #   output_dir    = "reports/",
-  #   packages      = c(
-  #     "rmarkdown",
-  #     "knitr",
-  #     "targets",
-  #     "here",
-  #     "ggplot2",
-  #     "ggpubr",
-  #     "rlang",
-  #     "magrittr",
-  #     "janitor",
-  #     "kableExtra",
-  #     "flextable",
-  #     "genefilter",
-  #     "tidyselect",
-        # "purrr",
-        # "formattable",
-  #
-  #   )
+  #   packages      =
+  #     c(
+  #       "rmarkdown",
+  #       "knitr",
+  #       "targets",
+  #       "here",
+  #       "ggplot2",
+  #       "ggpubr",
+  #       "rlang",
+  #       "magrittr",
+  #       "janitor",
+  #       "kableExtra",
+  #       "flextable",
+  #       "genefilter",
+  #       "tidyselect",
+  #       "purrr",
+  #       "formattable"
+  #     ),
+  #   quiet = FALSE
   # )
 #
 #   tar_render(

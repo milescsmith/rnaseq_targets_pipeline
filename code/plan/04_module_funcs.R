@@ -77,7 +77,7 @@ create_module_table <- function(
   ...,
   module_annotation
 ){
-  module_list <- rlang::list(...)
+  module_list <- rlang::list2(...)
 
   module_tbl <-
     purrr::map_dfr(

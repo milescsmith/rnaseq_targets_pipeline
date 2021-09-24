@@ -82,8 +82,12 @@ create_results_list.DGEList <- function(
 
   comparisons <-
     purrr::map(
-      comparison_list,
-      \(x) stringr::str_split(x, pattern =  " - ") |>
+      .x = comparison_list,
+      .f = \(x)
+        stringr::str_split(
+          string = x,
+          pattern =  " - "
+          ) |>
         purrr::chuck(1) |>
         purrr::chuck(1) %>%
         paste0(comparison_grouping_variable, .)
@@ -94,7 +98,7 @@ create_results_list.DGEList <- function(
     .f = \(i) {
     edgeR::glmQLFit(
       y           = object,
-      design      = mm,
+      design      = design,
       prior.count = 3
       ) %>%
     edgeR::glmQLFTest(coef = i) %>%
@@ -137,12 +141,16 @@ create_deg_tables <- function(
 ){
   direction <- match.arg(arg = direction, choices=c("up", "down"))
 
-  purrr::map(deg_res, function(i){
+  purrr::map(deg_res, \(i){
     degs <-
-      i %>%
+      if (!tibble::is_tibble(i)){
         tibble::as_tibble(
+          x = i,
           rownames = "gene"
         )
+      } else {
+        degs <- i
+      }
 
     degs <-
       switch(
@@ -401,7 +409,7 @@ alt_summary <-
 
   total <- nrow(object)
 
-  tibble(
+  tibble::tibble(
     up = up,
     down = down,
     outlier = outlier,

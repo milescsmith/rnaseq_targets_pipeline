@@ -131,6 +131,9 @@ create_palettes <- function(
 #' @param favored_palettes A list in the form of `package::palette` present in
 #' \code{paletteer::palette_d_name}
 #'
+#' @importFrom dplyr filter slice_sample mutate pull
+#' @importFrom paletteer palettes_d_names
+#'
 #' @return
 #' @export
 #'
@@ -140,16 +143,25 @@ getRandomPalette <-
     n,
     favored_palettes = NULL
     ){
-    paletteer::palettes_d_names |>
+
+    possible_palettes <-
+      paletteer::palettes_d_names |>
       dplyr::filter(length >= n) |>
+      dplyr::mutate(pp = paste(package, palette, sep = "::"))
+
+    if (!is.null(favored_palettes)){
+      if (any(favored_palettes %in% possible_palettes[["pp"]])){
+        possible_palettes <-
+          dplyr::filter(
+            .data = possible_palettes,
+            pp %in% favored_palettes
+          )
+      }
+    }
+
+    possible_palettes |>
       dplyr::slice_sample(n = 1) |>
-      dplyr::mutate(pp = paste(package, palette, sep = "::")) |>
-      conditional_filter(
-        .condition = is.null(favored_palettes),
-        pp %in% favored_palettes,
-        .negate = TRUE
-        ) |>
-      pull(pp)
+      dplyr::pull(pp)
   }
 
 
@@ -164,11 +176,10 @@ getRandomPalette <-
 #' searching for appropriate color schemes.  Must be in the form of `package:palette`
 #' and must be present in the \code{paletteer::palettes_d_name} table
 #'
-#' @importFrom tidyselect eval_select
 #' @importFrom rlang enquo
 #' @importFrom dplyr select group_by mutate distinct ungroup
 #' @importFrom tidyr pivot_longer nest
-#' @importFrom tidyselect everything
+#' @importFrom tidyselect everything eval_select
 #' @importFrom purrr map mapchr pmap map2
 #' @importFrom paletteer paletteer_d
 #' @importFrom tibble deframe
@@ -207,7 +218,7 @@ generatePalettes <-
       tidyr::nest(data = all_values) |>
       dplyr::mutate(
         data         = purrr::map(data, unlist),
-        palette      = purrr::map_chr(len, getRandomPalette, favored_palettes = use_palettes),
+        palette      = purrr::map_chr(.x = len, .f = \(x) {getRandomPalette(n = x, favored_palettes = use_palettes)}),
         colors       = purrr::pmap(list(palette, len), paletteer::paletteer_d),
         named_colors = purrr::map2(colors, data, list_name)
       ) |>

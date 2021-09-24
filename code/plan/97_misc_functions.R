@@ -68,7 +68,7 @@ plot_dispersion_estimate.DESeqDataSet <- function(object, CV = FALSE){
     )
 
   disp_data <-
-    tibble(
+    tibble::tibble(
       px = px,
       py = pmax(py, ymin),
       outlier_shape = as_factor(outlier_shape),
@@ -404,6 +404,8 @@ make_clean_names <- function(string,
 #' \code{dplyr::filter}
 #' @param .negate If \code{TRUE}, filter if \code{.condition} is \code{FALSE}
 #'
+#' @importFrom dplyr filter
+#'
 #' @return the filtered (or not) data.frame/tibble
 #' @export
 #'
@@ -420,3 +422,55 @@ conditional_filter <- function(.data, .condition, ..., .negate = FALSE){
   }
 }
 
+
+#' @conditional_left_join
+#' @description Left join tables .x and .y if .condition is TRUE (or FALSE if
+#' `.negate == TRUE`), #' else, return .x
+#'
+#' @param .x Left-hand table
+#' @param .y Right-hand table
+#' @param .by Column on which to join
+#' @param .condition The condition that controls whether or not to join.
+#' Must evaulate to \code{TRUE} or \code{FALSE}
+#' @param .negate If \code{TRUE}, join if \code{.condition} is \code{FALSE}
+#'
+#' @return
+#' @export
+#'
+#' @examples
+conditional_left_join <- function(.x, .y, .by = NULL, .condition, .negate = FALSE){
+  if (ifelse(test = .negate, yes = isFALSE(.condition), no = isTRUE(.condition))){
+    dplyr::left_join(x = .x, y = .y, by = .by)
+  } else {
+    .x
+  }
+}
+
+findOrgDb <- function(target_species = "human"){
+  human_synonyms <-
+    c(
+      "human",
+      "humans",
+      "h. sapiens",
+      "hs",
+      "Hs",
+      "h sapiens",
+      "Homo sapiens",
+      "Homo sapiens sapiens"
+      )
+  mouse_synonyms <-
+    c(
+      "mouse",
+      "mice",
+      "Mus musculus",
+      "m. musculus",
+      "Mm",
+      "mm"
+    )
+  if (target_species %in% human_synonyms){
+    target_org <- "org.Hs.eg.db"
+  } else if(target_species %in% mouse_synonyms){
+    target_org <- "org.Mm.eg.db"
+  }
+  target_org
+}

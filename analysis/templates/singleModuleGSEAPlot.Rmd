@@ -1,0 +1,7 @@
+
+```{r, fig.height=3.5, fig.width=6}
+groupedModuleGSEAPlots(
+  dataset     = {{DATASET}},
+  module_list = {{BIN}}
+)
+```
