@@ -245,15 +245,17 @@ extract_de_genes <- function(
   purrr::map(
     .x = results,
     .f = \(i){
+      if (!tibble::is_tibble(i)){
+        i <- tibble::as_tibble(rownames = "gene")
+      }
       i %>%
-        tibble::as_tibble(rownames = "gene") %>%
         dplyr::filter(padj < 0.05) %>%
         dplyr::filter(abs(log2FoldChange) >= 0.5) %>%
         dplyr::pull(gene)
       }) %>%
-  rlang::set_names(
-    nm = comparison_list
-  )
+    rlang::set_names(
+      nm = comparison_list
+      )
 }
 
 

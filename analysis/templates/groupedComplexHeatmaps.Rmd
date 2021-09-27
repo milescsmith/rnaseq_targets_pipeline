@@ -9,8 +9,7 @@ suppressMessages(
       row_annotation      = {{ROW_ANNOTATION}},
       col_grouping        = "{{COL_GROUPING}}",
       col_annotation      = {{COL_ANNOTATION}},
-      scale_exprs         = {{SCALE}},
-      scale               = "column"
+      scale_exprs         = {{SCALE}}
   )
 )
 ```

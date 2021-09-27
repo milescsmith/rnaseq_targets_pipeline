@@ -1,0 +1,7 @@
+
+```{r wgcna_gsea_plot_{{MODULE_GROUP}}_{{GROUP}}, fig.height=9, fig.width=9}
+plotRFClassifier(
+  rf_fit = module_groups[['{{MODULE_GROUP}}']][['{{GROUP}}']][['model']],
+  classification_var = '{{CLASS_VAR}}'
+  )
+```

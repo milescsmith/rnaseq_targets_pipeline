@@ -12,11 +12,11 @@ title: "`r params$set_title`"
 author: "`r params$set_author`"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
-  html_document:
-    highlight: "pygments"
-    toc: TRUE
-    toc_depth: 3
-    toc_float: TRUE
+  html_document: 
+    highlight: pygments
+    toc: yes
+    toc_float: yes
+    keep_md: yes
   pdf_document:
     highlight: "pygments"
     toc: TRUE
@@ -41,26 +41,33 @@ always_allow_html: true
 
 ```{r setup, include=FALSE}
 options(width = 1200)
-knitr::opts_chunk$set(echo = FALSE, root.dir = here::here(), warning=FALSE, message=FALSE)
+knitr::opts_chunk$set(echo = FALSE, root.dir = here::here(), warning = FALSE, message=FALSE)
 ggplot2::theme_set(ggpubr::theme_pubr())
-comparison_grouping_variable <- params[["comparison_grouping_variable"]]
+comparison_grouping_variable <-
+  project_params[["comparison_grouping_variable"]]
 diffused_comparison <- rlang::sym(comparison_grouping_variable)
 diffused_comparison <- rlang::enquo(diffused_comparison)
-source("code/plan/14_report.funcs.R")
+source("code/project_parameters.R")
+source("code/plan/14_report_funcs.R")
 ```
 
 ```{r}
-targets::tar_load(dataset_with_scores)
+targets::tar_load(study_md)
 targets::tar_load(res)
+
+if (!is.null(project_params[["heatmap_row_annotations"]])){
+  heatmap_row_annotations <- list(project_params[["heatmap_row_annotations"]])
+} else{
+  heatmap_row_annotations <- list(colnames(dplyr::select(study_md, where(is.factor))))
+}
 ```
 
 ```{r study_group_table}
-md <- getMetaData(dataset_with_scores)
-if (knitr::is_html_output()){
-  md %>%
-    janitor::tabyl(comparison_grouping_variable) %>%
-    janitor::adorn_pct_formatting(digits = 2) %>%
-    knitr::kable() %>%
+if (knitr::is_html_output()) {
+  study_md |>
+    janitor::tabyl(comparison_grouping_variable) |>
+    janitor::adorn_pct_formatting(digits = 2) |>
+    knitr::kable() |>
     kableExtra::kable_styling(
       bootstrap_options =
         c(
@@ -70,37 +77,36 @@ if (knitr::is_html_output()){
           "responsive"
           ),
       full_width = FALSE
-      ) %>%
+      ) |>
     kableExtra::column_spec(
       1,
       bold = TRUE,
       border_right = TRUE,
       width = "10em"
-      ) %>%
+      ) |>
     kableExtra::column_spec(
       2,
       border_right = TRUE,
       width = "10em"
-      ) %>%
+      ) |>
     kableExtra::column_spec(
       3,
       border_right = FALSE,
       width = "10em"
       )
 } else if(knitr::is_latex_output()){
-  md %>%
-    janitor::tabyl(comparison_grouping_variable) %>%
+  study_md |>
+    janitor::tabyl(comparison_grouping_variable) |>
     dplyr::rename(
       `Disease classification` = comparison_grouping_variable,
       Number = n,
       Percent = percent
-      ) %>%
-    flextable::qflextable() %>%
+      ) |>
+    flextable::qflextable() |>
     flextable::set_formatter(
       Percent = function(x) sprintf("%.01f", x*100)
     )
 }
-
 ```
 
 \newpage
@@ -109,11 +115,11 @@ if (knitr::is_html_output()){
 
 ```{r DE_table}
 results_tbl <-
-  res %>% 
+  res |>
     # purrr::map(alt_summary, lfcThreshold = params[["lfcThreshold"]]) %>%
-  purrr::map(alt_summary, lfcThreshold = 0.1) %>%
-    tibble::enframe() %>%
-    tidyr::unnest(cols = c(value)) %>%
+  purrr::map(alt_summary, lfcThreshold = 0.1) |>
+    tibble::enframe() |>
+    tidyr::unnest(cols = c(value)) |>
     dplyr::mutate(
       `up %` = round(
         100*(as.integer(up)/as.integer(total)),
@@ -128,13 +134,13 @@ results_tbl <-
         digits = 2
         ),
       name = stringr::str_replace_all(
-        string = name, 
+        string = name,
         pattern = "_",
         replacement = " "
         )
     )
 
-if (knitr::is_html_output()){
+if (knitr::is_html_output()) {
   dplyr::select(
     .data = results_tbl,
     comparison = name,
@@ -146,7 +152,7 @@ if (knitr::is_html_output()){
     `low counts` = lowcounts,
     `low counts %`
   ) %>%
-  knitr::kable() %>%
+  knitr::kable() |>
   kableExtra::kable_styling(
     bootstrap_options =
       c(
@@ -173,14 +179,14 @@ if (knitr::is_html_output()){
     `Mean count\ncutoff` = ft,
     `# Low\ncounts` = lowcounts,
     `% Low\ncounts` = `low counts %`
-    ) %>%
-  flextable::qflextable() %>%
+    ) |>
+  flextable::qflextable() |>
   flextable::set_formatter(
     `% Up\nregulated` = \(x) sprintf("%.02f", x),
     `% Down\nregulated` = \(x) sprintf("%.02f", x),
     `% Low\ncounts` = \(x) sprintf("%.02f", x)
-  ) %>%
-  flextable::bold(part = "header") %>%
+  ) |>
+  flextable::bold(part = "header") |>
   flextable::align(
     align = "left",
     part = "body",
@@ -200,20 +206,20 @@ targets::tar_load(down_tables)
 ```{r 25_top_down_DE_tbl, echo = FALSE, results='asis'}
 if (knitr::is_html_output()){
   purrr::iwalk(
-    .x = down_tables, 
+    .x = down_tables,
     .f = \(dtbl, dtbl_name)
     process_deg_kable(
         deg_table = dtbl,
         deg_table_name = dtbl_name,
         .color = "tomato",
         .direction = "down"
-      ) %>%
+      ) |>
       print()
   )
 } else if (knitr::is_latex_output()){
   purrr::iwalk(
     .x = down_tables,
-    .f = \(dtbl, dtbl_name) 
+    .f = \(dtbl, dtbl_name)
       process_deg_flextable(dtbl, dtbl_name) %>%
       knitr::knit_print() %>%
       cat()
@@ -237,15 +243,15 @@ if (knitr::is_html_output()){
         deg_table_name = utbl_name,
         .color = "lightgreen",
         .direction = "up"
-      ) %>%
+      ) |>
       print()
   )
 } else if (knitr::is_latex_output()){
   purrr::iwalk(
     .x = up_tables,
     .f = \(utbl, utbl_name)
-      process_deg_flextable(utbl, utbl_name) %>%
-      knitr::knit_print() %>% 
+      process_deg_flextable(utbl, utbl_name) |>
+      knitr::knit_print() |>
       cat()
   )
 }
@@ -253,1633 +259,453 @@ if (knitr::is_html_output()){
 
 \newpage
 
-## Expression of top class DE genes by class {.tabset .tabset-fade .tabset-pills}
-
 ```{r}
 targets::tar_load(deg_class)
-targets::tar_load(final_md)
 targets::tar_load(vsc_exprs)
 targets::tar_load(annotation_info)
 targets::tar_load(group_pal)
 targets::tar_load(up_tables)
 targets::tar_load(down_tables)
+
+comparison_groups <- project_params[["comparison_groups"]]
+deg_comparisons <- names(up_tables)
+
+groupings <- list(
+  project_params[["comparison_grouping_variable"]],
+  "cluster",
+  "hierarchical_clustering"
+)
+
+groupings <- rlang::set_names(x = groupings, nm = groupings)
 ```
 
-### Sorted by responder status
+<!-- TODO: This is kind of dumb for the moment.  It only really does one group comparison, that is we only calculate -->
+<!-- say the comparisons for each experimental group within Disease Class, not within Disease Class and within cluster and within race -->
+<!-- but a lot more will have to change before we can do anything with that here -->
+<!-- TODO: Add GSEA of top DEGs -->
 
 ```{r top_class_DE_disease_sort, fig.width=12, fig.height=9}
-deg_class_tbl <-
-  tibble::as_tibble(
-    deg_class,
-    rownames = "gene"
-    )
-
-comparisons = unique(deg_class_tbl[["comparison"]])
-
-final_md_tbl <-
-  final_md %>%
-  tibble::as_tibble(rownames = "subject") %>%
-  dplyr::filter(subject %in% colnames(vsc_exprs))
-
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-comparison_names <- union(names(up_tables), names(down_tables))
-
-for (i in comparison_names){
-  #comparison_genes <- dplyr::filter(deg_class_tbl, comparison == i) %>% dplyr::pull(gene)
-  comparison_genes <-
-    dplyr::pull(
-      dplyr::bind_rows(
-        up_tables[[i]],
-        down_tables[[i]]),
-      gene
+deg_heatmaps <-
+  purrr::map(deg_comparisons, \(comparison_group){
+    header <-
+      knitr::knit_expand(
+        text = "\n## Expression of top DE genes for {{GROUPING_VAR}}: {{COMPARISON_GROUPING}} {.tabset .tabset-fade .tabset-pills}",
+        COMPARISON_GROUPING = comparison_group,
+        GROUPING_VAR        = project_params[["comparison_grouping_variable"]]
       )
-  
-  people <-
-    dplyr::filter(
-      .data = final_md_tbl,
-      {{diffused_comparison}} %in% stringr::str_split(i, "_vs_", simplify = TRUE)) %>%
-    dplyr::pull(subject)
-  
-  matrix_to_plot <- t(vsc_exprs)[people,comparison_genes]
-  
-  sample_disease_order_info <-
-    annotation_info %>%
-    tibble::as_tibble(rownames = "subject") %>%
-    dplyr::filter(subject %in% people) %>%
-    dplyr::arrange({{diffused_comparison}})
-  
-  sample_disease_order <-
-    sample_disease_order_info %>%
-    dplyr::pull(subject)
-  
-  sample_disease_order_count <-
-    sample_disease_order_info %>%
-    dplyr::count({{diffused_comparison}}) %>%
-    dplyr::pull(n) %>%
-    purrr::accumulate(sum)
-    
-  matrix_to_plot[
-    sample_disease_order,
-    matrixStats::colVars(matrix_to_plot) > 1e-10
-    ] %>% 
-    scale() %>%
-      pheatmap::pheatmap(
-        #scale = 'column',
-        main = i,
-        fontsize = 9,
-        fontsize_col = 9,
-        cluster_rows = FALSE,
-        show_rownames = FALSE,
-        annotation_row = annotation_info[sample_disease_order, ],
-        annotation_colors = group_pal,
-        angle_col = "315",
-        breaks = zscore_range,
-        color = viridisLite::viridis(n = length(zscore_range), option = "D"),
-        border_color = NA,
-        gaps_row = sample_disease_order_count
-      )
-  }
-```
-
-### Sorted by cluster
-
-```{r top_class_DE_cluster_sort, fig.width=12, fig.height=9}
-
-deg_class_tbl <- as_tibble(deg_class, rownames = "gene")
-comparisons = unique(deg_class_tbl[["comparison"]])
-
-final_md_tbl <- final_md %>% as_tibble(rownames = "subject") %>% dplyr::filter(subject %in% colnames(vsc_exprs))
-
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-comparison_names <- union(names(up_tables), names(down_tables))
-
-for (i in comparison_names){
-  #comparison_genes <- dplyr::filter(deg_class_tbl, comparison == i) %>% dplyr::pull(gene)
-  comparison_genes <- dplyr::pull(bind_rows(up_tables[[i]], down_tables[[i]]), gene)
-  
-  people <-
-    dplyr::filter(
-      .data = final_md_tbl,
-      {{diffused_comparison}} %in% stringr::str_split(i, "_vs_", simplify = TRUE)) %>%
-    dplyr::pull(subject)
-  
-  matrix_to_plot <- t(vsc_exprs)[people,comparison_genes]
-  
-  sample_cluster_order_info <-
-    annotation_info %>%
-    as_tibble(rownames = "subject") %>%
-    dplyr::filter(subject %in% people) %>%
-    dplyr::arrange(cluster)
-  
-  sample_cluster_order <-
-    sample_cluster_order_info %>%
-    dplyr::pull(subject)
-  
-  sample_cluster_order_count <-
-    sample_cluster_order_info %>%
-    dplyr::count(cluster) %>%
-    dplyr::pull(n) %>%
-    purrr::accumulate(sum)
-  
-  matrix_to_plot[
-    sample_cluster_order,
-    colVars(matrix_to_plot) > 1e-10
-    ] %>% 
-      pheatmap::pheatmap(
-        scale = 'column',
-        main = i,
-        fontsize = 9,
-        fontsize_col = 9,
-        cluster_rows = FALSE,
-        show_rownames = FALSE,
-        annotation_row = annotation_info,
-        annotation_colors = group_pal,
-        angle_col = 315,
-        breaks = zscore_range,
-        color = viridis(n = length(zscore_range), option = "D"),
-        border_color = NA,
-        gaps_row = sample_cluster_order_count
-      )
-  }
-```
-
-### Sorted by hierarchical clustering
-
-```{r top_class_DE_hierarchical_sort, fig.width=12, fig.height=9}
-deg_class_tbl <- as_tibble(deg_class, rownames = "gene")
-comparisons = unique(deg_class_tbl$comparison)
-
-final_md_tbl <- final_md |> tibble::as_tibble(rownames = "subject") |> dplyr::filter(subject %in% colnames(vsc_exprs))
-
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-comparison_names <- union(names(up_tables), names(down_tables))
-
-for (i in comparison_names){
-  #comparison_genes <- dplyr::filter(deg_class_tbl, comparison == i) %>% dplyr::pull(gene)
-  comparison_genes <- dplyr::pull(bind_rows(up_tables[[i]], down_tables[[i]]), gene)
-  
-  people <-
-    dplyr::filter(
-      .data = final_md_tbl,
-      {{diffused_comparison}} %in% stringr::str_split(i, "_vs_", simplify = TRUE)) %>%
-    dplyr::pull(subject)
-  
-  matrix_to_plot <- t(vsc_exprs)[people,comparison_genes]
-  
-  matrix_to_plot[,
-    colVars(matrix_to_plot) > 1e-10
-    ] %>% 
-      pheatmap(
-        scale = 'column',
-        main = i,
-        fontsize = 9,
-        fontsize_col = 9,
-        cluster_rows = TRUE,
-        show_rownames = FALSE,
-        annotation_row = annotation_info,
-        annotation_colors = group_pal,
-        angle_col = 315,
-        breaks = zscore_range,
-        color = viridis(n = length(zscore_range), option = "D"),
-        border_color = NA
-      )
-  }
-```
-
-\newpage
-
-## Expression of all top DE genes {.tabset .tabset-fade .tabset-pills}
-
-```{r}
-tar_load(deg_means)
-```
-
-```{r Expression_of_all_top_DE_genes, fig.width=12, fig.height=9}
-
-#### sort by disease ####
-sample_disease_order_info <- 
-  annotation_info %>%
-  as_tibble(rownames = "subject") %>%
-  dplyr::arrange({{diffused_comparison}})
-
-sample_disease_order <-
-  sample_disease_order_info %>%
-  dplyr::pull(subject)
-
-sample_disease_order_count <-
-  sample_disease_order_info %>%
-  dplyr::count({{diffused_comparison}}) %>%
-  dplyr::pull(n) %>%
-  purrr::accumulate(sum)
-
-
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-
-if (length(colnames(deg_means)) >= 2){
-column_cluster <- TRUE
-} else {
-column_cluster <- FALSE
-}
-```
-
-### Sorted by responder status
-
-```{r Expression_of_all_top_DE_genes_disease_sort, fig.width=12, fig.height=9}
-t(vsc_exprs)[sample_disease_order,colnames(deg_means)] %>% 
-    pheatmap(
-      scale = 'column',
-      fontsize = 9,
-      fontsize_col = 6,
-      show_rownames = FALSE,
-      annotation_row = annotation_info,
-      annotation_colors = group_pal,
-      angle_col = 315,
-      breaks = zscore_range,
-      cluster_rows = FALSE,
-      cluster_cols = column_cluster,
-      color = viridis(n = length(zscore_range)-1, option = "D"),
-      gaps_row = sample_disease_order_count,
-      border_color = NA
-      )
-```
-
-### Sorted by hierarchical clustering
-
-```{r Expression_of_all_top_DE_genes_auto_sort, fig.width=12, fig.height=9}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-
-
-t(vsc_exprs)[,colnames(deg_means)] %>% 
-    pheatmap(
-      scale = 'column',
-      fontsize = 9,
-      fontsize_col = 6,
-      show_rownames = FALSE,
-      annotation_row = annotation_info,
-      annotation_colors = group_pal,
-      angle_col = 315,
-      breaks = zscore_range,
-      cluster_rows = TRUE,
-      cluster_cols = column_cluster,
-      color = viridis(n = length(zscore_range)-1, option = "D"),
-      border_color = NA
-      )
+    each_comparison <-
+      purrr::map(groupings, \(group){
+        subheader <-
+          knitr::knit_expand(
+            text = "\n### Sorted by {{SORTING}} \n",
+            SORTING = group
+          )
+        dgehm <-
+          knitr::knit_expand(
+            file = here::here("analysis/templates/comparisonHeatmaps.Rmd"),
+            COMPARISON     = comparison_group,
+            UPTABLE        = paste0("up_tables[['", comparison_group, "']]"),
+            DOWNTABLE      = paste0("down_tables[['", comparison_group, "']]"),
+            DATASET        = "vsc_exprs",
+            METADATA       = "study_md",
+            COMPARISON_GROUP = project_params[["comparison_grouping_variable"]],
+            GROUPING       = group,
+            PALETTES       = "group_pal",
+            ROW_ANNOTATION = heatmap_row_annotations,
+            FIG_WIDTH      = 12,
+            FIG_HEIGHT     = 9
+          )
+        c(subheader, unlist(dgehm))
+      })
+    c(header, unlist(each_comparison))
+  })
 ```
 
 \newpage
 
 ## Volcano plot of gene expression
 
-```{r Volcano_plot_of_gene_expression, fig.height=6, fig.width=9}
-
-inverse_format <- function() {
-  function(x) format(-x,) 
-}
-
-for(k in seq_along(res)){
-
-    volcano_data <- 
-      res[[k]] %>%
-      as_tibble(rownames = "gene") %>%
-      dplyr::mutate(sig = case_when(
-        padj > 0.01 ~ "insig",
-        padj < 0.01 & log2FoldChange <= -0.25 ~ "down",
-        padj < 0.01 & log2FoldChange >= 0.25 ~ "up",
-        padj < 0.01 & between(log2FoldChange, -1, 1) ~ "ignore",
-        is.na(padj) ~ "insig")
-      )
-
-    volcano_data_up =
-      top_n(
-        x = dplyr::filter(
-          .data = volcano_data,
-          sig == "up"
-          ),
-        n = 20, 
-        wt = log2FoldChange
-        ) %>%
-      dplyr::mutate(
-        sig = sig %>%
-          as_factor() %>%
-          fct_recode(
-            "Up-regulated" = "up"
-            )
-        )
-    volcano_data_down = 
-        top_n(
-        x = dplyr::filter(
-          .data = volcano_data,
-          sig == "down"
-          ),
-        n = -20,
-        wt = log2FoldChange
-        ) %>%
-      dplyr::mutate(
-        sig = sig %>%
-          as_factor() %>%
-          fct_recode(
-            "Down-regulated" = "down"
-            )
-        )
-
-  vp <-
-    volcano_data %>%
-      dplyr::mutate(
-        sig = sig %>%
-          as_factor() %>%
-          fct_recode(
-            "p > 0.05" = "insig",
-            "Up-regulated" = "up",
-            "Down-regulated" = "down"
-            )
-        ) %>%
-      dplyr::filter(sig != "ignore") %>%
-      ggplot(
-        aes(
-          x = log2FoldChange,
-          y = (1/padj),
-          color = sig
+```{r Volcano_plot_of_gene_expression, fig.height=12, fig.width=10}
+purrr::walk2(
+  .x = res,
+  .y = names(res),
+  .f = \(x, y)
+    EnhancedVolcano::EnhancedVolcano(
+      toptable = x,
+      lab      = x[["gene"]],
+      x        = "log2FoldChange",
+      y        = "padj",
+      title    =
+        stringr::str_split_fixed(
+          string  = y,
+          pattern = "_",
+          n       = 2) |>
+        magrittr::extract2(1),
+      subtitle =
+        stringr::str_split_fixed(
+          string  = y,
+          pattern = "_",
+          n       = 2) |>
+        magrittr::extract2(2) |>
+        stringr::str_replace_all(
+          pattern     = "_",
+          replacement = " "
         ),
-        alpha = 0.25
-      ) +
-      geom_point() +
-      geom_text_repel(
-        data = volcano_data_up,
-        aes(
-          x = log2FoldChange,
-          y = 1/padj,
-          label = gene
-          ),
-        show.legend = FALSE
-      ) +
-      geom_text_repel(
-        data = volcano_data_down,
-        aes(
-          x = log2FoldChange,
-          y = 1/padj,
-          label = gene
-        ),
-        show.legend = FALSE
-      ) +
-      scale_y_log10(
-        labels = inverse_format()
-      ) +
-      scale_color_manual(values = c('grey',"blue",'red')) +
-      labs(x = "Log 2 fold change",
-           y = "Adjusted p-value",
-           title = names(res)[[k]])
-
-  print(vp)
-}
+      caption = ""
+    ) |> print()
+  )
 ```
 
 \newpage
-
-## Expression of selected interferon-stimulated genes {.tabset .tabset-fade .tabset-pills}
-
 ```{r Expression_of_selected_interferon-stimulated genes, fig.height=6, fig.width=9}
-tar_load(ISGs)
-```
+targets::tar_load(ISGs)
+targets::tar_load(module_ISGs)
 
-### Sorted by responder status
+IFN_module_genes <- rownames(module_ISGs)
 
-```{r Expression_of_ISGs_disease_sort, fig.width=12, fig.height=9}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-t(vsc_exprs)[sample_disease_order,ISGs] %>%
-    pheatmap(
-      scale = 'column',
-      fontsize = 8,
-      show_rownames = FALSE,
-      annotation_row = annotation_info,
-      annotation_colors = group_pal,
-      angle_col = 315,
-      breaks = zscore_range,
-      cluster_rows = FALSE,
-      color = viridis(n = length(zscore_range)-1, option = "D"),
-      gaps_row = sample_disease_order_count,
-      border_color = NA)
-```
+module_groups = 
+  list(
+    "selected interferon-stimulated genes" = ISGs,
+    "individual genes in the M1.2, M3.4, and M5.12 gene modules" = IFN_module_genes
+)
 
-### Sorted by hierarchical clustering
-
-```{r Expression_of_ISGs_auto_sort, fig.width=12, fig.height=9}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-t(vsc_exprs)[,ISGs] %>%
-    pheatmap(
-      scale = 'column',
-      fontsize = 8,
-      show_rownames = FALSE,
-      annotation_row = annotation_info,
-      annotation_colors = group_pal,
-      angle_col = 315,
-      breaks = zscore_range,
-      color = viridis(n = length(zscore_range)-1, option = "D"),
-      cluster_rows = TRUE,
-      border_color = NA)
-```
-
-\newpage
-
-## Expression of individual genes in the M1.2, M3.4, and M5.12 gene modules {.tabset .tabset-fade .tabset-pills}
-
-```{r Expression_of_individual_genes_in_the_M1.2, M3.4, and M5.12 gene modules, fig.height=6, fig.width=9}
-tar_load(module_ISGs)
-```
-
-### Sorted by responder status
-
-```{r module_ISGs_disease_sort, fig.width=12, fig.height=9}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-t(vsc_exprs)[sample_disease_order,(dplyr::arrange(as_tibble(module_ISGs, rownames = "gene"), module)$gene)] %>%
-  pheatmap(
-    scale = 'column',
-    fontsize = 6,
-    show_rownames = FALSE,
-    annotation_row = annotation_info,
-    annotation_col = module_ISGs,
-    annotation_colors = group_pal,
-    cluster_cols = FALSE,
-    cluster_rows = FALSE,
-    angle_col = 315,
-    breaks = zscore_range,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    gaps_row = sample_disease_order_count,
-    border_color = NA)
-```
-
-### Sorted by hierarchical clustering
-
-```{r module_ISGs_auto_sort, fig.width=12, fig.height=9}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-t(vsc_exprs)[sample_disease_order,(dplyr::arrange(as_tibble(module_ISGs, rownames = "gene"), module)$gene)] %>%
-  pheatmap(
-    scale = 'column',
-    fontsize = 6,
-    show_rownames = FALSE,
-    annotation_row = annotation_info,
-    annotation_col = module_ISGs,
-    annotation_colors = group_pal,
-    cluster_cols = FALSE,
-    cluster_rows = TRUE,
-    angle_col = 315,
-    breaks = zscore_range,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    border_color = NA
+row_groupings  <-
+  list(
+    project_params[["comparison_grouping_variable"]],
+    "cluster",
+    "hierarchical clustering"
     )
+
+row_groupings <- rlang::set_names(x = row_groupings, nm = row_groupings)
+group_pal2 <- c(group_pal, generatePalettes(module_ISGs, "module"))
+```
+
+```{r, echo=FALSE, results='asis'}
+groups <-
+  purrr::imap(module_groups, \(module, title){
+    header <-
+      knitr::knit_expand(
+        text     = "\n\n## Expression of {{MODULE_GROUP}} {.tabset .tabset-fade .tabset-pills}\n",
+        MODULE_GROUP = title
+      )
+    each_comparison <-
+      purrr::map(row_groupings, \(group){
+        subheader <-
+          knitr::knit_expand(
+            text    = "\n\n### Sorted by {{SORTING}}\n\n",
+            SORTING = group
+          )
+        heatmap <-
+          knitr::knit_expand(
+            file           = here::here("analysis/templates/groupedComplexHeatmaps.Rmd"),
+            DATASET        = "vsc_exprs",
+            VARIABLE_LIST  = list(module),
+            METADATA       = "study_md",
+            PALETTES       = "group_pal2",
+            ROW_GROUPING   = group,
+            ROW_ANNOTATION = heatmap_row_annotations,
+            COL_GROUPING   = "none",
+            COL_ANNOTATION = 'tibble::as_tibble(module_ISGs, rownames="obsv")',
+            FIG_WIDTH       = min(((1*length(module)) + 3.84), 12),
+            FIG_HEIGHT      = 6,
+            SCALE          = "TRUE"
+          )
+        c(subheader, heatmap)
+      })
+    c(header, unlist(each_comparison))
+  })
+res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(res, sep = '\n')
 ```
 
 \newpage
 
 # Sample Clustering
 
-The eigenvalues for the first 100 principal components were used to calculate a random forest-based adjacentcy matrix, which was in turn used to calculate the gap statistic to determine the optimal *k*-clusters.
+The eigenvalues for the first 100 principal components were used to calculate a random forest-based adjacency matrix, which was in turn used to calculate the gap statistic to determine the optimal *k*-clusters.
 
-```{r Sample_Clustering_chart}
-annotation_info %>%
-  dplyr::mutate(cluster = as_factor(cluster)) %>%
-  group_by({{diffused_comparison}},
-           cluster) %>%
-  summarise(n = n()) %>%
-  pivot_wider(names_from = cluster,
-              values_from = n) %>%
+```{r Sample_Clustering_chart, fig.height=6, fig.width=6}
+annotation_info |>
+  dplyr::count(
+    {{diffused_comparison}},
+    cluster
+    ) |>
+  tidyr::pivot_wider(
+    names_from = cluster,
+    values_from = n
+    ) |>
   DT::datatable()
 
-annotation_info %>%
-  dplyr::mutate(cluster = as_factor(cluster)) %>%
-  dplyr::select({{diffused_comparison}}, cluster) %>%
-  group_by({{diffused_comparison}}) %>%
-  dplyr::mutate(total_disease = n()) %>%
-  dplyr::ungroup() %>%
-  group_by({{diffused_comparison}}, cluster) %>%
-  dplyr::mutate(total_cluster_disease = n(),
-         freq = total_cluster_disease/total_disease,
-         cluster = as_factor(cluster)) %>%
-  distinct() %>%
-  ggplot(aes(
-    x = {{diffused_comparison}},
-    y = freq,
-    group = cluster,
-    fill = cluster
-  )) +
-  geom_col() +
-  labs(y = "Proportion of disease class in cluster") +
-  scale_fill_manual(values = group_pal$cluster) +
-  theme_pubr()
+annotation_info |>
+  tibble::as_tibble() |>
+  dplyr::select(
+    {{diffused_comparison}},
+    cluster
+  ) |>
+  dplyr::add_count({{diffused_comparison}}, name = "total") |>
+  dplyr::add_count({{diffused_comparison}}, cluster, name = "total_cluster") |>
+  dplyr::mutate(freq = total_cluster/total) |>
+  dplyr::distinct() |>
+  ggplot2::ggplot(
+    ggplot2::aes(
+      x = {{diffused_comparison}},
+      y = freq,
+      group = cluster,
+      fill = cluster
+      )
+    ) +
+  ggplot2::geom_col() +
+  ggplot2::labs(y = glue::glue("Proportion of {project_params[['comparison_grouping_variable']]} in cluster")) +
+  ggplot2::scale_fill_manual(values = group_pal$cluster) +
+  ggpubr::theme_pubr()
 ```
 
 \newpage
 
 # Clustering and variation of samples in reduced dimensional space {.tabset .tabset-fade .tabset-pills}
 
-## PCA {.tabset .tabset-fade .tabset-pills}
+```{r setup_reductions, echo = FALSE}
+targets::tar_load(pca_results)
+targets::tar_load(umap_results)
 
-```{r}
-tar_load(pca_results)
-```
-
-\newpage
-
-### PCA by disease classification
-
-```{r PCA_by_groupification, fig.width=12, fig.height=6}
-p1 <-
-  ggplot(
-    data = pca_results,
-    aes(
-      x = PC1,
-      y = PC2,
-      fill = {{diffused_comparison}},
-      line = 1
-    ),
-    shape = 1
-  ) +
-    geom_point(
-      shape = 21,
-      colour = "black",
-      size = 2.5,
-      stroke = 0.5,
-      alpha = 0.6
-    ) +
-    scale_fill_brewer(palette = "Set1") +
-    theme_pubr() +
-    theme(legend.position = "none")
-
-p2 <-
-  ggplot(
-    data = pca_results,
-    aes(
-      x = PC1,
-      y = PC2,
-      fill = {{diffused_comparison}},
-      line = 1
-      ), shape = 1
-    ) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2.5,
-    stroke = 0.5,
-    alpha = 0.6
-    ) +
-  scale_fill_brewer(palette = "Set1") +
-  scale_color_brewer(palette = "Set1") +
-  theme_pubr() +
-  geom_mark_ellipse(aes(fill = {{diffused_comparison}},
-                        color = {{diffused_comparison}}),
-                    alpha = 0.05
-                    ) +
-  theme(legend.position = "bottom")
-
-legend <- get_legend(p2)
-
-plot_grid(
-  plot_grid(
-    p1 + theme(legend.position = "none"),
-    p2 + theme(legend.position = "none")
-    ),
-  legend,
-  nrow = 2,
-  rel_heights = c(1, .2)
+reductions = list(
+  PCA  = "pca",
+  UMAP = "umap"
 )
-```
 
-\newpage
-
-### PCA by plate
-
-```{r PCA_by_plate, fig.width=12, fig.height=7}
-p1 <- ggplot(
-  data = pca_results,
-  mapping = aes(
-    x = PC1,
-    y = PC2,
-    fill = run_id
-    )
-  ) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2.5,
-    stroke = 0.5,
-    alpha = 0.6
-    ) +
-  labs(color = "run_id") +
-  scale_color_paletteer_d("ggsci::default_igv") +
-  scale_fill_paletteer_d("ggsci::default_igv")
-
-p2 <- ggplot(
-  data = pca_results,
-  mapping = aes(
-    x = PC1,
-    y = PC2,
-    fill = run_id
-    )
-  ) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2.5,
-    stroke = 0.5,
-    alpha = 0.6
-    ) +
-  labs(color = "run_id") +
-  geom_mark_ellipse(aes(
-    fill = run_id,
-    color = run_id
-    ),
-    alpha = 0.05
-    ) +
-  scale_color_paletteer_d("ggsci::default_igv") +
-  scale_fill_paletteer_d("ggsci::default_igv") +
-  guides(color = guide_legend(nrow = 4)) +
-  theme(legend.position = "bottom")
-
-legend <- get_legend(p2)
-
-plot_grid(
-  plot_grid(
-    p1 + theme(legend.position = "none"),
-    p2 + theme(legend.position = "none")
-    ),
-  legend,
-  nrow = 2,
-  rel_heights = c(1, .2)
-)
-```
-
-\newpage
-
-### PCA by ethnicity
-
-```{r PCA_by_ethnicity, fig.width=12, fig.height=6}
-p1 <-
-  pca_results %>%
-  dplyr::select(
-    PC1,
-    PC2,
-    sample_name,
-    ethnicity
-    ) %>%
-  dplyr::mutate(ethnicity = as_factor(ethnicity)) %>%
-  ggplot(
-    aes(
-      x = PC1,
-      y = PC2,
-      fill = ethnicity,
-      line = 1
-    ),
-    shape = 1
-  ) +
-    geom_point(
-      shape = 21,
-      colour = "black",
-      size = 2.5,
-      stroke = 0.5,
-      alpha = 0.6
-    ) +
-    scale_fill_paletteer_d(palette = "ggthemes::calc") +
-    theme_pubr() +
-    theme(legend.position = "none")
-
-p2 <-
-  pca_results %>%
-  dplyr::select(PC1, PC2, sample_name, ethnicity) %>%
-  dplyr::mutate(ethnicity = as_factor(ethnicity)) %>%
-  ggplot(
-    aes(
-      x = PC1,
-      y = PC2,
-      fill = ethnicity,
-      line = 1
-      ), shape = 1
-    ) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2.5,
-    stroke = 0.5,
-    alpha = 0.6
-    ) +
-  scale_fill_paletteer_d(palette = "ggthemes::calc") +
-  scale_color_paletteer_d(palette = "ggthemes::calc") +
-  theme_pubr() +
-  geom_mark_ellipse(aes(fill = ethnicity,
-                        color = ethnicity),
-                    alpha = 0.05
-                    ) +
-  theme(legend.position = "bottom")
-
-legend <- get_legend(p2)
-
-plot_grid(
-  plot_grid(
-    p1 + theme(legend.position = "none"),
-    p2 + theme(legend.position = "none")
-    ),
-  legend,
-  nrow = 2,
-  rel_heights = c(1, .2)
-)
-```
-
-\newpage
-
-<!-- ### 3D PCA colored by K-means cluster -->
-
-<!-- ```{r 3D_PCA_colored_by_K-means cluster} -->
-
-<!-- pca_results %>% -->
-
-<!--   plot_ly( -->
-
-<!--     x = ~PC1, -->
-
-<!--     y = ~PC2, -->
-
-<!--     z = ~PC3, -->
-
-<!--     colors = group_pal$cluster -->
-
-<!--   ) %>% -->
-
-<!--   add_markers( -->
-
-<!--     text = str_glue("Sample: {pca_results$sample_name}<br>Classification: {pca_results[[comparison_grouping_variable]]}<br>Ethnicity {pca_results$ethnicity}<br>Cluster: {pca_results$cluster}<br>Sex: {pca_results$sex}<br>Plate: {pca_results$run_id}"), -->
-
-<!--     color = ~cluster, -->
-
-<!--     size = 2.5, -->
-
-<!--     alpha = 0.9, -->
-
-<!--     hovertemplate = "%{text}", -->
-
-<!--     marker = list( -->
-
-<!--       size = 3, -->
-
-<!--       line = list( -->
-
-<!--         color = 'rgba(0, 0, 0, .8)', -->
-
-<!--         width = 1.5 -->
-
-<!--       ) -->
-
-<!--     ) -->
-
-<!--   ) -->
-
-<!-- ``` -->
-
-\newpage
-
-## UMAP {.tabset .tabset-fade .tabset-pills}
-
-```{r}
-tar_load(umap_results)
-```
-
-### UMAP by disease classification
-
-```{r UMAP_by_groupification, fig.width=12, fig.height=7}
-p1 <-
-  ggplot(
-    data = umap_results,
-    aes(
-      x = umap_1,
-      y = umap_2,
-      fill = {{diffused_comparison}},
-      line = 1
-    ),
-    shape = 1
-  ) +
-    geom_point(
-      shape = 21,
-      colour = "black",
-      size = 2.5,
-      stroke = 0.5,
-      alpha = 0.6
-    ) +
-    scale_fill_brewer(palette = "Set1") +
-    theme_pubr() +
-    theme(legend.position = "none")
-
-p2 <-
-  ggplot(
-    data = umap_results,
-    aes(
-      x = umap_1,
-      y = umap_2,
-      fill = {{diffused_comparison}},
-      line = 1
-    ), shape = 1
-  ) +
-    geom_point(
-      shape = 21,
-      colour = "black",
-      size = 2.5,
-      stroke = 0.5,
-      alpha = 0.6
-    ) +
-    scale_fill_brewer(palette = "Set1") +
-    scale_color_brewer(palette = "Set1") +
-    theme_pubr() +
-    geom_mark_ellipse(aes(fill = {{diffused_comparison}},
-                          color = {{diffused_comparison}}),
-                      alpha = 0.05
-    ) +
-  guides(color = guide_legend(nrow = 4)) +
-  theme(legend.position = "bottom")
-
-legend <- get_legend(p2)
-
-plot_grid(
-  plot_grid(
-    p1 + theme(legend.position = "none"),
-    p2 + theme(legend.position = "none")
-    ),
-  legend,
-  nrow = 2,
-  rel_heights = c(1, .2)
-)
-```
-
-\newpage
-
-### UMAP by plate
-
-```{r UMAP_by_plate, fig.width=12, fig.height=7}
-p1 <- ggplot(
-  data = umap_results,
-  mapping = aes(
-    x = umap_1,
-    y = umap_2,
-    fill = run_id
-  )
-) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2.5,
-    stroke = 0.5,
-    alpha = 0.6
-  ) +
-  labs(color = "run_id") +
-  scale_color_paletteer_d("ggsci::default_igv") +
-  scale_fill_paletteer_d("ggsci::default_igv")
-
-p2 <- ggplot(
-  data = umap_results,
-  mapping = aes(
-    x = umap_1,
-    y = umap_2,
-    fill = run_id
-    )
-  ) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2.5,
-    stroke = 0.5,
-    alpha = 0.6
-    ) +
-  labs(color = "run_id") +
-  geom_mark_ellipse(aes(
-    fill = run_id,
-    color = run_id
-    ),
-    alpha = 0.05
-    ) +
-  scale_color_paletteer_d("ggsci::default_igv") +
-  scale_fill_paletteer_d("ggsci::default_igv") +
-  guides(color = guide_legend(nrow = 4)) +
-  theme(legend.position = "bottom")
-
-legend <- get_legend(p2)
-
-plot_grid(
-  plot_grid(
-    p1 + theme(legend.position = "none"),
-    p2 + theme(legend.position = "none")
-    ),
-  legend,
-  nrow = 2,
-  rel_heights = c(1, .2)
-)
-```
-
-\newpage
-
-### UMAP by ethnicity
-
-```{r UMAP_by_ethnicity, fig.width=12, fig.height=6}
-p1 <-
-  umap_results %>%
-  dplyr::select(umap_1, umap_2, sample_name, ethnicity) %>%
-  dplyr::mutate(ethnicity = as_factor(ethnicity)) %>%
-  ggplot(
-    aes(
-      x = umap_1,
-      y = umap_2,
-      fill = ethnicity,
-      line = 1
-    ),
-    shape = 1
-  ) +
-    geom_point(
-      shape = 21,
-      colour = "black",
-      size = 2.5,
-      stroke = 0.5,
-      alpha = 0.6
-    ) +
-    scale_fill_paletteer_d(palette = "ggthemes::calc") +
-    theme_pubr() +
-    theme(legend.position = "none")
-
-p2 <-
-  umap_results %>%
-  dplyr::select(umap_1, umap_2, sample_name, ethnicity) %>%
-  dplyr::mutate(ethnicity = as_factor(ethnicity)) %>%
-  ggplot(
-    aes(
-      x = umap_1,
-      y = umap_2,
-      fill = ethnicity,
-      color = ethnicity,
-      line = 1
-      ), shape = 1
-    ) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2.5,
-    stroke = 0.5,
-    alpha = 0.6
-    ) +
-  scale_fill_paletteer_d(palette = "ggthemes::calc") +
-  scale_color_paletteer_d(palette = "ggthemes::calc") +
-  theme_pubr() +
-  geom_mark_ellipse(
-    alpha = 0.05
-    ) +
-  theme(legend.position = "bottom")
-
-legend <- get_legend(p2)
-
-plot_grid(
-  plot_grid(
-    p1 + theme(legend.position = "none"),
-    p2 + theme(legend.position = "none")
-    ),
-  legend,
-  nrow = 2,
-  rel_heights = c(1, .2)
-)
-```
-
-\newpage
-
-### UMAP by K-means cluster
-
-```{r UMAP_by_K-means cluster, fig.height=6, fig.width=7}
-umap_results %>%
-  ggplot(
-    aes(
-      x = umap_1,
-      y = umap_2,
-      fill = cluster
+groupings = list(
+  project_params[["comparison_grouping_variable"]],
+  "RaceCode",
+  "cluster",
+  "run_id"
+) |>
+  rlang::set_names(
+    nm = c(
+      project_params[["comparison_grouping_variable"]],
+      "ethnicity",
+      "K-means cluster",
+      "plate"
       )
-    ) +
-  geom_point(
-    shape = 21,
-    colour = "black",
-    size = 2.5,
-    stroke = 0.5
-    ) +
-  scale_fill_manual(values = group_pal$cluster)
+    )
 ```
 
-<!-- ### UMAP in 3D by K-means cluster -->
-
-<!-- ```{r UMAP_in_3D_by_K-means cluster} -->
-
-<!-- umap_results %>% -->
-
-<!--   plot_ly( -->
-
-<!--     x = ~umap_1, -->
-
-<!--     y = ~umap_2, -->
-
-<!--     z = ~umap_3, -->
-
-<!--     colors = group_pal$cluster -->
-
-<!--   ) %>% -->
-
-<!--   add_markers( -->
-
-<!--     text = str_glue("Sample: {umap_results[["sample_name"]]}<br>Classification: {umap_results[[comparison_grouping_variable]]}<br>Ethnicity {umap_results[["ethnicity"]]}<br>Cluster: {umap_results[["cluster"]]}<br>Sex: {umap_results[["sex"]]}<br>Plate: {umap_results[["run_id"]]}"), -->
-
-<!--     color = ~cluster, -->
-
-<!--     size = 2.5, -->
-
-<!--     alpha = 0.9, -->
-
-<!--     hovertemplate = "%{text}", -->
-
-<!--     marker = list( -->
-
-<!--       size = 3, -->
-
-<!--       line = list( -->
-
-<!--         color = 'rgba(0, 0, 0, .8)', -->
-
-<!--         width = 1.5 -->
-
-<!--       ) -->
-
-<!--     ) -->
-
-<!--   ) -->
-
-<!-- ``` -->
-
-\newpage
-
-# Module scores {.tabset .tabset-fade .tabset-pills}
-
-## SLE Interferon module scores {.tabset .tabset-fade .tabset-pills}
-
-```{r SLE_Interferon_module_scores}
-tar_load(module_scores_with_viral)
-tar_load(ifn_modules)
-```
-
-### Sorted by disease classification
-
-```{r SLE_Interferon_module_scores_disease_sort, fig.width=4, fig.height=6}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-module_scores_with_viral %>%
-  dplyr::select(sample_name, one_of(ifn_modules)) %>%
-  dplyr::arrange(match(sample_name, sample_disease_order)) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale="column",
-    fontsize = 9,
-    show_rownames = FALSE,
-    annotation_colors = group_pal,
-    annotation_row = annotation_info,
-    breaks = zscore_range,
-    cluster_rows = FALSE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    angle = 315,
-    gaps_row = sample_disease_order_count,
-    border_color = NA)
+```{r dimplots, results = "asis"}
+dimplots <-
+  purrr::imap(reductions, \(reduction, reduction_name){
+    header <-
+      knitr::knit_expand(
+        text = "\n## {{REDUCTION_NAME}} {.tabset .tabset-fade .tabset-pills}\n",
+        REDUCTION_NAME = reduction_name
+      )
+    each_group <-
+      purrr::imap(groupings, \(grouping_var, grouping_var_name){
+        subheader <-
+          knitr::knit_expand(
+            text = "\n### {{REDUCTION_NAME}} by {{GROUPING_VAR_NAME}} \n",
+            REDUCTION_NAME = reduction,
+            GROUPING_VAR_NAME = grouping_var_name
+          )
+        dimplot <-
+          knitr::knit_expand(
+            file           = here::here("analysis/templates/dimplots.Rmd"),
+            REDUCTION = reduction,
+            GROUPING_VAR = grouping_var
+          )
+        c(subheader, dimplot)
+      })
+    c(header, unlist(each_group))
+  })
+res <- knitr::knit_child(text = unlist(dimplots), quiet = TRUE)
+cat(res, sep = '\n')
 ```
 
 \newpage
 
-### Sorted by cluster
+```{r module_scores, echo = FALSE}
+targets::tar_load(all_module_scores)
+targets::tar_load(ifn_modules)
+targets::tar_load(inflame_modules)
+targets::tar_load(ldg_modules)
+targets::tar_load(module_scores_mat)
+targets::tar_load(study_md)
+targets::tar_load(group_pal)
 
-```{r SLE_Interferon_module_scores_cluster_sort, fig.width=4, fig.height=6}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-module_scores_with_viral %>%
-  dplyr::select(sample_name, one_of(ifn_modules)) %>%
-  dplyr::arrange(match(sample_name, sample_cluster_order)) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale="column",
-    fontsize = 9,
-    show_rownames = FALSE,
-    annotation_colors = group_pal,
-    annotation_row = annotation_info,
-    breaks = zscore_range,
-    cluster_rows = FALSE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    angle = 315,
-    gaps_row = sample_cluster_order_count,
-    border_color = NA)
+row_groupings  <-
+  list(
+    project_params[["comparison_grouping_variable"]],
+    "cluster",
+    "hierarchical clustering"
+    )
+
+row_groupings <- rlang::set_names(x = row_groupings, nm = row_groupings)
+
+module_groups <-
+  list(
+    "Banchereau interferon modules"   = ifn_modules,
+    "Banchereau inflammation modules" = inflame_modules,
+    "Low-density granulocyte modules" = c("ldg_a", "ldg_b", "ldg_1.1", "ldg2.1")
+  )
 ```
 
-\newpage
+# Module score heatmaps {.tabset .tabset-fade .tabset-pills}
 
-### Sorted by hierarchical clustering
+```{r module_score_plots, results = "asis", echo = FALSE}
+modplots <-
+  purrr::imap(module_groups, \(module, title){
+    header <-
+      knitr::knit_expand(
+        text     = "\n## {{MODULE_GROUP}} scores {.tabset .tabset-fade .tabset-pills}\n",
+        MODULE_GROUP = title
+      )
+    each_comparison <-
+      purrr::imap(row_groupings, \(group, y){
+        subheader <-
+          knitr::knit_expand(
+            text    = "\n### Sorted by {{SORTING}}\n",
+            SORTING = group
+          )
+        ghm <-
+          knitr::knit_expand(
+            file            = here::here("analysis/templates/groupedComplexHeatmaps.Rmd"),
+            DATASET         = "module_scores_mat",
+            VARIABLE_LIST   = list(module),
+            METADATA        = "study_md",
+            PALETTES        = "group_pal",
+            ROW_GROUPING    = group,
+            ROW_ANNOTATION  = heatmap_row_annotations,
+            COL_GROUPING    = "none",
+            COL_ANNOTATION  = "'none'",
+            SCALE           = "TRUE",
+            MODULE_GROUP    = stringr::str_replace(string = title, pattern = " ", replacement = "_"),
+            SAMPLE_GROUPING = stringr::str_replace(string = group, pattern = " ", replacement = "_"),
+            FIG_WIDTH       = min(((1*length(module)) + 3.84), 12),
+            FIG_HEIGHT      = 9
+          )
+        c(subheader, unlist(ghm))
+      })
+    c(header, unlist(each_comparison))
+  })
+res <- knitr::knit_child(text = unlist(modplots), quiet = TRUE)
 
-```{r SLE_Interferon_module_scores_auto_sort, fig.width=5, fig.height=6}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-module_scores_with_viral %>%
-  dplyr::select(sample_name, one_of(ifn_modules)) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale="column",
-    fontsize = 9,
-    show_rownames = FALSE,
-    annotation_colors = group_pal,
-    annotation_row = annotation_info,
-    breaks = zscore_range,
-    cluster_rows = TRUE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    angle = 315,
-    border_color = NA)
+cat(res, sep = '\n', fill = TRUE)
 ```
-
-\newpage
-
-## SLE Inflammatory module scores {.tabset .tabset-fade .tabset-pills}
-
-```{r SLE_Inflammatory_module_scores}
-tar_load(inflame_modules)
-```
-
-### Sorted by disease classification
-
-```{r SLE_Inflammatory_module_scores_disease_sort, fig.width=4.5, fig.height=6}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-module_scores_with_viral %>%
-  dplyr::select(sample_name, one_of(inflame_modules)) %>%
-  dplyr::arrange(match(sample_name, sample_disease_order)) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale="column",
-    fontsize = 9,
-    show_rownames = FALSE,
-    annotation_colors = group_pal,
-    annotation_row = annotation_info,
-    breaks = zscore_range,
-    cluster_rows = FALSE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    angle = 315,
-    gaps_row = sample_disease_order_count,
-    border_color = NA)
-```
-
-\newpage
-
-### Sorted by cluster
-
-```{r SLE_Inflammatory_module_scores_cluster_sort, fig.width=4.5, fig.height=6}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-module_scores_with_viral %>%
-  dplyr::select(sample_name, one_of(inflame_modules)) %>%
-  dplyr::arrange(match(sample_name, sample_cluster_order)) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale="column",
-    fontsize = 9,
-    show_rownames = FALSE,
-    annotation_colors = group_pal,
-    annotation_row = annotation_info,
-    breaks = zscore_range,
-    cluster_rows = FALSE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    angle = 315,
-    gaps_row = sample_cluster_order_count,
-    border_color = NA)
-```
-
-\newpage
-
-### Sorted by hierarchical clustering
-
-```{r SLE_Inflammatory_module_scores_auto_sort, fig.width=5, fig.height=6}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-module_scores_with_viral %>%
-  dplyr::select(sample_name, one_of(inflame_modules)) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale="column",
-    fontsize = 9,
-    show_rownames = FALSE,
-    annotation_colors = group_pal,
-    annotation_row = annotation_info,
-    breaks = zscore_range,
-    cluster_rows = TRUE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    angle = 315,
-    border_color = NA)
-```
-
-## Low-density granulocyte module scores {.tabset .tabset-fade .tabset-pills}
-
-```{r Low-density granulocyte module scores}
-tar_load(ldg_modules)
-range_bound = 3
-zscore_range <- c(-range_bound:range_bound)
-```
-
-### Sorted by disease classification
-
-```{r ldg_module_disease_sort, fig.width=4.5, fig.height=6}
-module_scores_with_viral %>%
-    dplyr::select(sample_name,
-         one_of(names(ldg_modules))) %>%
-  dplyr::arrange(match(sample_name, sample_disease_order)) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale="column",
-    fontsize = 9,
-    show_rownames = FALSE,
-    annotation_colors = group_pal,
-    annotation_row = annotation_info,
-    breaks = zscore_range,
-    cluster_rows = FALSE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    angle = 315,
-    gaps_row = sample_disease_order_count,
-    border_color = NA)
-```
-
-### Sorted by cluster
-
-```{r ldg_module_cluster_sort, fig.width=4.5, fig.height=6}
-module_scores_with_viral %>%
-    dplyr::select(sample_name,
-         one_of(names(ldg_modules))) %>%
-  dplyr::arrange(match(sample_name, sample_cluster_order)) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale="column",
-    fontsize = 9,
-    show_rownames = FALSE,
-    annotation_colors = group_pal,
-    annotation_row = annotation_info,
-    breaks = zscore_range,
-    cluster_rows = FALSE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    angle = 315,
-    gaps_row = sample_cluster_order_count,
-    border_color = NA)
-```
-
-### Sorted by hierarchical clustering
-
-```{r ldg_module_auto_sort, fig.width=5, fig.height=6}
-module_scores_with_viral %>%
-    dplyr::select(sample_name,
-         one_of(names(ldg_modules))) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale="column",
-    fontsize = 9,
-    show_rownames = FALSE,
-    annotation_colors = group_pal,
-    annotation_row = annotation_info,
-    breaks = zscore_range,
-    cluster_rows = TRUE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    angle = 315,
-    border_color = NA)
-```
-
-## SLE Modules with an annotated associated pathway {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
-tar_load(annotated_modules)
-tar_load(annotated_mod_list)
-```
+targets::tar_load(annotated_modules)
+targets::tar_load(annotated_mod_list)
+targets::tar_load(banchereau_modules)
+targets::tar_load(ldg_modules)
+targets::tar_load(metasignature_module)
+targets::tar_load(module_annotation)
 
-```{r SLE_Modules_with_an_annotated_associated_pathway, fig.height=9, fig.width=11}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
-
-module_order <- c(
-  "M1.1",
-  
-  "M2.3",
-  "M3.1",
-  "M6.18",
-  
-  "M1.2",
-  "M3.4",
-  "M5.12",
-  
-  "M3.2",
-  "M4.2",
-  "M4.6",
-  "M4.13",
-  "M5.1",
-  "M5.7",
-  "M7.1",
-  
-  "M3.6",
-  "M8.46",
-  "M4.1",
-  "M4.15",
-  "M4.10",
-  "M4.11",
-  
-  "M4.14",
-  "M5.15",
-  "ldg_1.1",
-  "ldg_2.1",
-  "M8.83",
-  
-  "M6.6",
-  "M2.2",
-  "M3.3",
-  "M3.5",
-  "M4.7",
-  "M6.11",
-  "M6.16",
-  "M9.42",
-  "M6.13",
-  "M4.3",
-  "M4.5",
-  "M5.9",
-  "M5.6",
-  "M5.10",
-  "M6.2",
-  "M6.12"
-)
-
-module_gaps <- c(1,4,7,14,20,25)
-```
-
-### Sorted by responder status
-
-```{r annotated_module_disease_sort, fig.width=12, fig.height=9}
-module_scores_with_viral %>%
-  dplyr::arrange({{diffused_comparison}}) %>%
-  dplyr::select(
-    sample_name,
-    one_of(module_order)
-  ) %>%
-  pivot_longer(
-    cols = one_of(module_order),
-    names_to = "module",
-    values_to = "score"
-    ) %>%
+annotation_list <-
+  tibble::enframe(
+    x     = annotated_mod_list,
+    name  = "obsv",
+    value = "annotation"
+    ) |>
   dplyr::mutate(
-    module =
-      recode(
-        module,
-        !!!annotated_mod_list
+    annotation =
+      stringr::str_extract(
+        string = annotation,
+        pattern = "(?<=([[:space:]]-[[:space:]])).+"
         )
-    ) %>%
-  pivot_wider(
-    names_from = "module",
-    values_from = "score"
-    ) %>%
-  column_to_rownames("sample_name") %>%
-  t() %>%
-  pheatmap(
-    scale="row",
-    fontsize = 9,
-    show_rownames = TRUE,
-    show_colnames = FALSE,
-    annotation_colors = group_pal,
-    annotation_row = column_to_rownames(dplyr::mutate(annotated_modules, module = recode(module, !!!annotated_mod_list)), var = "module"),
-    annotation_col =
-      dplyr::arrange(
-        .data = annotation_info[,comparison_grouping_variable,drop=FALSE],
-        {{diffused_comparison}}
-        ),
-    breaks = zscore_range,
-    cluster_rows = FALSE,
-    cluster_cols = FALSE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    angle = 315,
-    gaps_col = sample_disease_order_count,
-    gaps_row = module_gaps,
-    border_color = NA)
+    )
+
+module_groups <-
+  list(
+    "annotated Banchereau modules"    = annotation_list[['obsv']],
+    "all Banchereau modules"          = names(banchereau_modules)
+  )
+
+present_module_types <-
+  module_annotation |>
+  dplyr::filter(module %in% names(banchereau_modules)) |>
+  dplyr::pull(type) |>
+  forcats::fct_drop() |>
+  levels()
 ```
 
-### Sorted by hierarchical clustering
-
-```{r annotated_module_auto_sort, fig.width=12, fig.height=9}
-module_scores_with_viral %>%
-  dplyr::select(sample_name,
-         one_of(module_order)) %>%
-  column_to_rownames("sample_name") %>%
-  t() %>%
-  pheatmap(
-    scale="row",
-    fontsize = 9,
-    show_rownames = FALSE,
-    show_colnames = TRUE,
-    annotation_colors = group_pal,
-    annotation_row = column_to_rownames(annotated_modules, var = "module"),
-    annotation_col = annotation_info[,c("cluster", comparison_grouping_variable),drop=FALSE],
-    breaks = zscore_range,
-    cluster_rows = FALSE,
-    cluster_cols = TRUE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    angle = 315,
-    gaps_row = module_gaps,
-    border_color = NA)
-```
-
-\newpage
-
-## All SLE modules {.tabset .tabset-fade .tabset-pills}
-
-```{r All_SLE_modules, fig.height=9, fig.width=11}
-tar_load(module_annotation)
-range_bound = 3
-zscore_range <- c(-range_bound:range_bound)
-```
-
-### Sorted by responder status
-
-```{r all_module_disease_sort, fig.width=12, fig.height=9}
-module_scores_with_viral %>%
-  dplyr::select(
-    sample_name,
-    matches("^M[[:digit:]]+")
-    ) %>%
-  dplyr::arrange(
-    match(
-      sample_name,
-      sample_disease_order
+```{r, echo=FALSE, results='asis'}
+groups <-
+  purrr::imap(module_groups, \(module, title){
+    header <-
+      knitr::knit_expand(
+        text     = "\n\n## Scores for {{MODULE_GROUP}} {.tabset .tabset-fade .tabset-pills}\n",
+        MODULE_GROUP = title
       )
-    ) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale = 'column',
-    fontsize = 9,
-    annotation_row = annotation_info,
-    annotation_col = column_to_rownames(module_annotation, var = "module"),
-    annotation_colors = group_pal,
-    show_rownames = FALSE,
-    show_colnames = FALSE,
-    angle_col = 315,
-    breaks = zscore_range,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    gaps_row = sample_disease_order_count,
-    border_color = NA,
-    cluster_rows = FALSE
-  )
+    each_comparison <-
+      purrr::map(row_groupings, \(group){
+        subheader <-
+          knitr::knit_expand(
+            text    = "\n\n### Sorted by {{SORTING}}\n\n",
+            SORTING = group
+          )
+        heatmap <-
+          knitr::knit_expand(
+            file           = here::here("analysis/templates/groupedComplexHeatmaps.Rmd"),
+            DATASET        = "module_scores_mat",
+            VARIABLE_LIST  = list(module),
+            METADATA       = "study_md",
+            PALETTES       = "group_pal",
+            ROW_GROUPING   = group,
+            ROW_ANNOTATION = heatmap_row_annotations,
+            COL_GROUPING   = "type",
+            COL_ANNOTATION = "dplyr::rename(module_annotation, obsv = 'module')",
+            SCALE          = "TRUE",
+            FIG_WIDTH       = min(min(((1*length(module)) + 3.84), 12), 12),
+            FIG_HEIGHT      = 9
+          )
+        c(subheader, heatmap)
+      })
+    c(header, unlist(each_comparison))
+  })
+res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(res, sep = '\n')
 ```
-
-### Sorted by hierarchical clustering
-
-```{r all_module_auto_sort, fig.width=12, fig.height=9}
-module_scores_with_viral %>%
-  dplyr::select(
-    sample_name,
-    matches("^M[[:digit:]]+")
-    ) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale = 'column',
-    fontsize = 9,
-    annotation_row = annotation_info,
-    annotation_col = column_to_rownames(module_annotation, var = "module"),
-    annotation_colors = group_pal,
-    show_rownames = FALSE,
-    show_colnames = FALSE,
-    angle_col = 315,
-    breaks = zscore_range,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    border_color = NA
-  )
-```
-
-\newpage
 
 ## Expression of the annotated Banchereau modules {.tabset .tabset-fade .tabset-pills}
 
 ```{r}
-tar_load(module_scores_with_viral)
-tar_load(annotated_module_scores)
-tar_load(annotated_module_scores_pivot)
-tar_load(annotated_module_stats_by_disease)
+targets::tar_load(all_module_scores_with_md)
+targets::tar_load(module_comparisons_stats)
+targets::tar_load(annotated_module_scores)
+targets::tar_load(annotated_module_scores_pivot)
+targets::tar_load(annotated_module_comparisons_stats)
+targets::tar_load(comparison_groups)
 
-number_of_modules <-
-  ncol(annotated_module_scores) - 1
-
-number_of_pages <-
-  ceiling(number_of_modules/9)
-```
-
-### By responder status
-
-```{r Banchereau_modules_by_disease, echo=FALSE, fig.height=8, fig.width=12, warning=FALSE}
-annotated_module_group_graphs <-
-  annotated_module_scores_pivot %>%
-  dplyr::select(-cluster) %>%
-  dplyr::mutate({{diffused_comparison}} := as_factor({{diffused_comparison}})) %>%
-  ggviolin(
-    x = comparison_grouping_variable,
-    y = "score",
-    fill = comparison_grouping_variable,
-    draw_quantiles = c(0.25, 0.5, 0.75),
-    add = "jitter",
-    trim = TRUE,
-    add.params = list(size = 1, alpha = 0.25)
-    ) +
-  scale_fill_paletteer_d("ggsci::uniform_startrek") +
-  stat_pvalue_manual(
-    data = annotated_module_stats_by_disease,
-    label = 
-      ifelse(
-        test = ("p.adj.signif" %in% annotated_module_stats_by_disease),
-        yes = "p.adj.signif",
-        no = "p"
-      ),
-    hide.ns = TRUE,
-    bracket.size = 0.1,
-    tip.length = 0.01,
-    size = 4
-  ) +
-  theme_pubr() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 9),
-        axis.text.y = element_text(size = 9))
-  
-for(i in seq(number_of_pages)){
-  print(
-    annotated_module_group_graphs +
-      facet_wrap_paginate(
-        facets = vars(module),
-        scales = "free_y",
-        nrow = 2,
-        ncol = 3,
-        page = i)
-  )
-}
-```
-
-### By cluster
-
-```{r Banchereau_modules_by_cluster, echo=FALSE, fig.height=8, fig.width=12, warning=FALSE}
-number_of_modules <-
-  ncol(annotated_module_scores) - 1
-
-number_of_pages <-
-  ceiling(number_of_modules/9)
-  
-annotated_module_cluster_graphs <-
-  annotated_module_scores_pivot %>%
-  dplyr::select(-{{diffused_comparison}}) %>%
-  dplyr::mutate(cluster = as_factor(cluster)) %>%
-  ggviolin(
-    x = "cluster",
-    y = "score",
-    fill = "cluster",
-    draw_quantiles = c(0.25, 0.5, 0.75),
-    add = "jitter",
-    trim = TRUE,
-    add.params = list(size = 1, alpha = 0.5)
-    ) +
-  scale_fill_paletteer_d("ggsci::uniform_startrek") +
-  stat_pvalue_manual(
-    data = annotated_module_stats_by_cluster,
-    label = 
-      ifelse(
-        test = ("p.adj.signif" %in% annotated_module_stats_by_cluster),
-        yes = "p.adj.signif",
-        no = "p"
-      ),
-    hide.ns = TRUE,
-    bracket.size = 0.1,
-    tip.length = 0.01,
-    size = 4
-  ) +
-  theme_pubr() +
-  theme(
-    axis.text.x =
-      element_text(
-        angle = 45,
-        hjust = 1,
-        vjust = 1,
-        size = 9
-        ),
-    axis.text.y =
-      element_text(size = 9)
+module_bins <-
+  split(
+    x = unique(annotated_modules$module),
+    f = ceiling(seq_along(unique(annotated_modules$module)) / 9)
     )
-  
+```
 
-for(i in seq(number_of_pages)){
-  print(
-    annotated_module_cluster_graphs +
-      facet_wrap_paginate(
-        facets = vars(module),
-        scales = "free_y",
-        nrow = 2,
-        ncol = 3,
-        page = i)
-  )
-}
+```{r annotated_modules_score_violins, results='asis'}
+groups <-
+  purrr::map(comparison_groups, \(grouping){
+    header <-
+      knitr::knit_expand(
+        text     = "\n\n### By {{GROUPING}} {.tabset .tabset-fade .tabset-pills}\n\n",
+        GROUPING = grouping
+      )
+    each_comparison <-
+      purrr::map(module_bins, \(bin){
+        knitr::knit_expand(
+          file       = here::here("analysis/templates/violinPanel.Rmd"),
+          EXPR_TBL   = "annotated_module_scores_pivot",
+          GROUPING   = grouping,
+          STATS_TBL  = "annotated_module_comparisons_stats",
+          VALUES_VAR = "score",
+          FACET_VAR  = "module",
+          BIN        = list(bin),
+          FILTER_VAR = "module"
+        )
+      })
+    c(header, unlist(each_comparison))
+  })
+res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(res, sep = '\n')
 ```
 
 \newpage
@@ -1887,13 +713,13 @@ for(i in seq(number_of_pages)){
 # WGCNA
 
 ```{r include=FALSE}
-tar_load(wgcna_modules)
+targets::tar_load(wgcna_modules)
 ```
 
 ## Expression similarity dendrogram
 
 ```{r WGCNA_Expression_similarity_dendrogram, echo=FALSE, fig.height=6, fig.width=10}
-plotDendroAndColors(
+WGCNA::plotDendroAndColors(
   dendro = wgcna_modules$dendrograms[[1]],
   colors = wgcna_modules$colors[wgcna_modules$blockGenes[[1]]],
   groupLabels = "Module colors",
@@ -1908,123 +734,56 @@ plotDendroAndColors(
 ## Expression of identified modules {.tabset .tabset-fade .tabset-pills}
 
 ```{r include=FALSE}
-tar_load(module_scores_with_viral_by_disease)
-tar_load(module_scores_with_viral_by_disease_stats)
+targets::tar_load(wgcna_scores_pivot)
+targets::tar_load(wgcna_comparisons_stats)
 
-mods <- module_scores_with_viral_by_disease %>% dplyr::pull(module) %>% unique()
-module_bins <- split(mods, ceiling(seq_along(mods)/9))
-```
-
-### By responder status
-
-```{r wgcna_by_disease, echo=FALSE, fig.height=8, fig.width=12}
-module_disease_graphs <-
-  module_scores_with_viral_by_disease %>%
-  ggviolin(
-    x = comparison_grouping_variable,
-    y = "score",
-    fill = comparison_grouping_variable,
-    draw_quantiles = c(0.25, 0.5, 0.75),
-    add = "jitter",
-    trim = TRUE,
-    add.params = list(size = 1, alpha = 0.25)
-    ) +
-  scale_fill_paletteer_d("ggsci::uniform_startrek") +
-  stat_pvalue_manual(
-    data = module_scores_with_viral_by_disease_stats,
-    label =
-      ifelse(
-        test = ("p.adj.signif" %in% module_scores_with_viral_by_disease_stats),
-        yes = "p.adj.signif",
-        no = "p"
-        ),
-    hide.ns = TRUE,
-    bracket.size = 0.1,
-    tip.length = 0.01,
-    size = 4
-  ) +
-  theme_pubr() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 9),
-        axis.text.y = element_text(size = 9),
-        plot.caption = element_markdown()) +
-  labs(caption = "Mann-Whitney, Benjamini–Hochberg adjusted value.\n *<i>p</i> <0.05, **<i>p</i> <0.01, ***<i>p</i> <0.001, ****<i>p</i> <0.0001")
-
-for(i in seq(module_bins)){
-
-  g <-
-    module_scores_with_viral_by_disease %>%
-    dplyr::filter(module %in% module_bins[[i]]) %>%
-    ggviolin(
-      x = "disease_class",
-      y = "score",
-      fill = "disease_class",
-      draw_quantiles = c(0.25, 0.5, 0.75),
-      add = "jitter",
-      trim = TRUE,
-      add.params = list(size = 1, alpha = 0.25)
-      ) +
-    scale_fill_paletteer_d("ggsci::uniform_startrek") +
-    stat_pvalue_manual(
-      data = dplyr::filter(module_scores_with_viral_by_disease_stats, module %in% module_bins[[i]]),
-      label = "p",
-      hide.ns = TRUE,
-      bracket.size = 0.1,
-      tip.length = 0.01,
-      size = 4
-    ) +
-    theme_pubr() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 9),
-          axis.text.y = element_text(size = 9),
-          plot.caption = element_markdown()) +
-    labs(caption = "Mann-Whitney, Benjamini–Hochberg adjusted value.\n *<i>p</i> <0.05, **<i>p</i> <0.01, ***<i>p</i> <0.001, ****<i>p</i> <0.0001") +
-    facet_wrap(vars(module), scales = "free_y", ncol = 3, nrow = 3)
-  
-  print(g)
-}
+module_bins <-
+  split(
+    x = unique(wgcna_scores_pivot$module),
+    f = ceiling(seq_along(unique(wgcna_scores_pivot$module)) / 9)
+    )
 ```
 
 \newpage
 
-### By cluster
-
-```{r wgcna_modules_by_cluster, echo=FALSE, fig.height=8, fig.width=12}
-for (i in seq(module_bins)){
-  g <-
-    module_scores_with_viral_by_cluster %>%
-    dplyr::filter(module %in% module_bins[[i]]) %>%
-    ggviolin(
-      x = "cluster",
-      y = "score",
-      fill = "cluster",
-      draw_quantiles = c(0.25, 0.5, 0.75),
-      add = "jitter",
-      trim = TRUE,
-      add.params = list(size = 1, alpha = 0.25)
-      ) +
-    scale_fill_paletteer_d("ggsci::uniform_startrek") +
-    stat_pvalue_manual(
-      data = dplyr::filter(module_scores_with_viral_by_cluster_stats, module %in% module_bins[[i]]),
-      label = "p",
-      hide.ns = TRUE,
-      bracket.size = 0.1,
-      tip.length = 0.01,
-      size = 4
-    ) +
-  guides(fill = guide_legend(title = NULL)) +
-  labs(caption = "Mann-Whitney, Benjamini–Hochberg adjusted value.\n *<i>p</i> <0.05, **<i>p</i> <0.01, ***<i>p</i> <0.001, ****<i>p</i> <0.0001")
-
-for(i in seq(number_of_pages)){
-  print(
-    module_disease_graphs +
-      facet_wrap_paginate(
-        facets = vars(module),
-        scales = "free_y",
-        nrow = 3,
-        ncol = 3,
-        page = i
-        )
-  )
-}
+```{r wgcna_score_violins, fig.height=8, fig.width=12, warning=FALSE, results="asis"}
+groups <-
+  purrr::map(comparison_groups, \(grouping){
+    header <-
+      knitr::knit_expand(
+        text     = "\n\n### By {{GROUPING}} {.tabset .tabset-fade .tabset-pills}\n\n",
+        GROUPING = grouping
+      )
+    each_comparison <-
+      purrr::map(module_bins, \(bin){
+        if (length(bin) > 1){
+          knitr::knit_expand(
+            file       = here::here("analysis/templates/violinPanel.Rmd"),
+            EXPR_TBL   = "wgcna_scores_pivot",
+            GROUPING   = grouping,
+            STATS_TBL  = "wgcna_comparisons_stats",
+            VALUES_VAR = "score",
+            FACET_VAR  = "module",
+            BIN        = list(bin),
+            FILTER_VAR = "module"
+          )
+        } else {
+          knitr::knit_expand(
+              file       = here::here("analysis/templates/singleViolin.Rmd"),
+              EXPR_TBL   = "wgcna_scores_pivot",
+              GROUPING   = grouping,
+              STATS_TBL  = "wgcna_comparisons_stats",
+              VALUES_VAR = "score",
+              FACET_VAR  = "module",
+              BIN        = list(c(bin, "")),
+              FILTER_VAR = "module"
+          )
+        }
+      })
+    c(header, unlist(each_comparison))
+  })
+res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(res, sep = '\n')
 ```
 
 \newpage
@@ -2032,247 +791,127 @@ for(i in seq(number_of_pages)){
 ## WGCNA eigenvalues {.tabset .tabset-fade .tabset-pills}
 
 ```{r wgcna_eigenvalues, fig.height=9, fig.width=11}
-range_bound = 4
-zscore_range <- c(-range_bound:range_bound)
+targets::tar_load(wgcna_scores)
+
+wgcna_module_colors <- paste0("ME", targets::tar_read(wgcna_module_colors))
+wgcna_scores_mat <-
+  module_scores_mat[stringr::str_detect(string = rownames(module_scores_mat), pattern = "^ME"),]
 ```
 
-### Sorted by responder status
+\newpage
 
-```{r WGCNA_eigenvalues_disease_sort, fig.width=12, fig.height=9}
-module_scores_with_viral %>%
-  dplyr::select(
-    sample_name,
-    matches("^ME")
-    ) %>%
-  dplyr::arrange(
-    match(
-      sample_name,
-      sample_disease_order
+```{r WGCNA_eigenvalues_heatmap, results='asis'}
+groups <-
+  purrr::map(row_groupings, \(group){
+    header <-
+      knitr::knit_expand(
+        text    = "\n\n### Sorted by {{SORTING}}\n\n",
+        SORTING = group
       )
-    ) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale = 'column',
-    fontsize = 9,
-    annotation_row = annotation_info,
-    annotation_colors = group_pal,
-    show_rownames = FALSE,
-    show_colnames = TRUE,
-    angle_col = 315,
-    breaks = zscore_range,
-    cluster_rows = FALSE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    gaps_row = sample_disease_order_count,
-    border_color = NA
-    )
+    heatmap <-
+      knitr::knit_expand(
+        file           = here::here("analysis/templates/groupedComplexHeatmaps.Rmd"),
+        DATASET        = "wgcna_scores_mat",
+        VARIABLE_LIST  = list(wgcna_module_colors),
+        METADATA       = "study_md",
+        PALETTES       = "group_pal",
+        ROW_GROUPING   = group,
+        ROW_ANNOTATION = heatmap_row_annotations,
+        COL_GROUPING   = "none",
+        COL_ANNOTATION = "'none'",
+        SCALE          = "FALSE",
+        FIG_WIDTH      = min(((1*length(wgcna_module_colors)) + 3.84), 12),
+        FIG_HEIGHT     = 6
+      )
+    c(header, heatmap)
+  })
+res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(res, sep = '\n')
 ```
 
-### Sorted by hierarchical clustering
-
-```{r WGCNA_eigenvalues_auto_sort, fig.width=12, fig.height=9}
-module_scores_with_viral %>%
-  dplyr::select(
-    sample_name,
-    matches("^ME")
-    ) %>%
-  column_to_rownames("sample_name") %>%
-  pheatmap(
-    scale = 'column',
-    fontsize = 9,
-    annotation_row = annotation_info,
-    annotation_colors = group_pal,
-    show_rownames = FALSE,
-    show_colnames = TRUE,
-    angle_col = 315,
-    breaks = zscore_range,
-    cluster_rows = TRUE,
-    color = viridis(n = length(zscore_range)-1, option = "D"),
-    border_color = NA
-    )
-```
 
 \newpage
 
 ## Gene ontology GSEA of WGCNA modules
 
 ```{r wgcna_gsea, fig.height=11, fig.width=12}
-tar_load(MEplotting)
+targets::tar_load(MEplotting)
 
-modules <- unique(MEplotting$module)
-n <- 6
+module_bins <-
+  split(
+    x = unique(MEplotting$module),
+    f = ceiling(seq_along(unique(MEplotting$module)) / 6)
+  )
+```
 
-bins <-
-  ceiling(
-    x = seq_along(along.with = modules)/n
-    ) %>%
-  set_names(nm = modules) %>%
-  enframe()
-
-for (i in unique(bins[['value']])){
-  modules_to_plot <-
-    bins %>%
-    dplyr::filter(
-      value == i
-    ) %>%
-    dplyr::pull(name)
-  
-  module_data <-
-    dplyr::filter(
-      .data = MEplotting,
-      module %in% modules_to_plot
-    )
-  
-  plots <-
-    module_data %>%
-    ggplot(
-      mapping =
-        aes(
-          y = GeneRatio,
-          x = order,
-          color = p.adjust
+```{r wgcna_gsea_plots, results='asis'}
+groups <-
+  purrr::map(.x = module_bins, .f = \(bin){
+    if (length(bin) > 1){
+      gsea_plots <-
+        knitr::knit_expand(
+          file    = here::here("analysis/templates/groupedModuleGSEAPlots.Rmd"),
+          DATASET = "MEplotting",
+          BIN     = list(bin)
         )
-    ) +
-    geom_point(
-      stat = "identity",
-      size = 2
-    ) +
-    scale_x_continuous(
-      breaks = module_data[["order"]],
-      labels =
-        str_wrap(
-          module_data[["ID"]],
-          width = 40
-        ),
-      expand = c(0.1,0.1)
-    ) +
-    scale_color_gradient(
-      low = "blue",
-      high = "red"
-    ) +
-    labs(color = "adjusted\np value") +
-    facet_wrap(
-      facets = vars(module),
-      ncol = 2,
-      nrow = 3,
-      scales = "free",
-    ) +
-    theme(
-      axis.text.y = element_text(size = 9),
-      axis.text.x = element_text(size = 9),
-      panel.background =
-        element_rect(
-          fill = "white",
-          linetype = "solid"
-        ),
-      panel.border =
-        element_rect(
-          colour = "black",
-          fill=NA, 
-          size=1
-        ),
-      panel.grid = element_line(color = "grey90"),
-      axis.title.y = element_blank()) +
-    coord_flip()
-  print(plots)
-}
+    } else {
+      gsea_plots <-
+        knitr::knit_expand(
+          file    = here::here("analysis/templates/singleModuleGSEAPlot.Rmd"),
+          DATASET = "MEplotting",
+          BIN     = list(c(bin, ""))
+          )
+    }
+  })
+res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(res, sep = '\n')
 ```
 
 \newpage
 
-## Use of WGCNA modules in classifying clusters.
-
-## Use of WGCNA modules in labeling responder status.
-
-Note: Subjects with LP were excluded due to the small population size.
+# Use of gene expression modules in classifying samples.
 
 ```{r wgcna_cluster_confusion}
-tar_load(wgcna_cluster_rf_cv)
-tar_load(wgcna_cluster_split)
+targets::tar_load(module_rf_models)
+targets::tar_load(wgcna_rf_models)
 
-caret::confusionMatrix(
-  data = predict(wgcna_cluster_rf_cv, testing(wgcna_cluster_split)),
-  reference = as_factor(testing(wgcna_cluster_split)$cluster)
-)
+module_groups <-
+  list(
+    WGCNA      = wgcna_rf_models,
+    Banchereau = module_rf_models
+  )
 ```
 
-The relative importance of each eigengene in classification:
 
-```{r wgcna_cluster_importance}
-tar_load(wgcna_cluster_rf_cv_varImp)
+```{r wgcna_cluster_importance, results='asis'}
+groups <-
+  purrr::imap(module_groups, \(module_group, title){
+    header <-
+      knitr::knit_expand(
+        text     = "\n\n## {{MODULE_GROUP}} scores {.tabset .tabset-fade .tabset-pills}\n",
+        MODULE_GROUP = title
+      )
+    each_comparison <-
+      purrr::map(comparison_groups, \(group){
+        subheader <-
+          knitr::knit_expand(
+            text    = "\n### Sorted by {{SORTING}}\n",
+            SORTING = group
+          )
+        heatmap <-
+          knitr::knit_expand(
+            file      = here::here("analysis/templates/randomForestPlots.Rmd"),
+            MODULE_GROUP = title,
+            GROUP = group,
+            CLASS_VAR = group
+          )
+        c(subheader, heatmap)
+      })
+    c(header, unlist(each_comparison))
+  })
+res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(res, sep = '\n')
 
-wgcna_cluster_rf_cv_varImp
-```
-
-\newpage
-
-## Use of WGCNA modules in labeling disease class.
-
-The module eigengene scores were used to train a random forest model with repeated cross validation to predict cluster identity.
-
-The model was trained with 75% of the dataset and tested on 25%.
-
-```{r wgcna_disease_confusion}
-tar_load(wgcna_group_rf_cv)
-tar_load(wgcna_group_test)
-
-caret::confusionMatrix(
-  data = predict(wgcna_group_rf_cv, wgcna_group_test),
-  reference = as_factor(wgcna_group_test[[comparison_grouping_variable]])
-)
-```
-
-The relative importance of each eigengene in classification:
-
-```{r wgcna_disease_importance}
-tar_read(wgcna_group_rf_cv_varImp)
-```
-
-\newpage
-
-## Use of module modules in classifying clusters.
-
-The module eigengene scores were used to train a random forest model with repeated cross validation to predict cluster identity.
-
-The model was trained with 75% of the dataset and tested on 25%.
-
-```{r Banchereau_cluster_confusion}
-tar_load(module_cluster_rf_cv)
-tar_load(module_cluster_test)
-
-caret::confusionMatrix(
-  data = predict(module_cluster_rf_cv, module_cluster_test),
-  reference = as_factor(module_cluster_test[["cluster"]])
-)
-```
-
-The relative importance of each eigengene in classification:
-
-```{r Banchereau_cluster_importance}
-tar_read(module_cluster_rf_cv_varImp)
-```
-
-\newpage
-
-## Use of module modules in labeling disease class.
-
-The module eigengene scores were used to train a random forest model with repeated cross validation to predict responder status.
-
-The model was trained with 75% of the dataset and tested on 25%.
-
-```{r Banchereau_disease_confusion}
-tar_load(module_group_rf_cv)
-tar_load(module_group_test)
-
-caret::confusionMatrix(
-  data = predict(module_group_rf_cv, module_group_test),
-  reference = as_factor(module_group_test[[comparison_grouping_variable]])
-)
-```
-
-The relative importance of each eigengene in classification:
-
-```{r Banchereau_disease_importance}
-tar_read(module_group_rf_cv_varImp)
 ```
 
 ```{r}

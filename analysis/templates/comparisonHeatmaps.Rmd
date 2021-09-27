@@ -1,0 +1,16 @@
+```{r, fig.height={{FIG_HEIGHT}}, fig.width={{FIG_WIDTH}}}
+suppressMessages(
+  comparisonComplexHeatMap(
+    comparison = "{{COMPARISON}}",
+    utbl = {{UPTABLE}},
+    dtbl = {{DOWNTABLE}},
+    expr_mat = {{DATASET}},
+    md = {{METADATA}},
+    comparison_variable = "{{COMPARISON_GROUP}}",
+    grouping_variable = "{{GROUPING}}",
+    annotation_palettes = {{PALETTES}},
+    row_annotation  = {{ROW_ANNOTATION}},
+    col_annotation = NULL
+  )
+)
+```
