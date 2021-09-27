@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2021-09-24
+### Changed
+  - Removed {pheatmap}-based heatmaps in favor of {ComplexHeatmap}
+### Fixed
+  - The `primary_report` target now correctly produces a report, with proper formatting and all
+  - Fixes for `groupedComplexHeatmap()` and `comparisonComplexHeatmap()`
+
 ## [2.3.0] - 2021-09-24
 ### Added 
   - The function `DimPlotHull` to handle PCA and UMAP plotting
@@ -129,6 +136,7 @@ Pulling changes from updates added during BLAST analysis
   - Rearranged directory layout
   - Split analysis plan into parts
 
+[2.4.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.3.0...2.4.0
 [2.3.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.2.0...2.3.0
 [2.2.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.1.0...2.2.0
 [2.1.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/1.0.0...2.1.0

@@ -2,7 +2,7 @@ library(tibble)
 library(forcats)
 
 module_annotation <-
-  tibble(
+  tibble::tibble(
     module = c(
       "M1.1", "M1.2", "M2.1", "M2.2", "M2.3", "M3.1",
       "M3.2", "M3.3", "M3.4", "M3.5", "M3.6", "M4.1",

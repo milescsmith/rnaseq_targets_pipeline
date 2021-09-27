@@ -672,6 +672,22 @@ list(
   ),
 
   targets::tar_target(
+    name = deg_class,
+    command  =
+      group_degs(
+        degs            = degs,
+        comparison_vars = project_params[["comparison_groups"]]
+      ),
+    packages =
+      c(
+        "tibble",
+        "tidyr",
+        "dplyr",
+        "stringr"
+      )
+  ),
+
+  targets::tar_target(
     name = top_degs,
     command  =
       extract_top_degs(
@@ -1351,7 +1367,8 @@ list(
         "genefilter",
         "tidyselect",
         "purrr",
-        "formattable"
+        "formattable",
+        "grid"
     ),
     quiet = FALSE
   )

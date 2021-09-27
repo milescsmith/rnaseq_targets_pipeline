@@ -45,8 +45,7 @@ process_deg_kable <-
         !!paste0(
           "padj",
           kableExtra::footnote_marker_symbol(2)
-          ) := padj,
-        "lfc standard error" = lfcSE
+          ) := padj
         ) %>%
       knitr::kable(
         escape = FALSE,
@@ -174,21 +173,11 @@ comparisonHeatMap <- function(
     )
 
   people <-
-      dplyr::filter(
-        .data = md,
-        {{diffused_comparison}} %in%
-          stringr::str_split(
-            string =
-              stringr::str_split_fixed(
-                string  = comparison,
-                pattern = "_",
-                n       = 2
-                )[[2]],
-            pattern = "_vs_",
-            simplify = TRUE
-            )
-        ) |>
-      dplyr::pull(sample_name)
+    dplyr::filter(
+      .data = md,
+      {{diffused_comparison}} %in% unlist(stringr::str_split(comparison, " - ", n = 2))
+      ) |>
+    dplyr::pull(sample_name)
 
   plot_data <-
     expr_mat |>
@@ -208,6 +197,7 @@ comparisonHeatMap <- function(
     dplyr::filter(variance > 1e-10) |>
     dplyr::left_join(y = md)
 
+  # TODO: rewrite for ComplexHeatmap
   if (is.null(grouping_variable)){
     tidyheatmap::tidy_heatmap(
       df = plot_data,
@@ -627,196 +617,6 @@ groupedModuleGSEAPlots <- function(
   ggplot2::coord_flip()
 }
 
-groupedPheatmap <- function(
-  expr_mat,
-  gene_list,
-  md,
-  annotation_palettes,
-  row_grouping        = NULL,
-  row_annotation      = NULL,
-  col_grouping        = NULL,
-  col_annotation      = NULL,
-  scale_exprs         = TRUE,
-  silent              = FALSE,
-  ...
-){
-
-
-  if (!is.null(row_grouping)){
-    if (row_grouping == "hierarchical clustering" | row_grouping == "none"){
-      row_grouping <- NULL
-    }
-  }
-
-  if (!is.null(col_grouping)){
-    if (col_grouping == "hierarchical clustering"| col_grouping == "none"){
-      col_grouping <- NULL
-    }
-  }
-
-  if (is.null(row_annotation)){
-    row_annotation <- row_grouping
-  }
-
-  plot_data <-
-    expr_mat |>
-    tibble::as_tibble(rownames = "obsv") |>
-    dplyr::filter(obsv %in% gene_list) |>
-    tidyr::pivot_longer(
-      -obsv,
-      names_to = "sample_name",
-      values_to = "exprs"
-    ) |>
-    dplyr::group_by(obsv) |>
-    dplyr::mutate(
-      scaled_expr =
-        dplyr::case_when(
-          scale_exprs ~ as.vector(scale(exprs)),
-          TRUE ~ exprs
-        ),
-      variance = var(exprs)
-    ) |>
-    dplyr::ungroup() |>
-    dplyr::filter(variance > 1e-10) |>
-    dplyr::left_join(y = md) |>
-    conditional_left_join(
-      .y = col_annotation,
-      .condition = tibble::is_tibble(col_annotation),
-      .negate = FALSE
-    )
-
-  if(!is.null(col_annotation)){
-    if (tibble::is_tibble(col_annotation)){
-      col_annotation <- colnames(col_annotation)[colnames(col_annotation) != "obsv"]
-    } else if (col_annotation == "none") {
-      col_annotation <- NULL
-    }
-  }
-
-  row_annotation_data <-
-    if (!is.null(row_annotation)){
-      dplyr::select(
-        .data = plot_data,
-        sample_name,
-        tidyselect::one_of(row_annotation)
-      ) |>
-      dplyr::distinct() |>
-      tibble::column_to_rownames("sample_name")
-    } else {
-      NA
-    }
-
-  col_annotation_data <-
-    if (!is.null(col_annotation)){
-      dplyr::select(
-        .data = plot_data,
-        obsv,
-        tidyselect::one_of(col_annotation)
-      ) |>
-      dplyr::distinct() |>
-      column_to_rownames("obsv")
-    } else {
-      NA
-    }
-
-  plot_mat <-
-    dplyr::select(
-      .data = plot_data,
-      obsv,
-      sample_name,
-      exprs
-      ) |>
-    tidyr::pivot_wider(
-      names_from = "obsv",
-      values_from = "exprs"
-    ) |>
-    tibble::column_to_rownames("sample_name")
-
-  if (!is.null(col_grouping) & !is.null(row_grouping)){
-    dro <- rlang::sym(row_grouping)
-    dro <- rlang::enquo(dro)
-
-    row_order_data <-
-      dplyr::select(
-        .data = plot_data,
-        sample_name,
-        all_of(row_grouping)
-      ) |>
-      dplyr::distinct() |>
-      dplyr::arrange(row_grouping)
-
-    row_count <- dplyr::count(x = plot_data, {{dro}}) |> dplyr::mutate(breaks = dplyr::cumsum(n))
-    row_order <- dplyr::pull(.data = plot_data, sample_name)
-
-    dco <- rlang::sym(col_grouping)
-    dco <- rlang::enquo(dco)
-
-    col_order_data <-
-      dplyr::select(
-        .data = plot_data,
-        obsv,
-        all_of(col_grouping)
-      ) |>
-      dplyr::distinct() |>
-      dplyr::arrange(col_grouping)
-
-    col_count <- dplyr::count(x = plot_data, {{dco}}) |> dplyr::mutate(breaks = dplyr::cumsum(n))
-    col_order <- dplyr::pull(.data = plot_data, obsv)
-
-    plot_mat <- magrittr::extract(plot_mat, row_order, col_order)
-
-  } else if (!is.null(col_grouping)){
-    dco <- rlang::sym(col_grouping)
-    dco <- rlang::enquo(dco)
-
-    col_order_data <-
-      dplyr::select(
-        .data = plot_data,
-        obsv,
-        all_of(col_grouping)
-      ) |>
-      dplyr::distinct() |>
-      dplyr::arrange(col_grouping)
-
-    col_count <- dplyr::count(x = plot_data, {{dco}}) |>dplyr:: mutate(breaks = cumsum(n))
-    col_order <- dplyr::pull(.data = plot_data, obsv)
-
-    plot_mat <- magrittr::extract(plot_mat, , col_order)
-
-  } else if (!is.null(row_grouping)){
-    dro <- rlang::sym(row_grouping)
-    dro <- rlang::enquo(dro)
-
-    row_order_data <-
-      dplyr::select(
-        .data = plot_data,
-        sample_name,
-        all_of(row_grouping)
-      ) |>
-      dplyr::distinct() |>
-      dplyr::arrange(row_grouping)
-
-    row_count <- dplyr::count(x = row_order_data, {{dro}}) |> dplyr::mutate(breaks = cumsum(n))
-    row_order <- dplyr::pull(.data = row_order_data, sample_name)
-
-    plot_mat <- magrittr::extract(plot_mat, row_order,)
-  }
-
-  pheatmap::pheatmap(
-    mat = plot_mat,
-    show_rownames = FALSE,
-    cluster_rows = ifelse(test = !is.null(row_grouping), yes = FALSE, no = TRUE),
-    cluster_cols = ifelse(test = !is.null(col_grouping), yes = FALSE, no = TRUE),
-    annotation_row = row_annotation_data,
-    annotation_col = col_annotation_data,
-    annotation_colors = annotation_palettes,
-    gaps_row = dplyr::pull(row_count, breaks),
-    gaps_col = dplyr::pull(row_count, breaks),
-    silent = silent,
-    ...
-  )
-}
-
 groupedComplexHeatmap <- function(
   expr_mat,
   gene_list,
@@ -882,7 +682,7 @@ groupedComplexHeatmap <- function(
       }
     }
 
-    row_annotation_data <-
+  row_annotation_data <-
     if (!is.null(row_annotation)){
       rad <-
         dplyr::select(
@@ -894,7 +694,7 @@ groupedComplexHeatmap <- function(
         tibble::column_to_rownames("sample_name")
       ComplexHeatmap::rowAnnotation(
         df = rad,
-        col = group_pal
+        col = annotation_palettes
         )
     } else {
       NULL
@@ -909,10 +709,10 @@ groupedComplexHeatmap <- function(
           tidyselect::one_of(col_annotation)
         ) |>
         dplyr::distinct() |>
-        column_to_rownames("obsv")
-      ComplexHeatmap::rowAnnotation(
+        tibble::column_to_rownames("obsv")
+      ComplexHeatmap::columnAnnotation(
         df = cad,
-        col = group_pal
+        col = annotation_palettes
         )
     } else {
       NULL
@@ -953,7 +753,8 @@ groupedComplexHeatmap <- function(
       dplyr::pull(
         .data = plot_data,
         sample_name
-        )
+        ) |>
+      unique()
 
     dco <- rlang::sym(col_grouping)
     dco <- rlang::enquo(dco)
@@ -969,14 +770,15 @@ groupedComplexHeatmap <- function(
 
     col_count <-
       dplyr::pull(
-        plot_data,
+        col_order_data,
         {{dco}}
       )
     col_order <-
       dplyr::pull(
         .data = plot_data,
         obsv
-        )
+        ) |>
+      unique()
 
     plot_mat <-
       magrittr::extract(
@@ -1000,14 +802,16 @@ groupedComplexHeatmap <- function(
 
     col_count <-
       dplyr::pull(
-        plot_data,
+        col_order_data,
         {{dco}}
         )
+
     col_order <-
       dplyr::pull(
         .data = plot_data,
         obsv
-        )
+        ) |>
+      unique()
 
     plot_mat <-
       magrittr::extract(
@@ -1039,7 +843,8 @@ groupedComplexHeatmap <- function(
       dplyr::pull(
         .data = row_order_data,
         sample_name
-        )
+        ) |>
+      unique()
 
     col_count = NULL
 
@@ -1068,8 +873,190 @@ groupedComplexHeatmap <- function(
     column_names_centered = TRUE,
     row_split = row_count,
     column_split = col_count,
-    right_annotation = row_annotation_data,
-    bottom_annotation = col_annotation_data,
-    name = "Expression\nZ-score"
+    left_annotation = row_annotation_data,
+    top_annotation = col_annotation_data,
+    name = "Expression\nZ-score",
+    row_title_gp = grid::gpar(fontsize = 9),
+    row_names_gp = grid::gpar(fontsize = 9),
+    column_title_gp = grid::gpar(fontsize = 9),
+    column_title_rot = 90,
+    column_names_gp = grid::gpar(fontsize = 9),
+    ...
+  )
+}
+
+comparisonComplexHeatMap <- function(
+  comparison,
+  utbl,
+  dtbl,
+  expr_mat,
+  md,
+  comparison_variable,
+  grouping_variable = NULL,
+  annotation_palettes,
+  row_annotation = NULL,
+  col_annotation = NULL,
+  scale_exprs = TRUE,
+  ...
+){
+  diffused_comparison <- rlang::sym(comparison_variable)
+  diffused_comparison <- rlang::enquo(diffused_comparison)
+
+  comparison_genes <-
+    dplyr::pull(
+      dplyr::bind_rows(
+        utbl,
+        dtbl
+      ),
+      gene
+    )
+
+  samples <-
+    dplyr::filter(
+      .data = md,
+      {{diffused_comparison}} %in% unlist(stringr::str_split(comparison, " - ", n = 2))
+    ) |>
+    dplyr::pull(sample_name)
+
+  plot_data <-
+    expr_mat |>
+    magrittr::extract(comparison_genes, samples) |>
+    tibble::as_tibble(rownames = "obsv") |>
+    tidyr::pivot_longer(
+      cols = tidyselect::one_of(samples),
+      names_to  = "sample_name",
+      values_to = "exprs"
+    ) |>
+    dplyr::group_by(obsv) |>
+    dplyr::mutate(
+      scaled_expr =
+        dplyr::case_when(
+          scale_exprs ~ as.vector((exprs - mean(exprs))/sd(exprs)),
+          TRUE ~ exprs
+        ),
+      variance = var(exprs)
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::filter(variance > 1e-10) |>
+    dplyr::left_join(y = md)
+
+  row_annotation_data <-
+    if (!is.null(row_annotation)){
+      rad <-
+        dplyr::select(
+          .data = plot_data,
+          sample_name,
+          tidyselect::one_of(row_annotation)
+        ) |>
+        dplyr::distinct() |>
+        tibble::column_to_rownames("sample_name")
+      ComplexHeatmap::rowAnnotation(
+        df = rad,
+        col = annotation_palettes
+      )
+    } else {
+      NULL
+    }
+
+  col_annotation_data <-
+    if (!is.null(col_annotation)){
+      cad <-
+        dplyr::select(
+          .data = plot_data,
+          obsv,
+          tidyselect::one_of(col_annotation)
+        ) |>
+        dplyr::distinct() |>
+        column_to_rownames("obsv")
+      ComplexHeatmap::columnAnnotation(
+        df = cad,
+        col = annotation_palettes
+      )
+    } else {
+      NULL
+    }
+
+  plot_mat <-
+    dplyr::select(
+      .data = plot_data,
+      obsv,
+      sample_name,
+      scaled_expr
+    ) |>
+    tidyr::pivot_wider(
+      names_from = "obsv",
+      values_from = "scaled_expr"
+    ) |>
+    tibble::column_to_rownames("sample_name") |>
+    as.matrix()
+
+  plot_title <-
+    stringr::str_replace(
+      string      = comparison,
+      pattern     = "-",
+      replacement = "vs"
+    )
+
+  color_range =
+    length(
+      x =
+        seq(
+          from = floor(min(plot_data$scaled_expr)),
+          to   = ceiling(max(plot_data$scaled_expr)),
+          by = 1
+        )
+    )
+
+  if (grouping_variable == "hierarchical_clustering"){
+    grouping_variable <- NULL
+  }
+
+  # TODO: rewrite for ComplexHeatmap
+  if (!is.null(grouping_variable)){
+    diffused_grouping <- rlang::sym(grouping_variable)
+    diffused_grouping <- rlang::enquo(diffused_grouping)
+
+    row_order_data <-
+      dplyr::select(
+        .data = plot_data,
+        sample_name,
+        all_of(grouping_variable)
+      ) |>
+      dplyr::distinct() |>
+      dplyr::arrange({{diffused_grouping}})
+
+    row_count <-
+      dplyr::pull(
+        row_order_data,
+        {{diffused_grouping}}
+      )
+    row_order <-
+      dplyr::pull(
+        .data = row_order_data,
+        sample_name
+      )
+    plot_mat <- magrittr::extract(plot_mat, row_order,)
+  } else {
+    row_count <- NULL
+  }
+
+  ComplexHeatmap::Heatmap(
+    matrix                = plot_mat,
+    border                = TRUE,
+    col                   = viridisLite::viridis(n = color_range),
+    show_row_names        = FALSE,
+    column_names_rot      = 45,
+    column_names_centered = TRUE,
+    row_split             = row_count,
+    right_annotation      = row_annotation_data,
+    top_annotation     = col_annotation_data,
+    name                  = "Expression\nZ-score",
+    column_title          = plot_title,
+    row_title_gp = grid::gpar(fontsize = 9),
+    row_names_gp = grid::gpar(fontsize = 9),
+    column_title_gp = grid::gpar(fontsize = 9),
+    column_title_rot = 90,
+    column_names_gp = grid::gpar(fontsize = 9),
+    ...
   )
 }
