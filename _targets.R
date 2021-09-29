@@ -14,6 +14,7 @@ source("code/plan/10_viral_transcript_funcs.R")
 source("code/plan/11_stats_testing_funcs.R")
 # source("code/plan/12_table_outputs.R")
 source("code/plan/13_pathways.R")
+source("code/plan/14_report_funcs.R")
 source("code/plan/97_misc_functions.R")
 source("code/plan/98_palettes_funcs.R")
 source("code/plan/99_output_funcs.R")
@@ -47,6 +48,7 @@ list(
     command =
       import_metadata(
         metadata_file                = raw_metadata,
+        metadata_sheet               = project_params[["metadata_sheet"]],
         comparison_grouping_variable = project_params[["comparison_grouping_variable"]],
         projects_to_include          = project_params[["projects_to_include"]],
         projects_to_exclude          = project_params[["projects_to_exclude"]],
@@ -58,8 +60,10 @@ list(
         regression_columns           = project_params[["regression_columns"]],
         filter_column                = project_params[["filter_column"]],
         filter_value                 = project_params[["filter_value"]],
+        extra_columns                = project_params[["extra_columns"]],
         samples_to_exclude           = project_params[["manual_sample_removal"]],
-        extra_controls_metadata_file = raw_metadata
+        extra_controls_metadata_file = raw_metadata,
+        skip_lines                   = project_params[["skip_lines"]],
       ),
     packages =
       c(
