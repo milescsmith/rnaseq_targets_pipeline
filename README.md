@@ -103,7 +103,7 @@ Miles Smith <miles-smith@omrf.org>
 
 # Repository
 
-https://github.com/milescsmith/rnaseq-targets-pipeline
+https://github.com/milescsmith/rnaseq_targets_pipeline
 
 ## Last Updated
 See the [CHANGELOG](CHANGELOG.md) for the latest updates
