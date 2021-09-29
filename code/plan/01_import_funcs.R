@@ -7,6 +7,7 @@ import_metadata <- function(
   regression_columns,
   filter_column,
   filter_value                  = NULL,
+  extra_columns                 = NULL,
   metadata_sheet                = "main",
   extra_controls_metadata_file  = NULL,
   extra_controls_metadata_sheet = "main",
@@ -14,7 +15,8 @@ import_metadata <- function(
   groups_to_exclude             = NULL,
   projects_to_include           = NULL,
   projects_to_exclude           = NULL,
-  samples_to_exclude            = NULL
+  samples_to_exclude            = NULL,
+  skip_lines                    = NULL
 ){
 
   # Setup variables for non-standard evaluation
@@ -29,7 +31,9 @@ import_metadata <- function(
 
   study_metadata <-
     read_md_file(
-      path = metadata_file
+      path = metadata_file,
+      skip = skip_lines,
+      sheet = metadata_sheet
     ) %>%
     select(
       all_of(
@@ -38,7 +42,8 @@ import_metadata <- function(
           grouping_column,
           project_column,
           regression_columns,
-          filter_column
+          filter_column,
+          extra_columns
         )
       )
     ) %>%
@@ -48,7 +53,7 @@ import_metadata <- function(
       !{{diffused_comparison_sym}} %in% groups_to_exclude,
       !{{diffused_sample_name}} %in% samples_to_exclude,
       {{diffused_project}} %in% (projects_to_include %||% unique(.data[[project_column]])),
-      !{{diffused_project}} %in% projects_to_exclude,
+      !{{diffused_project}} %in% projects_to_exclude
     ) %>%
     dplyr::mutate(
       dplyr::across(
