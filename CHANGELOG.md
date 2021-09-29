@@ -4,9 +4,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.4.0] - 2021-09-24
+## [2.5.0] - 2021-09-29
+### Added
+  - Gene ontology and Reactome pathway enrichment analysis for differentially
+    expressed genes
+    
+### Fixed
+  -  Volcano plot for differential expression is again properly displayed
+
+
+## [2.4.0] - 2021-09-27
 ### Changed
   - Removed {pheatmap}-based heatmaps in favor of {ComplexHeatmap}
+  
 ### Fixed
   - The `primary_report` target now correctly produces a report, with proper formatting and all
   - Fixes for `groupedComplexHeatmap()` and `comparisonComplexHeatmap()`
@@ -24,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New parameters in `project_parameters.R`:
     "sample_species", "heatmap_row_annotations", "comparison_groups", "row_annotations"
   - Add rule to use `generatePalettes` instead of the old `create_palettes`
+  
 ### Changed
   - Switched many more instances of the {magrittr} pipe `%>%` to base R pipe `|>`
   - `group_pal` target now uses the `generatePalettes` function
@@ -42,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - iterate over `rf_classifier` instead of having one rule per comparison (and allows for
     parallel computation)
   - iterate over `modules_compare_with_stats`
+  
 ### Fixed
   - `annotation_info` target now includes extracting the "cluster" column
   - `pca_results` and `umap_results` no longer try to pass a `cluster_info`
@@ -57,10 +69,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - No longer need to create palettes manually thanks to the new `generatePalettes`
     function
   - Functions to generate tables and heatmaps for the report
+  
 ### Changed
   - Added more namespace declarations
   - Changed several anonymous functions to use the new R4.1-style lamba functions
   - Stole `filterThreshold` from {DESeq2} so that it works on {limma}/{edgeR} results
+  
 ### Fixed
   - Currently working through the `analysis/report.rmd` to match the new targets
   - Fix for `read_md_file` so that importing the metadata now accounts for
@@ -70,7 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `import_metadata` now actually filters based on the `filter_column` and `filter_value
 
 ## [2.1.0] - 2021-08-27
+
 Merging the "generalized" branch
+
 ### Changed
   - Separated import of count files from processing of counts
   - removed global import of packages and instead each target loads the packages
@@ -82,6 +98,7 @@ Merging the "generalized" branch
     to factors
   - Replaced several instances of the {magrittr}-style pipe to the new
     native R pipe
+    
 ### Added
   - Added package namespace declarations in front of 
     all functions
@@ -89,21 +106,26 @@ Merging the "generalized" branch
   - Added generics to extract module scores
   - Added generics for differential gene expression testing
   - Added generics for extracting metadata
+  
 ### Fixed
   - Pipeline up to `primary_report` target
 
 
 ## [2.0.0] - 2021-08-13
+
 Pulling changes from updates added during BLAST analysis
+
 ### Added
   - ability to manually remove samples
   - custom version of janitor::make_clean_names that optionally allows duplicate values
+  
 ### Changed
   -Replaced some hard coded variables with abstraction.
     - Replaced comparing by disease_class with a variable `comparison_grouping_variable`
   - Palette generation is a little smarter
   - Module data is now split by a custom function (helps with NSE)
   - Update C5 MSigDb file
+  
 ### Removed
   - Eliminated the excessive number of times I was mutating that comparison
     column into a factor.
@@ -114,6 +136,7 @@ Pulling changes from updates added during BLAST analysis
   - Separated import of count files from processing of counts
   - Started adding package namespace declarations in front of 
     all functions
+    
 ### Fixed
   - Pipeline up to `sva_graph_data` target
 
@@ -136,10 +159,12 @@ Pulling changes from updates added during BLAST analysis
   - Rearranged directory layout
   - Split analysis plan into parts
 
+[2.5.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.4.0...2.5.0
 [2.4.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.3.0...2.4.0
 [2.3.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.2.0...2.3.0
 [2.2.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.1.0...2.2.0
 [2.1.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/1.0.0...2.1.0
-[2.0.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/1.1.0...2.0.0
+[2.0.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/1.2.0...2.0.0
+[1.2.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/1.0.0...1.1.0
 [1.0.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/releases/tag/1.0.0

@@ -617,7 +617,7 @@ list(
   targets::tar_target(
     name = down_tables,
     command = create_deg_tables(
-      deg_res           = processed_data[["res"]],
+      deg_res           = res,
       comparison_list   = processed_data[["comparisons"]],
       grouping_variable = project_params[["comparison_grouping_variable"]],
       direction         = "down"
@@ -634,10 +634,108 @@ list(
     cue = targets::tar_cue("never")
   ),
 
+  # This is seemly stupid as all hell, but
+  # every time I attempt to get targets to iterate over
+  # res itself (with `map(res)`), it converts it into a
+  # list, which of course fails.  So, instead, we will
+  # iterate over a vector of indices
+  targets::tar_target(
+    name = res_length,
+    command = seq_along(res)
+  ),
+
+  targets::tar_target(
+    name = unnamed_up_enrichment,
+    command = deg_pathway_enrichment(
+      results     = res[[res_length]],
+      fcThreshold = project_params[["deg_substantial_threshold"]],
+      fcPvalue    = project_params[["deg_pval_threshold"]],
+      species     = project_params[["sample_species"]],
+      direction   = "up",
+      ontology    = "ALL"
+    ),
+    pattern   = map(res_length),
+    iteration = "list",
+    packages =
+      c(
+        "clusterProfiler",
+        "dplyr",
+        "ReactomePA"
+      )
+    ,
+    cue = targets::tar_cue("never")
+  ),
+
+  targets::tar_target(
+    name = up_enrichment,
+    command = rlang::set_names(x = unnamed_up_enrichment, nm = names(res))
+  ),
+
+  targets::tar_target(
+    name = unnamed_up_enrichment_degs,
+    command =
+      get_enrichment_fcs(
+        enrichResult = up_enrichment[[res_length]],
+        degResult = res[[res_length]]
+          ),
+    pattern = map(res_length),
+    iteration = "list",
+    packages = "dplyr"
+  ),
+
+  targets::tar_target(
+    name = up_enrichment_degs,
+    command = rlang::set_names(x = unnamed_up_enrichment_degs, nm = names(res))
+  ),
+
+  targets::tar_target(
+    name = unnamed_down_enrichment,
+    command = deg_pathway_enrichment(
+      results     = res[[res_length]],
+      fcThreshold = project_params[["deg_substantial_threshold"]],
+      fcPvalue    = project_params[["deg_pval_threshold"]],
+      species     = project_params[["sample_species"]],
+      direction   = "down",
+      ontology    = "ALL"
+    ),
+    pattern   = map(res_length),
+    iteration = "list",
+    packages =
+      c(
+        "clusterProfiler",
+        "dplyr",
+        "ReactomePA"
+      )
+    ,
+    cue = targets::tar_cue("never")
+  ),
+
+  targets::tar_target(
+    name = down_enrichment,
+    command = rlang::set_names(x = unnamed_down_enrichment, nm = names(res))
+  ),
+
+  targets::tar_target(
+    name = unnamed_down_enrichment_degs,
+    command =
+      get_enrichment_fcs(
+        enrichResult = down_enrichment[[res_length]],
+        degResult = res[[res_length]]
+      ),
+    pattern = map(res_length),
+    iteration = "list",
+    packages = "dplyr"
+  ),
+
+  targets::tar_target(
+    name = down_enrichment_degs,
+    command = rlang::set_names(x = unnamed_down_enrichment_degs, nm = names(res))
+  ),
+
   targets::tar_target(
     name = up_tables,
     command  = create_deg_tables(
-      deg_res           = processed_data[["res"]],
+      deg_res           = res,
       comparison_list   = processed_data[["comparisons"]],
       grouping_variable = project_params[["comparison_grouping_variable"]],
       direction         = "up"
@@ -657,7 +755,7 @@ list(
   targets::tar_target(
     name = degs,
     command  = extract_de_genes(
-      results           = processed_data[["res"]],
+      results           = res,
       comparison_list   = processed_data[["comparisons"]],
       grouping_variable = project_params[["comparison_groups"]]
     ),

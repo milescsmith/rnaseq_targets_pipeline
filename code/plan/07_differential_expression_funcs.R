@@ -500,3 +500,94 @@ filterThreshold <- function(
   cutoffs <- stats::quantile(filter, theta)
   cutoffs[j]
 }
+
+
+deg_pathway_enrichment <-
+  function(
+    results,
+    fcThreshold,
+    fcPvalue,
+    species = "human",
+    direction = c("up", "down"),
+    ontology  = c("ALL", "BP", "CC", "MF")
+    ){
+    direction <- match.arg(arg = direction, choices=c("up", "down"))
+    ontology  <- match.arg(arg = ontology, choices=c("ALL", "BP", "CC", "MF"))
+
+    filtered_results <-
+      switch(
+        EXPR = direction,
+        up   = dplyr::filter(.data = results, padj < fcPvalue, log2FoldChange > fcThreshold),
+        down = dplyr::filter(.data = results, padj < fcPvalue, log2FoldChange > -(fcThreshold))
+      )
+
+    # Technically, the enrich-series of functions work with gene symbols,
+    # but using bitr ensures we eliminate those that do not map to a Entrez ID
+    # and prevents a "Error in names(x) <- value :'names' attribute [2] must be the same length as the vector [1]"
+
+    orgdb <- findOrgDb(target_species = species)
+
+    degIDs <-
+      clusterProfiler::bitr(
+        geneID   = dplyr::pull(.data = filtered_results, gene),
+        fromType = "SYMBOL",
+        toType   = "ENTREZID",
+        OrgDb    = orgdb,
+        drop     = TRUE
+        ) |>
+      dplyr::pull("ENTREZID")
+
+    go_pathways <-
+      clusterProfiler::enrichGO(
+        gene          = degIDs,
+        OrgDb         = orgdb,
+        keyType       = "ENTREZID",
+        ont           = ontology,
+        pAdjustMethod = "fdr",
+        readable      = TRUE
+        )
+
+    species <- switch(
+      EXPR = species,
+      `Homo sapiens` = "human",
+      human          = "human",
+      `H sapiens`    = "human",
+      `Mus musculus` = "mouse",
+      mouse          = "mouse",
+      `M musculus`   = "mouse"
+    )
+    react_pathways <-
+      ReactomePA::enrichPathway(
+        gene          = degIDs,
+        organism      = species,
+        pAdjustMethod = "fdr",
+        readable      = TRUE
+      )
+
+    list(
+      gene_ontology = go_pathways,
+      reactome      = react_pathways
+    )
+}
+
+
+get_enrichment_fcs <- function(enrichResult, degResult){
+  genes_in_reactome <- slot(enrichResult[["reactome"]], "gene2Symbol")
+  genes_in_go       <- slot(enrichResult[["gene_ontology"]], "gene2Symbol")
+
+  reactome_lfc <-
+    degResult |>
+    dplyr::filter(gene %in% genes_in_reactome) |>
+    dplyr::pull(log2FoldChange, gene)
+
+  go_lfc <-
+    degResult |>
+    dplyr::filter(gene %in% genes_in_go) |>
+    dplyr::pull(log2FoldChange, gene)
+
+  list(
+    gene_ontology = go_lfc,
+    reactome      = reactome_lfc
+  )
+}
+

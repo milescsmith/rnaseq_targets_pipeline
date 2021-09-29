@@ -35,46 +35,6 @@ fix_antibody_values <- function(i) {
 }
 
 
-plot_sva <- function(sva_graph_data){
-  sva_graph_data %>%
-    pluck("sv") %>%
-    as_tibble(rownames = "sample_name") %>%
-    select(
-      sample_name,
-      starts_with("SV")
-    ) %>%
-    pivot_longer(
-      -sample_name,
-      names_to = "covar"
-    ) %>%
-    ggplot(
-      aes(
-        x = sample_name,
-        y = value
-      )
-    ) +
-    geom_point() +
-    geom_hline(
-      yintercept = 0,
-      color = "red"
-    ) +
-    facet_grid(
-      rows = vars(covar)
-    ) +
-    theme_cowplot() +
-    theme(
-      axis.text.x =
-        element_text(
-          angle = 45,
-          size = 9,
-          hjust = 1,
-          vjust = 1
-        )
-    )
-}
-
-
-
 convert_nuID_to_probeID <- function(
   object,
   rename_list

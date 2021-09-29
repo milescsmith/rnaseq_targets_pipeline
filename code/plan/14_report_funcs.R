@@ -1060,3 +1060,37 @@ comparisonComplexHeatMap <- function(
     ...
   )
 }
+
+degPathwayPlots <- function(title, enrichResult, enrichLFC){
+  plot_title <-
+    cowplot::ggdraw() + cowplot::draw_label(title)
+
+  plot_row <-
+    cowplot::plot_grid(
+      enrichplot:::barplot.enrichResult(
+        height = enrichResult,
+        font.size = 9
+        ) +
+        ggplot2::scale_y_discrete(labels = scales::label_wrap(10)),
+      enrichplot::cnetplot(
+        x = enrichResult,
+        foldChange = enrichLFC,
+        colorEdge = TRUE,
+        layout = "fr",
+        showCategory = 13,
+        cex_label_gene = 0.5,
+        cex_label_category = 0.75,
+        color_gene = "#000000",
+        shadowtext = "category"
+        ),
+      nrow = 1,
+      rel_widths = c(1,1.5)
+    )
+
+  cowplot::plot_grid(
+    plot_title,
+    plot_row,
+    nrow = 2,
+    rel_heights = c(0.1, 1)
+  )
+}

@@ -245,7 +245,7 @@ tar_load(vsc_exprs)
 ```
 
 ```{r sex-specific gene expression}
-sex_specific_genes <- tibble(
+sex_specific_genes <- tibble::tibble(
   chr =
     c(
       rep("Y",16),

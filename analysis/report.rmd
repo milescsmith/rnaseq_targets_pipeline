@@ -198,7 +198,6 @@ if (knitr::is_html_output()) {
 \newpage
 
 ## 25 genes with largest negative log-fold change in experimental group {.tabset .tabset-fade .tabset-pills}
-
 ```{r 25_top_down_DE, echo = FALSE}
 targets::tar_load(down_tables)
 ```
@@ -228,7 +227,6 @@ if (knitr::is_html_output()){
 ```
 
 ## 25 genes with largest positive log-fold change in experimental group {.tabset .tabset-fade .tabset-pills}
-
 ```{r 25_top_up_DE, echo = FALSE}
 targets::tar_load(up_tables)
 ```
@@ -258,7 +256,6 @@ if (knitr::is_html_output()){
 ```
 
 \newpage
-
 ```{r}
 targets::tar_load(deg_class)
 targets::tar_load(vsc_exprs)
@@ -283,7 +280,6 @@ groupings <- rlang::set_names(x = groupings, nm = groupings)
 <!-- say the comparisons for each experimental group within Disease Class, not within Disease Class and within cluster and within race -->
 <!-- but a lot more will have to change before we can do anything with that here -->
 <!-- TODO: Add GSEA of top DEGs -->
-
 ```{r top_class_DE_disease_sort, fig.width=12, fig.height=9}
 deg_heatmaps <-
   purrr::map(deg_comparisons, \(comparison_group){
@@ -319,14 +315,78 @@ deg_heatmaps <-
       })
     c(header, unlist(each_comparison))
   })
+res <- knitr::knit_child(text = unlist(deg_heatmaps), quiet = TRUE)
+cat(res, sep = '\n')
+```
+
+\newpage
+
+```{r deg_enrichment, echo = FALSE}
+targets::tar_load(up_enrichment)
+targets::tar_load(up_enrichment_degs)
+targets::tar_load(down_enrichment)
+targets::tar_load(down_enrichment_degs)
+```
+```{r, results = 'asis'}
+up_deg_enrichment <-
+  purrr::map(deg_comparisons, \(comparison_group){
+    header <-
+      knitr::knit_expand(
+        text = "\n## Pathway enrichment upgregulated genes for {{GROUPING_VAR}}: {{COMPARISON_GROUPING}} {.tabset .tabset-fade .tabset-pills}",
+        COMPARISON_GROUPING = comparison_group,
+        GROUPING_VAR        = project_params[["comparison_grouping_variable"]]
+      )
+    ontologies <-
+      purrr::map(
+        .x = names(up_enrichment[[comparison_group]]),
+        .f = \(x){
+          knitr::knit_expand(
+            file = here::here("analysis/templates/degPathwayPlots.Rmd"),
+            TITLE = x,
+            ENRICH = paste0("up_enrichment[['", comparison_group, "']][['", x, "']]"),
+            LFC = paste0("up_enrichment_degs[['", comparison_group, "']][['", x, "']]")
+            )
+          })
+    c(header, unlist(ontologies))
+  })
+res <- knitr::knit_child(text = unlist(up_deg_enrichment), quiet = TRUE)
+cat(res, sep = '\n')
+```
+
+\newpage
+
+```{r, results = 'asis'}
+down_deg_enrichment <-
+  purrr::map(deg_comparisons, \(comparison_group){
+    header <-
+      knitr::knit_expand(
+        text = "\n## Pathway enrichment downgregulated genes for {{GROUPING_VAR}}: {{COMPARISON_GROUPING}} {.tabset .tabset-fade .tabset-pills}",
+        COMPARISON_GROUPING = comparison_group,
+        GROUPING_VAR        = project_params[["comparison_grouping_variable"]]
+      )
+    ontologies <-
+      purrr::map(
+        .x = names(down_enrichment[[comparison_group]]),
+        .f = \(x){
+          knitr::knit_expand(
+            file = here::here("analysis/templates/degPathwayPlots.Rmd"),
+            TITLE = x,
+            ENRICH = paste0("down_enrichment[['", comparison_group, "']][['", x, "']]"),
+            LFC = paste0("down_enrichment_degs[['", comparison_group, "']][['", x, "']]")
+            )
+          })
+    c(header, unlist(ontologies))
+  })
+res <- knitr::knit_child(text = unlist(down_deg_enrichment), quiet = TRUE)
+cat(res, sep = '\n')
 ```
 
 \newpage
 
 ## Volcano plot of gene expression
 
-```{r Volcano_plot_of_gene_expression, fig.height=12, fig.width=10}
-purrr::walk2(
+```{r Volcano_plot_of_gene_expression, echo=FALSE, fig.height=9, fig.width=9}
+volcanoes <- purrr::map2(
   .x = res,
   .y = names(res),
   .f = \(x, y)
@@ -351,12 +411,17 @@ purrr::walk2(
           pattern     = "_",
           replacement = " "
         ),
-      caption = ""
-    ) |> print()
+      caption = "",
+      labSize = 3,
+      pointSize = 1
+    )
   )
+
+purrr::walk(volcanoes, plot)
 ```
 
 \newpage
+
 ```{r Expression_of_selected_interferon-stimulated genes, fig.height=6, fig.width=9}
 targets::tar_load(ISGs)
 targets::tar_load(module_ISGs)

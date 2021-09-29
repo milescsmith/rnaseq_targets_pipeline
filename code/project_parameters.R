@@ -44,7 +44,6 @@ project_params = list(
   batch_variable                  = "run_id",
   control_group                   = "control",
   experimental_group              = "sle",
-  num_sva                         = 3,
   manual_sample_removal           = NULL,
 
   aligner                         = "salmon",
@@ -53,10 +52,12 @@ project_params = list(
   initial_concentration_threshold = 1.5,
   pc1_zscore_threshold            = 2,
   pc2_zscore_threshold            = 2.5,
-  sva_num                         = 2,
+  sva_num                         = 3,
   use_combat                      = FALSE,
   process_method                  = "limma",
   lfcThreshold                    = 0.25,
+  deg_substantial_threshold       = 1.32, # which is about a 2.5-fold change
+  deg_pval_threshold              = 0.05,
 
   BPPARAM                         = BPPARAM,
 
