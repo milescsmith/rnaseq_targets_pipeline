@@ -3,10 +3,11 @@ options(future.globals.maxSize    = +Inf)
 Sys.setenv('RSTUDIO_PANDOC'       = '/usr/lib/rstudio-server/bin/pandoc')
 WGCNA::allowWGCNAThreads()
 BPPARAM =
-  BiocParallel::MulticoreParam(
-    workers       = parallel::detectCores()-1,
+  BiocParallel::SnowParam(
+    workers       = parallel::detectCores()-2,
     exportglobals = FALSE,
-    progressbar   = TRUE
+    progressbar   = TRUE,
+    type = "SOCK"
     )
 
 BiocParallel::register(BPPARAM)
@@ -19,8 +20,9 @@ project_params = list(
   metadata_file                   = "metadata/metadata.csv",
   metadata_sheet                  = "Visits",
   skip_lines                      = 1,
-  main_sample_list                = "metadata/sample_list.csv",
-  main_sample_sheet               = "main",
+  main_sample_list                = "metadata/NovaSeq_Sample_List.xlsx",
+  main_sample_sheet               = "Visits",
+  main_sample_sheet_skip          = 1,
   annotation_file                 = "references/gencode_v32_virus_tx2gene_v1.2.csv",
 
   #### Metadata columns ####
@@ -70,8 +72,5 @@ project_params = list(
   banchereau_modules              = "references/banchereau_modules.csv",
   banchereau_module_annotations   = "references/banchereau_module_annotations.csv",
   ldg_modules                     = "references/ldg_modules.csv",
-  metasignature_modules           = "references/metasignature_module.csv",
-
-  # Report parameters
-  row_annotations                 = c("Disease_Class", "project", "sex", "run_id", "RaceCode", "cluster")
+  metasignature_modules           = "references/metasignature_module.csv"
   )

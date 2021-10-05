@@ -1,128 +1,3 @@
-# we manually setup the palettes for pheatmap because letting it automatically pick the colors results in terrible choices
-create_palettes <- function(
-  comparison_grouping_variable,
-  annotated_modules,
-  annotation_info,
-  deg_class,
-  clusters
-){
-  type_pal =
-    paletteer::paletteer_d(
-      "ggsci::category20_d3",
-      n = length(levels(annotated_modules$type))
-      ) %>%
-    as.character() %>%
-    rlang::set_names(levels(annotated_modules$type)) %>%
-    magrittr::inset2("Undetermined", "#000000")
-
-  chr_pal =
-    c(
-      "Y" = "#E41A1C",
-      "X" = "#377EB8"
-      )
-
-  sex_pal =
-    paletteer::paletteer_d(
-      "ggsci::lanonc_lancet",
-      n = length(levels(annotation_info$sex))
-      ) %>%
-    as.character() %>%
-    rlang::set_names(nm = levels(annotation_info$sex))
-
-  cluster_pal =
-    ifelse(
-      test = length(levels(clusters$cluster)) > 12,
-      yes = list(
-        grDevices::colorRampPalette(
-          paletteer::paletteer_d(
-            palette = "ggthemes::calc",
-            n = 12
-          )
-        )(
-          length(
-            levels(
-              clusters$cluster
-            )
-          )
-        )
-      ),
-      no = list(
-        paletteer::paletteer_d(
-          palette = "ggthemes::calc",
-          n = length(
-            levels(
-              clusters[["cluster"]]
-            )
-          )
-        )
-      )
-    ) %>%
-    unlist() %>%
-    as.character() %>%
-    rlang::set_names(nm = levels(clusters[["cluster"]]))
-
-  number_project_groups =
-    length(
-      unique(
-        annotation_info[[comparison_grouping_variable]]
-      )
-    )
-
-  comparison_group_pal =
-    ifelse(
-      test = number_project_groups > 2,
-      yes  = list(
-        paletteer::paletteer_d(
-          palette = "ggthemes::colorblind",
-          n = length(
-            levels(
-              annotation_info[[comparison_grouping_variable]]
-              )
-            )
-          )
-        ),
-      no   = list(c("black", "grey75"))
-    ) %>%
-    unlist() %>%
-    rlang::set_names(
-      unique(
-        annotation_info[[comparison_grouping_variable]]
-      )
-    )
-
-  # cell_type_pal =
-  #   c("#ffa600", "#0062cc", "#008a71") %>%
-  #   set_names(levels(annotation_info$cell_type)),
-
-  comparison_pal =
-    oaColors::oaPalette(
-      length(
-        unique(deg_class[["comparison"]])
-      )
-    ) %>%
-    rlang::set_names(nm = unique(deg_class[["comparison"]]))
-
-  group_pal =
-    list(
-      type_pal,
-      chr_pal,
-      sex_pal,
-      cluster_pal,
-      comparison_group_pal,
-      comparison_pal) %>% #,
-    # cell_type_pal) %>%
-    set_names(c(
-      "type",
-      "chr",
-      "sex",
-      "cluster",
-      comparison_grouping_variable,
-      "comparison"))
-
-  group_pal
-}
-
-
 #' @title getRandomPalette
 #' @description Given a particular number of required discrete colors, randomly
 #' select a palette that can provide at least that number of distinct colors
@@ -191,14 +66,16 @@ getRandomPalette <-
 generatePalettes <-
   function(
     .data,
-    .cols = NULL,
+    .cols,
     use_palettes = NULL
   ){
 
-    if (is.null(.cols)){
+
+    .cols <- tidyselect::eval_select(rlang::enquo(.cols), .data[unique(names(.data))])
+
+    if (length(.cols) == 0){
       .data <- dplyr::select(.data = .data, where(is.factor))
     } else {
-      .cols <- tidyselect::eval_select(rlang::enquo(.cols), .data[unique(names(.data))])
       .data <- dplyr::select(.data = .data, {{.cols}})
     }
 

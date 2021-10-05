@@ -39,31 +39,33 @@ list(
     name = raw_metadata,
     command    = project_params[["metadata_file"]],
     format     = "file",
-    deployment = "main",
-    cue = tar_cue(mode = "never")
+    deployment = "main"
   ),
 
   targets::tar_target(
     name = md,
     command =
       import_metadata(
-        metadata_file                = raw_metadata,
-        metadata_sheet               = project_params[["metadata_sheet"]],
-        comparison_grouping_variable = project_params[["comparison_grouping_variable"]],
-        projects_to_include          = project_params[["projects_to_include"]],
-        projects_to_exclude          = project_params[["projects_to_exclude"]],
-        groups_to_include            = project_params[["groups_to_include"]],
-        groups_to_exclude            = project_params[["groups_to_exclude"]],
-        sample_name_column           = project_params[["sample_name_column"]],
-        grouping_column              = project_params[["grouping_column"]],
-        project_column               = project_params[["project_column"]],
-        regression_columns           = project_params[["regression_columns"]],
-        filter_column                = project_params[["filter_column"]],
-        filter_value                 = project_params[["filter_value"]],
-        extra_columns                = project_params[["extra_columns"]],
-        samples_to_exclude           = project_params[["manual_sample_removal"]],
-        extra_controls_metadata_file = raw_metadata,
-        skip_lines                   = project_params[["skip_lines"]],
+        metadata_file                 = raw_metadata,
+        metadata_sheet                = project_params[["metadata_sheet"]],
+        comparison_grouping_variable  = project_params[["comparison_grouping_variable"]],
+        projects_to_include           = project_params[["projects_to_include"]],
+        projects_to_exclude           = project_params[["projects_to_exclude"]],
+        groups_to_include             = project_params[["groups_to_include"]],
+        groups_to_exclude             = project_params[["groups_to_exclude"]],
+        sample_name_column            = project_params[["sample_name_column"]],
+        grouping_column               = project_params[["grouping_column"]],
+        project_column                = project_params[["project_column"]],
+        regression_columns            = project_params[["regression_columns"]],
+        filter_column                 = project_params[["filter_column"]],
+        filter_value                  = project_params[["filter_value"]],
+        extra_columns                 = project_params[["extra_columns"]],
+        samples_to_exclude            = project_params[["manual_sample_removal"]],
+        extra_controls_metadata_file  = raw_metadata,
+        extra_controls_metadata_sheet = project_params[["main_sample_sheet"]],
+        extra_controls_metadata_skip  = project_params[["main_sample_sheet_skip"]],
+        skip_lines                    = project_params[["skip_lines"]],
+        control_group                 = project_params[["control_group"]]
       ),
     packages =
       c(
@@ -74,14 +76,13 @@ list(
         "forcats",
         "stringr"
       ),
-    cue = tar_cue(mode = "never")
+    cue = targets::tar_cue(mode = "never")
   ),
 
   targets::tar_target(
     name = seq_file_directory,
     command    = project_params[["sequencing_file_directory"]],
-    format     = "file",
-    cue = tar_cue(mode = "never")
+    format     = "file"
   ),
 
   targets::tar_target(
@@ -97,21 +98,19 @@ list(
         "magrittr",
         "stringr"
       ),
-    cue = tar_cue(mode = "never")
+    cue = targets::tar_cue(mode = "never")
   ),
 
   targets::tar_target(
     name = annotation_file,
     command    = project_params[["annotation_file"]],
-    format     = "file",
-    cue = tar_cue(mode = "never")
+    format     = "file"
   ),
 
   targets::tar_target(
     name = annot,
     command    = read_csv(annotation_file),
-    packages   = "readr",
-    cue = tar_cue(mode = "never")
+    packages   = "readr"
   ),
 
   targets::tar_target(
@@ -131,7 +130,7 @@ list(
       "rlang",
       "tibble"
     ),
-    cue = tar_cue(mode = "never")
+    cue = targets::tar_cue(mode = "never")
   ),
 
   targets::tar_target(
@@ -146,7 +145,6 @@ list(
         removal_pattern    = "^RNA5",
         only_hugo          = project_params[["only_hugo_named_genes"]]
       ),
-    cue = tar_cue(mode = "never"),
     packages =
       c(
         "magrittr",
@@ -158,7 +156,8 @@ list(
         "purrr",
         "HGNChelper",
         "stringr"
-      )
+      ),
+    cue = targets::tar_cue(mode = "never")
   ),
 
   targets::tar_target(
@@ -193,19 +192,17 @@ list(
         "magrittr",
         "gtools"
       ),
-    cue = tar_cue(mode = "never")
+    cue = targets::tar_cue(mode = "never")
   ),
 
   targets::tar_target(
     name = qc_pca,
-    command = processed_data[["qc_pca"]],
-    cue = tar_cue(mode = "never")
+    command = processed_data[["qc_pca"]]
   ),
 
   targets::tar_target(
     name = outlier_samples,
-    command = processed_data[["outlier_samples"]],
-    cue = tar_cue(mode = "never")
+    command = processed_data[["outlier_samples"]]
   ),
 
   targets::tar_target(
@@ -219,8 +216,7 @@ list(
         "tidyr",
         "tibble",
         "purrr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -234,37 +230,32 @@ list(
         "tibble",
         "dplyr",
         "HGNChelper"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   # This should be changed into a list that we can walk through
   targets::tar_target(
     name = banchereau_module_file,
     command = project_params[["banchereau_modules"]],
-    format = "file",
-    cue = tar_cue(mode = "never")
+    format = "file"
   ),
 
   targets::tar_target(
     name = banchereau_module_annotations_file,
     command = project_params[["banchereau_module_annotations"]],
-    format = "file",
-    cue = tar_cue(mode = "never")
+    format = "file"
   ),
 
   targets::tar_target(
     name = ldg_module_file,
     command = project_params[["ldg_modules"]],
-    format = "file",
-    cue = tar_cue(mode = "never")
+    format = "file"
   ),
 
   targets::tar_target(
     name = metasignature_module_file,
     command = project_params[["metasignature_modules"]],
-    format = "file",
-    cue = tar_cue(mode = "never")
+    format = "file"
   ),
 
   targets::tar_target(
@@ -277,8 +268,7 @@ list(
         "tidyr",
         "readr",
         "dplyr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -292,8 +282,7 @@ list(
         "dplyr",
         "forcats",
         "magrittr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -306,8 +295,7 @@ list(
         "tidyr",
         "readr",
         "dplyr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -320,8 +308,7 @@ list(
         "tidyr",
         "readr",
         "dplyr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
 
@@ -347,8 +334,7 @@ list(
       c(
         "moduleScoreR",
         "magrittr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -368,8 +354,7 @@ list(
         "tibble",
         "tidyselect",
         "magrittr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   # targets::tar_target(
@@ -391,8 +376,7 @@ list(
         "dplyr",
         "forcats",
         "magrittr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -415,8 +399,7 @@ list(
         "dplyr",
         "tibble",
         "magrittr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -431,8 +414,7 @@ list(
       c(
         "dplyr",
         "tidyselect"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -450,8 +432,7 @@ list(
         "tibble",
         "purrr",
         "tidyr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -466,21 +447,18 @@ list(
       c(
         "dplyr",
         "tibble"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
     name = sample_dists,
     command = parallelDist(t(vsc_exprs)),
-    packages = "parallelDist",
-    cue = tar_cue(mode = "never")
+    packages = "parallelDist"
   ),
 
   targets::tar_target(
     name = sample_dendrogram,
-    command = as.dendrogram(hclust(sample_dists)),
-    cue = tar_cue(mode = "never")
+    command = as.dendrogram(hclust(sample_dists))
   ),
 
   targets::tar_target(
@@ -513,8 +491,7 @@ list(
         "forcats",
         "dplyr",
         "magrittr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -528,8 +505,7 @@ list(
       "dplyr",
       "SummarizedExperiment",
       "tibble"
-    ),
-    cue = tar_cue(mode = "never")
+    )
   ),
 
   targets::tar_target(
@@ -554,8 +530,7 @@ list(
         "dplyr",
         "tidyselect",
         "tibble"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -596,6 +571,7 @@ list(
     command =
       create_results_list(
         comparison_list              = processed_data[["comparisons"]],
+        method                       = project_params[['process_method']],
         object                       = dataset_with_scores,
         comparison_grouping_variable = project_params[["comparison_grouping_variable"]],
         BPPARAM                      = project_params[["BPPARAM"]],
@@ -614,7 +590,7 @@ list(
         "dplyr",
         "stringr"
       ),
-    cue = tar_cue(mode = "never")
+    cue = targets::tar_cue(mode = "never")
   ),
 
   # TODO: generalize create_deg_tables?
@@ -634,8 +610,7 @@ list(
         "tidyselect",
         "rlang",
         "stringr"
-      ),
-    cue = targets::tar_cue("never")
+      )
   ),
 
   # This is seemly stupid as all hell, but
@@ -666,8 +641,6 @@ list(
         "dplyr",
         "ReactomePA"
       )
-    ,
-    cue = targets::tar_cue("never")
   ),
 
   targets::tar_target(
@@ -710,8 +683,6 @@ list(
         "dplyr",
         "ReactomePA"
       )
-    ,
-    cue = targets::tar_cue("never")
   ),
 
   targets::tar_target(
@@ -752,8 +723,7 @@ list(
         "tidyselect",
         "rlang",
         "stringr"
-      ),
-    cue = targets::tar_cue("never")
+      )
   ),
 
   targets::tar_target(
@@ -769,8 +739,7 @@ list(
         "tibble",
         "dplyr",
         "rlang"
-      ),
-    cue = tar_cue("never")
+      )
   ),
 
   targets::tar_target(
@@ -872,7 +841,8 @@ list(
       reassignThreshold = 1e-6,
       corType = "bicor"
     ),
-    packages = "WGCNA"
+    packages = "WGCNA",
+    cue = targets::tar_cue(mode = "never")
   ),
 
   targets::tar_target(
@@ -971,15 +941,13 @@ list(
         "dials",
         "workflows",
         "tune"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
     name = wgcna_rf_models,
     command = rlang::set_names(x = unnamed_wgcna_rf_models, nm = comparison_groups),
-    packages = "rlang",
-    cue = tar_cue(mode = "never")
+    packages = "rlang"
   ),
 
   targets::tar_target(
@@ -997,8 +965,7 @@ list(
       c(
         "dplyr",
         "HGNChelper"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -1015,14 +982,13 @@ list(
         "dplyr",
         "clusterProfiler"
       ),
-    cue = tar_cue(mode = "never")
+    cue = targets::tar_cue(mode = "never")
   ),
 
   targets::tar_target(
     name = MEenriched,
     command  = dplyr::bind_rows(MEenriched_list),
-    packages = "dplyr",
-    cue = tar_cue("never")
+    packages = "dplyr"
   ),
 
   targets::tar_target(
@@ -1034,8 +1000,7 @@ list(
         "purrr",
         "stringr",
         "magrittr"
-      ),
-    cue = tar_cue(mode = "never")
+      )
   ),
 
   targets::tar_target(
@@ -1052,8 +1017,7 @@ list(
       c(
         "dplyr",
         "tibble"
-        ),
-    cue = tar_cue(mode = "never")
+        )
   ),
 
   targets::tar_target(
@@ -1085,7 +1049,7 @@ list(
         "workflows",
         "tune"
       ),
-    cue       = tar_cue(mode = "never")
+    cue = targets::tar_cue(mode = "never")
   ),
 
   targets::tar_target(
@@ -1146,8 +1110,7 @@ list(
         study_md,
         all_module_scores
       ),
-    packages = "dplyr",
-    cue = tar_cue("never")
+    packages = "dplyr"
   ),
 
   targets::tar_target(
@@ -1272,7 +1235,8 @@ list(
         "stringr",
         "rstatix",
         "purrr"
-      )
+      ),
+    cue = targets::tar_cue(mode = "never")
   ),
 
   targets::tar_target(
@@ -1300,7 +1264,8 @@ list(
         "stringr",
         "rstatix",
         "purrr"
-      )
+      ),
+    cue = targets::tar_cue(mode = "never")
   ),
 
   targets::tar_target(
@@ -1334,14 +1299,11 @@ list(
       c(
         generatePalettes(
           .data = study_md,
-          .cols =
-            c(
-              "cluster",
-              project_params[["comparison_grouping_variable"]],
-              "sex",
-              "RaceCode"
-              )
-          ),
+          c(
+            project_params[["comparison_grouping_variable"]],
+            one_of(project_params[["heatmap_row_annotations"]])
+          )
+        ),
         generatePalettes(
           .data = module_annotation,
           .cols = "type",

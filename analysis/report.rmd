@@ -327,6 +327,7 @@ targets::tar_load(up_enrichment_degs)
 targets::tar_load(down_enrichment)
 targets::tar_load(down_enrichment_degs)
 ```
+
 ```{r, results = 'asis'}
 up_deg_enrichment <-
   purrr::map(deg_comparisons, \(comparison_group){
@@ -541,15 +542,13 @@ reductions = list(
 groupings = list(
   project_params[["comparison_grouping_variable"]],
   "RaceCode",
-  "cluster",
-  "run_id"
+  "cluster"
 ) |>
   rlang::set_names(
     nm = c(
       project_params[["comparison_grouping_variable"]],
       "ethnicity",
-      "K-means cluster",
-      "plate"
+      "K-means cluster"
       )
     )
 ```

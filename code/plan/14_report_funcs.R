@@ -58,7 +58,7 @@ process_deg_kable <-
             " in ",
             stringr::str_split(
               string   = deg_table_name,
-              pattern  = "_vs_",
+              pattern  = " - |_vs_",
               simplify = TRUE
               ) %>%
               magrittr::extract(1),
@@ -175,7 +175,7 @@ comparisonHeatMap <- function(
   people <-
     dplyr::filter(
       .data = md,
-      {{diffused_comparison}} %in% unlist(stringr::str_split(comparison, " - ", n = 2))
+      {{diffused_comparison}} %in% unlist(stringr::str_split(comparison, " - |_vs_", n = 2))
       ) |>
     dplyr::pull(sample_name)
 
@@ -914,7 +914,7 @@ comparisonComplexHeatMap <- function(
   samples <-
     dplyr::filter(
       .data = md,
-      {{diffused_comparison}} %in% unlist(stringr::str_split(comparison, " - ", n = 2))
+      {{diffused_comparison}} %in% unlist(stringr::str_split(comparison, " - |_vs_", n = 2))
     ) |>
     dplyr::pull(sample_name)
 
@@ -1075,7 +1075,6 @@ degPathwayPlots <- function(title, enrichResult, enrichLFC){
       enrichplot::cnetplot(
         x = enrichResult,
         foldChange = enrichLFC,
-        colorEdge = TRUE,
         layout = "fr",
         showCategory = 13,
         cex_label_gene = 0.5,

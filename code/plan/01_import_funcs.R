@@ -11,12 +11,14 @@ import_metadata <- function(
   metadata_sheet                = "main",
   extra_controls_metadata_file  = NULL,
   extra_controls_metadata_sheet = "main",
+  extra_controls_metadata_skip  = NULL,
   groups_to_include             = NULL,
   groups_to_exclude             = NULL,
   projects_to_include           = NULL,
   projects_to_exclude           = NULL,
   samples_to_exclude            = NULL,
-  skip_lines                    = NULL
+  skip_lines                    = NULL,
+  control_group                 = "control"
 ){
 
   # Setup variables for non-standard evaluation
@@ -34,7 +36,7 @@ import_metadata <- function(
       path = metadata_file,
       skip = skip_lines,
       sheet = metadata_sheet
-    ) %>%
+    ) |>
     select(
       all_of(
         c(
@@ -46,7 +48,7 @@ import_metadata <- function(
           extra_columns
         )
       )
-    ) %>%
+    ) |>
     filter(
       !is.na(sample_name_column),
       {{diffused_comparison_sym}} %in% (groups_to_include %||% unique(.data[[comparison_grouping_variable]])),
@@ -54,7 +56,7 @@ import_metadata <- function(
       !{{diffused_sample_name}} %in% samples_to_exclude,
       {{diffused_project}} %in% (projects_to_include %||% unique(.data[[project_column]])),
       !{{diffused_project}} %in% projects_to_exclude
-    ) %>%
+    ) |>
     dplyr::mutate(
       dplyr::across(
         where(is.character) & -all_of(sample_name_column),
@@ -66,17 +68,19 @@ import_metadata <- function(
           case = "all_caps"
         ),
       {{diffused_comparison_sym}} :=
-        tolower({{diffused_comparison_sym}}) %>%
+        tolower({{diffused_comparison_sym}}) |>
         make_clean_names(allow_duplicates = TRUE)
     )
 
   if (!is.null(extra_controls_metadata_file)){
     non_project_controls =
       read_md_file(
-        path = extra_controls_metadata_file
-      ) %>%
+        path = extra_controls_metadata_file,
+        sheet = extra_controls_metadata_sheet,
+        skip = extra_controls_metadata_skip
+      ) |>
       dplyr::select(
-        one_of(
+        all_of(
           c(
             sample_name_column,
             grouping_column,
@@ -85,7 +89,7 @@ import_metadata <- function(
             filter_column
           )
         )
-      ) %>%
+      ) |>
       dplyr::mutate(
         dplyr::across(
           where(is.character) & -sample_name_column,
@@ -97,9 +101,9 @@ import_metadata <- function(
             case = "all_caps"
           ),
         {{diffused_comparison_sym}} :=
-          tolower({{diffused_comparison_sym}}) %>%
+          tolower({{diffused_comparison_sym}}) |>
           make_clean_names(allow_duplicates = TRUE)
-      ) %>%
+      ) |>
       dplyr::filter({{diffused_comparison_sym}} == "control")
 
     study_metadata <-
@@ -137,7 +141,7 @@ import_counts <- function(directory, metadata){
       pattern = "quant.sf.gz",
       recursive = TRUE,
       full.name = TRUE
-    ) %>%
+    ) |>
     grep(
       pattern = "Undetermined|NONE",
       invert = TRUE,
@@ -145,10 +149,10 @@ import_counts <- function(directory, metadata){
     )
 
   tx_sample_names <-
-    tx_files %>%
-    stringr::str_split(pattern = "/") %>%
-    purrr::map_chr(\(x) purrr::pluck(.x = x, length(x)-1)) %>%
-    stringr::str_remove(pattern = '(_[L|S][[:digit:]]+)+') %>%
+    tx_files |>
+    stringr::str_split(pattern = "/") |>
+    purrr::map_chr(\(x) purrr::pluck(.x = x, length(x)-1)) |>
+    stringr::str_remove(pattern = '(_[L|S][[:digit:]]+)+') |>
     make_clean_names(case = "all_caps")
 
   tx_files <-
@@ -192,14 +196,14 @@ prep_data_import <- function(
 
   message(glue::glue("Filtering genes with fewer than {minimum_gene_count} reads"))
   genes_with_passing_counts <-
-    counts[["counts"]] %>%
-    tibble::as_tibble(rownames = "gene_symbol") %>%
+    counts[["counts"]] |>
+    tibble::as_tibble(rownames = "gene_symbol") |>
     dplyr::mutate(
       rowsum = rowSums(dplyr::across(where(is.numeric)))
-    ) %>%
+    ) |>
     dplyr::filter(
       rowsum > minimum_gene_count
-    ) %>%
+    ) |>
     dplyr::pull(gene_symbol)
 
   filtered_counts <-
@@ -207,11 +211,11 @@ prep_data_import <- function(
       .x = c("abundance", "counts", "length"),
       .f = function(x){
         cleaned_counts <-
-          counts[[x]] %>%
-          tibble::as_tibble(rownames = "gene_symbol") %>%
+          counts[[x]] |>
+          tibble::as_tibble(rownames = "gene_symbol") |>
           dplyr::mutate(
             hugo = HGNChelper::checkGeneSymbols(gene_symbol)[["Suggested.Symbol"]]
-          ) %>%
+          ) |>
           dplyr::filter(
             gene_symbol %in% genes_with_passing_counts,
             stringr::str_detect(
@@ -226,15 +230,15 @@ prep_data_import <- function(
             dplyr::filter(
               .data = cleaned_counts,
               !is.na(hugo)
-            ) %>%
-            dplyr::group_by(hugo) %>%
-            dplyr::slice(1) %>%
-            dplyr::ungroup() %>%
+            ) |>
+            dplyr::group_by(hugo) |>
+            dplyr::slice(1) |>
+            dplyr::ungroup() |>
             dplyr::select(
               -gene_symbol,
               gene_symbol = hugo
-            ) %>%
-            tibble::column_to_rownames("gene_symbol") %>%
+            ) |>
+            tibble::column_to_rownames("gene_symbol") |>
             as.matrix()
         } else {
           cleaned_counts <-
@@ -246,11 +250,11 @@ prep_data_import <- function(
                   true = gene_symbol,
                   false = hugo
                 )
-            ) %>%
+            ) |>
             dplyr::select(
               -hugo
-            ) %>%
-            tibble::column_to_rownames("gene_symbol") %>%
+            ) |>
+            tibble::column_to_rownames("gene_symbol") |>
             as.matrix()
         }
       })
@@ -295,12 +299,12 @@ create_final_md <- function(
         pattern = "_2$",
         negate = TRUE
       )
-    ) %>%
+    ) |>
     dplyr::mutate(
       {{diffused_comparison_group}} :=
-        forcats::as_factor({{diffused_comparison_group}}) %>%
+        forcats::as_factor({{diffused_comparison_group}}) |>
         forcats::fct_relevel(control_group),
-    ) %>%
+    ) |>
     tibble::column_to_rownames(var=sample_name)
 
   final_md
@@ -341,20 +345,20 @@ remove_outliers.DGEList <-
 
     v <- limma::voom(object, design)
     pca_res =
-      irlba::prcomp_irlba(v$E)[['rotation']] %>%
-      tibble::as_tibble() %>%
+      irlba::prcomp_irlba(v$E)[['rotation']] |>
+      tibble::as_tibble() |>
       dplyr::mutate(
         sample_name = colnames(v$E),
         pc1_zscore = abs((PC1 - mean(PC1))/sd(PC1)),
         pc2_zscore = abs((PC2 - mean(PC2))/sd(PC2)),
-      ) %>%
+      ) |>
       dplyr::inner_join(tibble::as_tibble(v$targets, rownames = "sample_name"))
 
     pc1_outliers <-
       dplyr::filter(
         .data = pca_res,
         pc1_zscore >= pc1_zscore_cutoff
-      ) %>%
+      ) |>
       dplyr::pull(sample_name)
 
     if (!is.null(pc2_zscore_cutoff)){
@@ -362,7 +366,7 @@ remove_outliers.DGEList <-
         dplyr::filter(
           .data = pca_res,
           pc2_zscore >= pc2_zscore_cutoff
-        ) %>%
+        ) |>
         dplyr::pull(sample_name)
     } else {
       pc2_outliers <- NULL
@@ -405,14 +409,14 @@ remove_outliers.DESeqDataSet <-
         locfun = genefilter::shorth,
         type = "poscounts")
 
-    vsd <- SummarizedExperiment::assay(vst(object))
-    pca_res = irlba::prcomp_irlba(vsd)[['rotation']] %>%
-      tibble::as_tibble() %>%
+    vsd <- SummarizedExperiment::assay(DESeq2::vst(object))
+    pca_res = irlba::prcomp_irlba(vsd)[['rotation']] |>
+      tibble::as_tibble() |>
       dplyr::mutate(
         sample_name = colnames(vsd),
         pc1_zscore = abs((PC1 - mean(PC1))/sd(PC1)),
         pc2_zscore = abs((PC2 - mean(PC2))/sd(PC2)),
-      ) %>%
+      ) |>
       dplyr::inner_join(
         tibble::as_tibble(
           x = SummarizedExperiment::colData(object),
@@ -424,7 +428,7 @@ remove_outliers.DESeqDataSet <-
       dplyr::filter(
         .data = pca_res,
         pc1_zscore >= pc1_zscore_cutoff
-      ) %>%
+      ) |>
       dplyr::pull(sample_name)
 
     if (!is.null(pc2_zscore_cutoff)){
@@ -432,7 +436,7 @@ remove_outliers.DESeqDataSet <-
         dplyr::filter(
           .data = pca_res,
           pc2_zscore >= pc2_zscore_cutoff
-        ) %>%
+        ) |>
         dplyr::pull(sample_name)
     } else {
       pc2_outliers <- NULL
@@ -537,14 +541,14 @@ process_counts.limma <-
         group        = sample_grouping,
         lib.size     = eff.lib,
         remove.zeros = TRUE
-      ) %>%
+      ) |>
       edgeR::scaleOffset(
-        y = .,
+        # y = .,
         offset = normMat[rownames(.[["counts"]]),]
-      ) %>%
+      ) |>
       magrittr::extract(
         edgeR::filterByExpr(
-          y               = .,
+          # y               = .,
           group           = sample_grouping,
           keep.lib.sizes  = FALSE,
           min.count       = minimum_gene_count,
@@ -736,11 +740,9 @@ process_counts.limma <-
       outlier_samples            = outlier_qc[["removed"]],
       qc_pca                     = outlier_qc[["pca"]],
       sva_graph_data             = sva_res[["sva"]],
-      degs                       = res,
       dataset                    = post_qc_dge,
       comparisons                = comparisons,
-      design_matrix              = mm,
-      res                        = res
+      design_matrix              = mm
     )
   }
 
@@ -921,36 +923,6 @@ process_counts.edgeR <-
         )
       )
 
-    res = purrr::map(
-      .x = comparison_results_list,
-      .f = function(i) {
-        message(glue::glue("Performing DEG for {i}..."))
-        edgeR::topTags(
-          object =
-            edgeR::glmQLFTest(
-              glmfit = fit,
-              coef   = i
-              ),
-          n = Inf) |>
-        magrittr::use_series('table') |>
-        tibble::as_tibble(rownames = "gene") |>
-        dplyr::arrange(dplyr::desc(logFC)) |>
-        dplyr::rename(
-          baseMean       = logCPM,
-          log2FoldChange = logFC,
-          pvalue         = PValue,
-          padj           = FDR
-        )
-    }) %>%
-      rlang::set_names(
-        nm = purrr::map_chr(
-          .x      = comparison_results_list,
-          .f      = stringr::str_remove,
-          pattern = comparison_grouping_variable
-        ) %>%
-          paste0("_vs_", control_group)
-      )
-
     message("Running voom...")
     v <-
       limma::voomWithQualityWeights(
@@ -965,11 +937,9 @@ process_counts.edgeR <-
       outlier_samples            = outlier_qc[["removed"]],
       qc_pca                     = outlier_qc[["pca"]],
       sva_graph_data             = sva_res[["sva"]],
-      degs                       = res,
       dataset                    = post_qc_dge,
       comparisons                = comparisons,
-      design_matrix              = post_qc_design,
-      res                        = res
+      design_matrix              = post_qc_design
     )
   }
 
@@ -1049,7 +1019,7 @@ process_counts.deseq2 <-
     mm <-
       model.matrix(
         object = sva_res[["design"]],
-        data = colData(sva_res[["data_object"]])
+        data = SummarizedExperiment::colData(sva_res[["data_object"]])
       )
 
     message("Calculating variance stabilized expression...")
@@ -1058,37 +1028,15 @@ process_counts.deseq2 <-
     message("Creating comparison results list...")
     comparison_results_list <-
       purrr::map(comparison_grouping_variable, function(i){
-
         DESeq2::resultsNames(object = sva_res[["data_object"]]) %>%
-          keep(
+          purrr::keep(
             stringr::str_detect(
               string  = .,
               pattern = i
             )
           )
-
-      }) %>% unlist()
-
-    message("Calculating differential expression between all comparison groups...")
-    res <-
-      purrr::map(
-        .x = comparison_results_list,
-        .f = function(i) {
-          message(stringr::str_glue("Now calculating for {i}"))
-          DESeq2::lfcShrink(
-            dds      = dds,
-            coef     = i,
-            parallel = TRUE,
-            type     = "apeglm")
-        }
-      ) %>%
-      magrittr::set_names(
-        purrr::map_chr(
-          .x      = comparison_results_list,
-          .f      = stringr::str_remove,
-          pattern = paste(paste0(comparison_grouping_variable, "_"), collapse = "|")
-        )
-      )
+      }) |>
+      unlist()
 
     list(
       raw_counts                 = counts(sva_res[["data_object"]]),
@@ -1097,10 +1045,9 @@ process_counts.deseq2 <-
       outlier_samples            = outlier_qc[["removed"]],
       qc_pca                     = outlier_qc[["pca"]],
       sva_graph_data             = sva_res[["sva"]],
-      degs                       = res,
       dataset                    = sva_res[["data_object"]],
       comparisons                = comparison_results_list,
-      res                        = res
+      design_matrix              = mm 
     )
   }
 
@@ -1110,13 +1057,27 @@ calc_sva <- function(object, ...){
 }
 
 
-calc_sva.DESeqDataSet <- function(object, model_design = NULL, n.sva = NULL){
-  model_design_factors <-
-    model_design %||% as.character(design(object))[[2]] %>%
-    str_remove(pattern = "~") %>%
-    pluck(2)
+calc_sva.DESeqDataSet <-
+  function(
+    object,
+    model_design = NULL,
+    n.sva = NULL
+    ){
 
-  n.sva <- n.sva %||% 2
+    if (is.null(model_design)){
+      model_design_factors <-
+        as.character(design(object))[[2]] |>
+        stringr::str_remove(pattern = "~") |>
+        purrr::pluck(2)
+    } else {
+      model_design_factors <- model_design
+    }
+
+  original_model_design_factors <- DESeq2::design(object)
+
+  if (is.null(n.sva)){
+    n.sva <- 2
+  }
 
   dat <-
     DESeq2::counts(
@@ -1143,13 +1104,68 @@ calc_sva.DESeqDataSet <- function(object, model_design = NULL, n.sva = NULL){
   DESeq2::design(object) <-
     as.formula(
       paste("~",
-            paste(model_design_factors,
-                  paste(colnames(svseq$sv),
-                        collapse = " + "),
-                  sep = " + "),
-            collapse = " "))
+            paste(
+              paste(
+                colnames(svseq$sv),
+                collapse = " + "
+                ),
+              as.character(model_design_factors)[[2]],
+              sep = " + "
+            )
+      )
+    )
 
-  object <- DESeq2::DESeq(object, parallel = TRUE)
+  # object <- DESeq2::DESeq(object, parallel = TRUE)
+
+  mm <- model.matrix(DESeq2::design(object), data = SummarizedExperiment::colData(object))
+
+  message("Estimating size factors using surrogate variables in the design")
+  object <-
+    DESeq2::estimateSizeFactors(
+      object = object,
+      type = "ratio",
+      locfunc = genefilter::shorth,
+      quiet = FALSE
+      )
+
+  message("Estimating dispersions using surrogate variables in the design")
+  object <-
+    DESeq2::estimateDispersions(
+      object = object,
+      fitType = "glmGamPoi",
+      quiet = FALSE
+      # modelMatrix = mm
+    )
+
+  message("Performing significance testing of coefficients in a negative binomial GLM
+          using surrogate variables in the design")
+  object <-
+    DESeq2::nbinomWaldTest(
+      object = object,
+      betaPrior = FALSE,
+      useOptim = TRUE,
+      quiet = FALSE,
+      useT = TRUE,
+      useQR = TRUE,
+      modelMatrixType = "standard"
+    )
+
+  # reduced_design <-
+  #   as.formula(
+  #     paste("~",
+  #       paste(
+  #         colnames(svseq$sv),
+  #         collapse = " + "
+  #       )
+  #     )
+  #   )
+  #
+  # object <-
+  #   DESeq2::nbinomLRT(
+  #     object = object,
+  #     reduced = reduced_design,
+  #     type = "glmGamPoi"
+  #   )
 
   ret_vals = list(
     data_object = object,
@@ -1159,7 +1175,13 @@ calc_sva.DESeqDataSet <- function(object, model_design = NULL, n.sva = NULL){
 }
 
 
-calc_sva.DGEList <- function(object, model_design = NULL, batch_var = NULL, n.sva = 2){
+calc_sva.DGEList <-
+  function(
+    object,
+    model_design = NULL,
+    batch_var = NULL,
+    n.sva = 2
+    ){
 
   batch_var <- batch_var %||% 1
 
@@ -1175,14 +1197,14 @@ calc_sva.DGEList <- function(object, model_design = NULL, batch_var = NULL, n.sv
     rlang::set_names(
       x = tibble::as_tibble(svseq[["sv"]], .name_repair = "unique"),
       nm = paste0("SV", seq(ncol(svseq[["sv"]])))
-    ) %>%
+    ) |>
     dplyr::mutate(sample_name = rownames(object[["samples"]]))
 
   object[["samples"]] <-
     dplyr::left_join(
       tibble::as_tibble(object[["samples"]], rownames = "sample_name"),
       svseq[["sv"]]
-    ) %>%
+    ) |>
     tibble::column_to_rownames(var = "sample_name")
 
   svseq$sv <- tibble::column_to_rownames(svseq[["sv"]],"sample_name")
@@ -1205,17 +1227,17 @@ calc_sva.DGEList <- function(object, model_design = NULL, batch_var = NULL, n.sv
 
 
 plot_sva <- function(sva_graph_data){
-  sva_graph_data %>%
-    purrr::pluck("sv") %>%
-    tibble::as_tibble(rownames = "sample_name") %>%
+  sva_graph_data |>
+    purrr::pluck("sv") |>
+    tibble::as_tibble(rownames = "sample_name") |>
     dplyr::select(
       sample_name,
       tidyselect::starts_with("SV")
-    ) %>%
+    ) |>
     tidyr::pivot_longer(
       -sample_name,
       names_to = "covar"
-    ) %>%
+    ) |>
     ggplot2::ggplot(
       ggplot2::aes(
         x = sample_name,
@@ -1274,17 +1296,17 @@ read_md_file <- function(path, ...){
 
 
 extract_transformed_data <- function(data_obj){
-  data_obj %>%
-    tibble::as_tibble(rownames = "gene") %>%
-    dplyr::mutate(hugo = HGNChelper::checkGeneSymbols(gene)[["Suggested.Symbol"]]) %>%
-    dplyr::filter(!is.na(hugo)) %>%
-    dplyr::group_by(hugo) %>%
-    dplyr::slice(1) %>%
-    dplyr::ungroup() %>%
+  data_obj |>
+    tibble::as_tibble(rownames = "gene") |>
+    dplyr::mutate(hugo = HGNChelper::checkGeneSymbols(gene)[["Suggested.Symbol"]]) |>
+    dplyr::filter(!is.na(hugo)) |>
+    dplyr::group_by(hugo) |>
+    dplyr::slice(1) |>
+    dplyr::ungroup() |>
     dplyr::select(
       -gene,
       gene = hugo
-    ) %>%
-    tibble::column_to_rownames("gene") %>%
+    ) |>
+    tibble::column_to_rownames("gene") |>
     as.matrix()
 }

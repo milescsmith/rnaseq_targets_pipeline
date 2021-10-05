@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2021-10-01
+### Changed
+  - More `%>%` to `|>` replacements
+  - Added "extra_controls_metadata_sheet" and "extra_controls_metadata_skip" so that
+    it is possible to use an Excel spreadsheet for the extra controls list
+
+### Fixed
+  - `generatePalettes` is able to use selecting fuctions from {tidyselect}
+  - Deduplicated calculating differential expression and performing shrinkage
+  - Correctly added the "degPathwayPlots.Rmd" template
+  - Expanded the pattern used by str_split from " - " to " - |_vs_" when trying to
+    identify comparison groups
+  - `read_md_file` now properly uses the "skip_lines" parameter
+
 ## [2.5.1] - 2021-09-29
 ### Added
   - parameter for including extra columns from the metadata file

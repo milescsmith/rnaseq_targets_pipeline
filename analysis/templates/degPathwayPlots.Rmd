@@ -1,0 +1,8 @@
+
+```{r, fig.height=6, fig.width=15}
+degPathwayPlots(
+  title        = "{{TITLE}}",
+  enrichResult = {{ENRICH}},
+  enrichLFC    = {{LFC}}
+)
+```

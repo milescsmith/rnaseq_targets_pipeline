@@ -5,8 +5,12 @@
 #'
 #' @return
 #' @export
-create_results_list <- function(object, ...){
-  UseMethod("create_results_list")
+create_results_list <- function(object, method, ...){
+  if(method == "limma"){
+    create_results_list.limma(object, ...)
+  } else(
+    UseMethod("create_results_list")
+  )
 }
 
 #' @rdname create_results_list
@@ -22,16 +26,19 @@ create_results_list.DESeqDataSet <- function(
   object,
   comparison_grouping_variable,
   design = NULL,
-  BPPARAM = bpparam()
+  BPPARAM = bpparam(),
+  ...
   ){
   purrr::map(comparison_list, function(i) {
     message(paste("Now comparing", i))
     DESeq2::lfcShrink(
-      dds = object,
-      coef = i,
+      dds      = object,
+      coef     = i,
       parallel = TRUE,
-      type = "apeglm",
-      BPPARAM = BPPARAM
+      type     = "apeglm",
+      apeAdapt = TRUE,
+      BPPARAM  = BiocParallel::SnowParam(type = "SOCK", progressbar = TRUE),
+      quiet    = FALSE
       ) %>%
     tibble::as_tibble(rownames="gene")
   }) %>%
@@ -44,7 +51,7 @@ create_results_list.DESeqDataSet <- function(
   )
 }
 
-# TODO: FINISH HIM!
+
 #' @rdname create_results_list
 #' @method create_results_list DGEList
 #' @importFrom magrittr use_series
@@ -61,7 +68,8 @@ create_results_list.DGEList <- function(
   object,
   comparison_grouping_variable,
   design = NULL,
-  BPPARAM = bpparam()
+  BPPARAM = bpparam(),
+  ...
   ){
 
   if (is.null(magrittr::use_series(object, common.dispersion))){
@@ -130,6 +138,89 @@ create_results_list.DGEList <- function(
         pattern = paste0(comparison_grouping_variable, "_")
       )
   )
+}
+
+
+#' @rdname create_results_list
+#' @method create_results_list limma
+#' @importFrom magrittr use_series
+#' @importFrom edgeR estimateDisp glmQLFit glmQLFTest getCounts
+#' @importFrom rlang set_names
+#' @importFrom purrr map map_chr chuck
+#' @importFrom tibble as_tibble
+#' @importFrom matrixStats rowMeans2
+#' @importFrom rstatix adjust_pvalue
+#' @importFrom dplyr mutate inner_join filter pull rename relocate
+#' @return list
+create_results_list.limma <- function(
+  comparison_list,
+  object,
+  comparison_grouping_variable,
+  design = NULL,
+  BPPARAM = bpparam(),
+  ...
+  ){
+
+  message("Running voom...")
+    voom_exprs <-
+      limma::voomWithQualityWeights(
+        counts    = object,
+        design    = design,
+        plot      = FALSE,
+        save.plot = FALSE
+      )
+
+    message("Fitting data...")
+    fit <-
+      limma::lmFit(
+        object = voom_exprs,
+        design = design,
+        method = "robust"
+      )
+
+  comparisons <-
+    purrr::map(
+      .x = comparison_list,
+      .f = \(x)
+        stringr::str_split(
+          string = x,
+          pattern =  " - "
+          ) |>
+        purrr::chuck(1) |>
+        purrr::chuck(1) %>%
+        paste0(comparison_grouping_variable, .)
+    )
+
+  efit <- eBayes(fit)
+
+  purrr::map2(
+    .x = colnames(contra_matrix),
+    .y = coeff,
+    .f = \(i, j) {
+      message(glue::glue("Performing DEG for {i}..."))
+      limma::topTreat(
+        fit = efit,
+        coef = j,
+        number = Inf
+      ) %>%
+        tibble::as_tibble(rownames = "gene") %>%
+        dplyr::arrange(dplyr::desc(logFC)) %>%
+        dplyr::rename(
+          baseMean       = AveExpr,
+          log2FoldChange = logFC,
+          pvalue         = P.Value,
+          padj           = adj.P.Val
+        )
+    }
+  ) |>
+  rlang::set_names(
+      purrr::map_chr(
+        comparison_list,
+        stringr::str_remove,
+        pattern = paste0(comparison_grouping_variable, "_")
+      )
+  )
+
 }
 
 
