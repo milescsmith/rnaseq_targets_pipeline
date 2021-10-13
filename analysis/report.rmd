@@ -265,7 +265,7 @@ targets::tar_load(up_tables)
 targets::tar_load(down_tables)
 
 comparison_groups <- project_params[["comparison_groups"]]
-deg_comparisons <- names(up_tables)
+deg_comparisons <- unique(c(names(up_tables), names(down_tables)))
 
 groupings <- list(
   project_params[["comparison_grouping_variable"]],
@@ -281,42 +281,44 @@ groupings <- rlang::set_names(x = groupings, nm = groupings)
 <!-- but a lot more will have to change before we can do anything with that here -->
 <!-- TODO: Add GSEA of top DEGs -->
 ```{r top_class_DE_disease_sort, fig.width=12, fig.height=9}
-deg_heatmaps <-
-  purrr::map(deg_comparisons, \(comparison_group){
-    header <-
-      knitr::knit_expand(
-        text = "\n## Expression of top DE genes for {{GROUPING_VAR}}: {{COMPARISON_GROUPING}} {.tabset .tabset-fade .tabset-pills}",
-        COMPARISON_GROUPING = comparison_group,
-        GROUPING_VAR        = project_params[["comparison_grouping_variable"]]
-      )
-    each_comparison <-
-      purrr::map(groupings, \(group){
-        subheader <-
-          knitr::knit_expand(
-            text = "\n### Sorted by {{SORTING}} \n",
-            SORTING = group
-          )
-        dgehm <-
-          knitr::knit_expand(
-            file = here::here("analysis/templates/comparisonHeatmaps.Rmd"),
-            COMPARISON     = comparison_group,
-            UPTABLE        = paste0("up_tables[['", comparison_group, "']]"),
-            DOWNTABLE      = paste0("down_tables[['", comparison_group, "']]"),
-            DATASET        = "vsc_exprs",
-            METADATA       = "study_md",
-            COMPARISON_GROUP = project_params[["comparison_grouping_variable"]],
-            GROUPING       = group,
-            PALETTES       = "group_pal",
-            ROW_ANNOTATION = heatmap_row_annotations,
-            FIG_WIDTH      = 12,
-            FIG_HEIGHT     = 9
-          )
-        c(subheader, unlist(dgehm))
-      })
-    c(header, unlist(each_comparison))
-  })
-res <- knitr::knit_child(text = unlist(deg_heatmaps), quiet = TRUE)
-cat(res, sep = '\n')
+if(length(up_tables) > 0 & length(down_tables) > 0 ){
+  deg_heatmaps <-
+    purrr::map(deg_comparisons, \(comparison_group){
+      header <-
+        knitr::knit_expand(
+          text = "\n## Expression of top DE genes for {{GROUPING_VAR}}: {{COMPARISON_GROUPING}} {.tabset .tabset-fade .tabset-pills}",
+          COMPARISON_GROUPING = comparison_group,
+          GROUPING_VAR        = project_params[["comparison_grouping_variable"]]
+        )
+      each_comparison <-
+        purrr::map(groupings, \(group){
+          subheader <-
+            knitr::knit_expand(
+              text = "\n### Sorted by {{SORTING}} \n",
+              SORTING = group
+            )
+          dgehm <-
+            knitr::knit_expand(
+              file = here::here("analysis/templates/comparisonHeatmaps.Rmd"),
+              COMPARISON     = comparison_group,
+              UPTABLE        = paste0("up_tables[['", comparison_group, "']]"),
+              DOWNTABLE      = paste0("down_tables[['", comparison_group, "']]"),
+              DATASET        = "vsc_exprs",
+              METADATA       = "study_md",
+              COMPARISON_GROUP = project_params[["comparison_grouping_variable"]],
+              GROUPING       = group,
+              PALETTES       = "group_pal",
+              ROW_ANNOTATION = heatmap_row_annotations,
+              FIG_WIDTH      = 12,
+              FIG_HEIGHT     = 9
+            )
+          c(subheader, unlist(dgehm))
+        })
+      c(header, unlist(each_comparison))
+    })
+  res <- knitr::knit_child(text = unlist(deg_heatmaps), quiet = TRUE)
+  cat(res, sep = '\n')
+}
 ```
 
 \newpage
@@ -329,57 +331,61 @@ targets::tar_load(down_enrichment_degs)
 ```
 
 ```{r, results = 'asis'}
-up_deg_enrichment <-
-  purrr::map(deg_comparisons, \(comparison_group){
-    header <-
-      knitr::knit_expand(
-        text = "\n## Pathway enrichment upgregulated genes for {{GROUPING_VAR}}: {{COMPARISON_GROUPING}} {.tabset .tabset-fade .tabset-pills}",
-        COMPARISON_GROUPING = comparison_group,
-        GROUPING_VAR        = project_params[["comparison_grouping_variable"]]
-      )
-    ontologies <-
-      purrr::map(
-        .x = names(up_enrichment[[comparison_group]]),
-        .f = \(x){
-          knitr::knit_expand(
-            file = here::here("analysis/templates/degPathwayPlots.Rmd"),
-            TITLE = x,
-            ENRICH = paste0("up_enrichment[['", comparison_group, "']][['", x, "']]"),
-            LFC = paste0("up_enrichment_degs[['", comparison_group, "']][['", x, "']]")
-            )
-          })
-    c(header, unlist(ontologies))
-  })
-res <- knitr::knit_child(text = unlist(up_deg_enrichment), quiet = TRUE)
-cat(res, sep = '\n')
+if (!is_null_list(up_enrichment_degs)){
+  up_deg_enrichment <-
+    purrr::map(deg_comparisons, \(comparison_group){
+      header <-
+        knitr::knit_expand(
+          text = "\n## Pathway enrichment upgregulated genes for {{GROUPING_VAR}}: {{COMPARISON_GROUPING}} {.tabset .tabset-fade .tabset-pills}",
+          COMPARISON_GROUPING = comparison_group,
+          GROUPING_VAR        = project_params[["comparison_grouping_variable"]]
+        )
+      ontologies <-
+        purrr::map(
+          .x = names(up_enrichment[[comparison_group]]),
+          .f = \(x){
+            knitr::knit_expand(
+              file = here::here("analysis/templates/degPathwayPlots.Rmd"),
+              TITLE = x,
+              ENRICH = paste0("up_enrichment[['", comparison_group, "']][['", x, "']]"),
+              LFC = paste0("up_enrichment_degs[['", comparison_group, "']][['", x, "']]")
+              )
+            })
+      c(header, unlist(ontologies))
+    })
+  res <- knitr::knit_child(text = unlist(up_deg_enrichment), quiet = TRUE)
+  cat(res, sep = '\n')
+}
 ```
 
 \newpage
 
 ```{r, results = 'asis'}
-down_deg_enrichment <-
-  purrr::map(deg_comparisons, \(comparison_group){
-    header <-
-      knitr::knit_expand(
-        text = "\n## Pathway enrichment downgregulated genes for {{GROUPING_VAR}}: {{COMPARISON_GROUPING}} {.tabset .tabset-fade .tabset-pills}",
-        COMPARISON_GROUPING = comparison_group,
-        GROUPING_VAR        = project_params[["comparison_grouping_variable"]]
-      )
-    ontologies <-
-      purrr::map(
-        .x = names(down_enrichment[[comparison_group]]),
-        .f = \(x){
-          knitr::knit_expand(
-            file = here::here("analysis/templates/degPathwayPlots.Rmd"),
-            TITLE = x,
-            ENRICH = paste0("down_enrichment[['", comparison_group, "']][['", x, "']]"),
-            LFC = paste0("down_enrichment_degs[['", comparison_group, "']][['", x, "']]")
-            )
-          })
-    c(header, unlist(ontologies))
-  })
-res <- knitr::knit_child(text = unlist(down_deg_enrichment), quiet = TRUE)
-cat(res, sep = '\n')
+if(!is_null_list(down_enrichment_degs)){
+  down_deg_enrichment <-
+    purrr::map(deg_comparisons, \(comparison_group){
+      header <-
+        knitr::knit_expand(
+          text = "\n## Pathway enrichment downgregulated genes for {{GROUPING_VAR}}: {{COMPARISON_GROUPING}} {.tabset .tabset-fade .tabset-pills}",
+          COMPARISON_GROUPING = comparison_group,
+          GROUPING_VAR        = project_params[["comparison_grouping_variable"]]
+        )
+      ontologies <-
+        purrr::map(
+          .x = names(down_enrichment[[comparison_group]]),
+          .f = \(x){
+            knitr::knit_expand(
+              file = here::here("analysis/templates/degPathwayPlots.Rmd"),
+              TITLE = x,
+              ENRICH = paste0("down_enrichment[['", comparison_group, "']][['", x, "']]"),
+              LFC = paste0("down_enrichment_degs[['", comparison_group, "']][['", x, "']]")
+              )
+            })
+      c(header, unlist(ontologies))
+    })
+  res <- knitr::knit_child(text = unlist(down_deg_enrichment), quiet = TRUE)
+  cat(res, sep = '\n')
+}
 ```
 
 \newpage

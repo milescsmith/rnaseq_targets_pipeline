@@ -143,7 +143,8 @@ ident_clusters <- function(
     randomForest::randomForest(
       x = expr_mat,
       y = NULL,
-      prox = TRUE)
+      prox = TRUE
+      )
 
   rf_distance_mat <-
     stats::dist(1 - module_rf$proximity) %>%
@@ -154,7 +155,7 @@ ident_clusters <- function(
       x          = rf_distance_mat,
       FUNcluster = kmeans,
       nstart     = nstart,
-      K.max      = K.max,
+      K.max      = min(nrow(rf_distance_mat), K.max+1)-1,
       B          = B,
       d.power    = d.power
     )
@@ -473,4 +474,9 @@ findOrgDb <- function(target_species = "human"){
     target_org <- "org.Mm.eg.db"
   }
   target_org
+}
+
+# Taken from {dendextend}
+is_null_list <- function(x) {
+  identical(x, list())
 }

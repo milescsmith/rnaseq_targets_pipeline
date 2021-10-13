@@ -209,7 +209,7 @@ prep_data_import <- function(
   filtered_counts <-
     purrr::map(
       .x = c("abundance", "counts", "length"),
-      .f = function(x){
+      .f = \(x){
         cleaned_counts <-
           counts[[x]] |>
           tibble::as_tibble(rownames = "gene_symbol") |>
@@ -232,6 +232,7 @@ prep_data_import <- function(
               !is.na(hugo)
             ) |>
             dplyr::group_by(hugo) |>
+            dplyr::mutate(across(where(is.numeric), sum)) |>
             dplyr::slice(1) |>
             dplyr::ungroup() |>
             dplyr::select(
@@ -254,6 +255,10 @@ prep_data_import <- function(
             dplyr::select(
               -hugo
             ) |>
+            dplyr::group_by(gene_symbol) |>
+            dplyr::mutate(across(where(is.numeric), sum)) |>
+            dplyr::slice(1) |>
+            dplyr::ungroup() |>
             tibble::column_to_rownames("gene_symbol") |>
             as.matrix()
         }
@@ -1047,7 +1052,7 @@ process_counts.deseq2 <-
       sva_graph_data             = sva_res[["sva"]],
       dataset                    = sva_res[["data_object"]],
       comparisons                = comparison_results_list,
-      design_matrix              = mm 
+      design_matrix              = mm
     )
   }
 

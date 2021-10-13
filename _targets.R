@@ -221,10 +221,7 @@ list(
 
   targets::tar_target(
     name = vsc_exprs,
-    command =
-      extract_transformed_data(
-        data_obj = processed_data[["variance_stabilized_counts"]]
-        ),
+    command = processed_data[["variance_stabilized_counts"]],
     packages =
       c(
         "tibble",
@@ -467,19 +464,19 @@ list(
       ident_clusters(
         irlba::irlba(
           A = vsc_exprs,
-          nv = 100
+          nv = min(dim(vsc_exprs), 101)-1
         ) %>%
-          purrr::chuck("v") %>%
-          as.data.frame() %>%
-          magrittr::set_colnames(
-            paste0(
-              "PC",
-              seq(100)
-            )
-          ) %>%
-          magrittr::set_rownames(
-            colnames(vsc_exprs)
-          ),
+        purrr::chuck("v") %>%
+        as.data.frame() %>%
+        magrittr::set_colnames(
+          paste0(
+            "PC",
+            seq(ncol(.))
+          )
+        ) %>%
+        magrittr::set_rownames(
+          colnames(vsc_exprs)
+        ),
         K.max = 20
       ),
     packages =
@@ -651,10 +648,14 @@ list(
   targets::tar_target(
     name = unnamed_up_enrichment_degs,
     command =
-      get_enrichment_fcs(
-        enrichResult = up_enrichment[[res_length]],
-        degResult = res[[res_length]]
-          ),
+      if(!is.null(up_enrichment[[1]][[1]])){
+        get_enrichment_fcs(
+          enrichResult = up_enrichment[[res_length]],
+          degResult = res[[res_length]]
+        )
+      } else {
+        list()
+      },
     pattern = map(res_length),
     iteration = "list",
     packages = "dplyr"
@@ -662,7 +663,15 @@ list(
 
   targets::tar_target(
     name = up_enrichment_degs,
-    command = rlang::set_names(x = unnamed_up_enrichment_degs, nm = names(res))
+    command =
+      if(
+        length(unnamed_up_enrichment_degs[[1]][["gene_ontology"]] > 0) |
+        length(unnamed_up_enrichment_degs[[1]][["reactome"]] > 0)
+      ){
+        rlang::set_names(x = unnamed_up_enrichment_degs, nm = names(res))
+      } else {
+        list()
+      }
   ),
 
   targets::tar_target(
@@ -693,10 +702,14 @@ list(
   targets::tar_target(
     name = unnamed_down_enrichment_degs,
     command =
-      get_enrichment_fcs(
-        enrichResult = down_enrichment[[res_length]],
-        degResult = res[[res_length]]
-      ),
+      if(!is.null(down_enrichment[[1]][[1]])){
+          get_enrichment_fcs(
+            enrichResult = down_enrichment[[res_length]],
+            degResult = res[[res_length]]
+          )
+        } else {
+          list()
+        },
     pattern = map(res_length),
     iteration = "list",
     packages = "dplyr"
@@ -704,7 +717,15 @@ list(
 
   targets::tar_target(
     name = down_enrichment_degs,
-    command = rlang::set_names(x = unnamed_down_enrichment_degs, nm = names(res))
+    command =
+      if(
+        length(unnamed_down_enrichment_degs[[1]][["gene_ontology"]] > 0) |
+        length(unnamed_down_enrichment_degs[[1]][["reactome"]] > 0)
+        ){
+        rlang::set_names(x = unnamed_down_enrichment_degs, nm = names(res))
+      } else {
+        list()
+      }
   ),
 
   targets::tar_target(
