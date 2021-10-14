@@ -1,0 +1,27 @@
+```{r, fig.height={{FIG_HEIGHT}}, fig.width={{FIG_WIDTH}}}
+EnhancedVolcano::EnhancedVolcano(
+  toptable = {{X}},
+  lab      = {{X}}[["gene"]],
+  x        = "log2FoldChange",
+  y        = "padj",
+  title    =
+    stringr::str_split_fixed(
+      string  = "{{Y}}" ,
+      pattern = "_",
+      n       = 2) |>
+    magrittr::extract2(1),
+  subtitle =
+    stringr::str_split_fixed(
+      string  = "{{Y}}",
+      pattern = "_",
+      n       = 2) |>
+    magrittr::extract2(2) |>
+    stringr::str_replace_all(
+      pattern     = "_",
+      replacement = " "
+    ),
+  caption = "",
+  labSize = 3,
+  pointSize = 1
+)
+```

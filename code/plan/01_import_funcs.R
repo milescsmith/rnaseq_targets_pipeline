@@ -183,6 +183,11 @@ prep_data_import <- function(
   count_files <- magrittr::extract(count_files, common_names)
   filtered_metadata <- magrittr::extract(sample_metadata, common_names,)
 
+  if (!is.data.frame(filtered_metadata)){
+    filtered_metadata <- as.data.frame(filtered_metadata)
+    rownames(filtered_metadata) <- common_names
+    colnames(filtered_metadata) <- colnames(sample_metadata)
+  }
   message("Importing count files")
   counts <-
     tximport::tximport(

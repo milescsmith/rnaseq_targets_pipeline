@@ -3,11 +3,11 @@ params:
   set_title:
     label: "report title"
     value: "Project"
-    input: text
+    # input: text
   set_author: 
     label: "author"
     value: "Miles Smith"
-    input: text
+    # input: text
 title: "`r params$set_title`"
 author: "`r params$set_author`"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
@@ -316,8 +316,8 @@ if(length(up_tables) > 0 & length(down_tables) > 0 ){
         })
       c(header, unlist(each_comparison))
     })
-  res <- knitr::knit_child(text = unlist(deg_heatmaps), quiet = TRUE)
-  cat(res, sep = '\n')
+  template_res <- knitr::knit_child(text = unlist(deg_heatmaps), quiet = TRUE)
+  cat(template_res, sep = '\n')
 }
 ```
 
@@ -353,8 +353,8 @@ if (!is_null_list(up_enrichment_degs)){
             })
       c(header, unlist(ontologies))
     })
-  res <- knitr::knit_child(text = unlist(up_deg_enrichment), quiet = TRUE)
-  cat(res, sep = '\n')
+  template_res <- knitr::knit_child(text = unlist(up_deg_enrichment), quiet = TRUE)
+  cat(template_res, sep = '\n')
 }
 ```
 
@@ -383,48 +383,36 @@ if(!is_null_list(down_enrichment_degs)){
             })
       c(header, unlist(ontologies))
     })
-  res <- knitr::knit_child(text = unlist(down_deg_enrichment), quiet = TRUE)
-  cat(res, sep = '\n')
+  template_res <- knitr::knit_child(text = unlist(down_deg_enrichment), quiet = TRUE)
+  cat(template_res, sep = '\n')
 }
 ```
 
 \newpage
 
-## Volcano plot of gene expression
+## Volcano plot of gene expression {.tabset .tabset-fade .tabset-pills}
 
-```{r Volcano_plot_of_gene_expression, echo=FALSE, fig.height=9, fig.width=9}
-volcanoes <- purrr::map2(
-  .x = res,
-  .y = names(res),
-  .f = \(x, y)
-    EnhancedVolcano::EnhancedVolcano(
-      toptable = x,
-      lab      = x[["gene"]],
-      x        = "log2FoldChange",
-      y        = "padj",
-      title    =
-        stringr::str_split_fixed(
-          string  = y,
-          pattern = "_",
-          n       = 2) |>
-        magrittr::extract2(1),
-      subtitle =
-        stringr::str_split_fixed(
-          string  = y,
-          pattern = "_",
-          n       = 2) |>
-        magrittr::extract2(2) |>
-        stringr::str_replace_all(
-          pattern     = "_",
-          replacement = " "
-        ),
-      caption = "",
-      labSize = 3,
-      pointSize = 1
+```{r Volcano_plot_of_gene_expression, results = 'asis'}
+volcanoes <- purrr::map(
+  .x = names(res),
+  .f = \(x){
+  header <-
+      knitr::knit_expand(
+        text       = "\n\n### Comparison of {{COMPARISON}}\n",
+        COMPARISON = str_replace(string = x, pattern = "_", replacement = " ")
+      )
+  volcano_plot <-
+    knitr::knit_expand(
+      file       = here::here("analysis/templates/volcanoPlots.Rmd"),
+      X          = paste0("res[['",x,"']]"),
+      Y          = x,
+      FIG_HEIGHT = 9,
+      FIG_WIDTH  = 9
     )
-  )
-
-purrr::walk(volcanoes, plot)
+    c(header, volcano_plot)
+  })
+template_res <- knitr::knit_child(text = unlist(volcanoes), quiet = TRUE)
+cat(template_res, sep = '\n')
 ```
 
 \newpage
@@ -486,8 +474,8 @@ groups <-
       })
     c(header, unlist(each_comparison))
   })
-res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
-cat(res, sep = '\n')
+template_res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(template_res, sep = '\n')
 ```
 
 \newpage
@@ -547,13 +535,11 @@ reductions = list(
 
 groupings = list(
   project_params[["comparison_grouping_variable"]],
-  "RaceCode",
   "cluster"
 ) |>
   rlang::set_names(
     nm = c(
       project_params[["comparison_grouping_variable"]],
-      "ethnicity",
       "K-means cluster"
       )
     )
@@ -585,8 +571,8 @@ dimplots <-
       })
     c(header, unlist(each_group))
   })
-res <- knitr::knit_child(text = unlist(dimplots), quiet = TRUE)
-cat(res, sep = '\n')
+template_res <- knitr::knit_child(text = unlist(dimplots), quiet = TRUE)
+cat(template_res, sep = '\n')
 ```
 
 \newpage
@@ -655,9 +641,9 @@ modplots <-
       })
     c(header, unlist(each_comparison))
   })
-res <- knitr::knit_child(text = unlist(modplots), quiet = TRUE)
+template_res <- knitr::knit_child(text = unlist(modplots), quiet = TRUE)
 
-cat(res, sep = '\n', fill = TRUE)
+cat(template_res, sep = '\n', fill = TRUE)
 ```
 
 ```{r}
@@ -730,8 +716,8 @@ groups <-
       })
     c(header, unlist(each_comparison))
   })
-res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
-cat(res, sep = '\n')
+template_res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(template_res, sep = '\n')
 ```
 
 ## Expression of the annotated Banchereau modules {.tabset .tabset-fade .tabset-pills}
@@ -774,8 +760,8 @@ groups <-
       })
     c(header, unlist(each_comparison))
   })
-res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
-cat(res, sep = '\n')
+template_res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(template_res, sep = '\n')
 ```
 
 \newpage
@@ -852,8 +838,8 @@ groups <-
       })
     c(header, unlist(each_comparison))
   })
-res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
-cat(res, sep = '\n')
+template_res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(template_res, sep = '\n')
 ```
 
 \newpage
@@ -895,8 +881,8 @@ groups <-
       )
     c(header, heatmap)
   })
-res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
-cat(res, sep = '\n')
+template_res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(template_res, sep = '\n')
 ```
 
 
@@ -933,8 +919,8 @@ groups <-
           )
     }
   })
-res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
-cat(res, sep = '\n')
+template_res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(template_res, sep = '\n')
 ```
 
 \newpage
@@ -979,8 +965,8 @@ groups <-
       })
     c(header, unlist(each_comparison))
   })
-res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
-cat(res, sep = '\n')
+template_res <- knitr::knit_child(text = unlist(groups), quiet = TRUE)
+cat(template_res, sep = '\n')
 
 ```
 

@@ -17,7 +17,36 @@ getRandomPalette <-
   function(
     n,
     favored_palettes = NULL
+    use_all_palettes = FALSE
     ){
+
+    if (is.null(favored_palettes) & !isTRUE(use_all_palettes)){
+      favored_palettes = c(
+        "ggsci::uniform_startrek",
+        "trekcolors::starfleet",
+        "trekcolors::starfleet2",
+        "ggprism::viridis",
+        "ggprism::colorblind_safe",
+        "colorblindr::OkabeIto",
+        "khroma::contrast",
+        "khroma::bright",
+        "khroma::vibrant",
+        "khroma::muted",
+        "RColorBrewer::Set1",
+        "ggsci::default_nejm",
+        "ggsci::lanonc_lancet",
+        "ggsci::default_jama",
+        "ggsci::default_jco",
+        "ggsci::default_ucscgb",
+        "ggsci::category20_d3",
+        "ggsci::category20c_d3",
+        "ggsci::default_locuszoom",
+        "ggsci::legacy_tron",
+        "yarrr::xmen",
+        "yarrr::southpark",
+        "yarrr::appletv"
+      )
+    }
 
     possible_palettes <-
       paletteer::palettes_d_names |>
@@ -37,7 +66,7 @@ getRandomPalette <-
     possible_palettes |>
       dplyr::slice_sample(n = 1) |>
       dplyr::pull(pp)
-  }
+}
 
 
 #' @title generatePalettes

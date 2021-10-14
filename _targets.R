@@ -462,21 +462,7 @@ list(
     name = sample_cluster_info,
     command =
       ident_clusters(
-        irlba::irlba(
-          A = vsc_exprs,
-          nv = min(dim(vsc_exprs), 101)-1
-        ) %>%
-        purrr::chuck("v") %>%
-        as.data.frame() %>%
-        magrittr::set_colnames(
-          paste0(
-            "PC",
-            seq(ncol(.))
-          )
-        ) %>%
-        magrittr::set_rownames(
-          colnames(vsc_exprs)
-        ),
+        expr_mat = t(vsc_exprs),
         K.max = 20
       ),
     packages =

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] - 2021-10-13
+### Changed
+  - Moved PCA of variance-stabilized data for clustering to be performed within
+  the `ident_clusters()` function.  Added a "pca_explain_prop" argument to control
+  which PCs are used for clustering (essentially, only use those PCs which explain
+  a proportion of the variance that is above the given threshold)
+  - Moved the volcano plot generation portion of the report to templates, which
+  fixed their not being displayed
+  - Changed `getRandomPalette` to select from a smaller list of usable palettes instead of from the entire list that {paletteer} contains.  Fixes the issue where two almost indistinguishable colors are chosen to represent a two-factor variable
+### Fixed
+  - in "report.Rmd", renamed all instances of `res` that were being used to collect 
+  markdown text from knit children templates to `template_res` to avoid conflicting 
+  with the `res` object respresenting results DEG analysis
+  - Volcano plots of differential gene expression display again
+  - Fix to keep the metadata a dataframe in the event that only one column of 
+  data is used (instead of impliciting casting it to a vector)
+
 ## [2.7.0] - 2021-10-13
 ### Fixed
   - Several fixes for empty enrichment lists

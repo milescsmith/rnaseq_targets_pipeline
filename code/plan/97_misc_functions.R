@@ -133,15 +133,34 @@ plot_dispersion_estimate.DESeqDataSet <- function(object, CV = FALSE){
 
 ident_clusters <- function(
   expr_mat,
+  pca_explain_prop = 0.015,
   optimal_k_method = "Tibs2001SEmax",
   nstart = 25,
   K.max = 50,
   B = 100,
   d.power = 2
 ){
+
+  expr_mat <- expr_mat[,which(apply(expr_mat, 2, var) != 0)]
+
+  pca_res <-
+    irlba::prcomp_irlba(
+      x = expr_mat,
+      n = min(dim(expr_mat))-1,
+      center = TRUE,
+      scale. = TRUE
+      )
+
+  pca_res[["x"]] <-
+    magrittr::set_rownames(
+      x = pca_res[["x"]],
+      value = rownames(expr_mat)
+      )
+
+  message("Calculating random forest proximities...")
   module_rf <-
     randomForest::randomForest(
-      x = expr_mat,
+      x = pca_res$x[,which(pca_res$sdev^2/(sum(pca_res$sdev^2)) >= pca_explain_prop)],
       y = NULL,
       prox = TRUE
       )
@@ -150,6 +169,7 @@ ident_clusters <- function(
     stats::dist(1 - module_rf$proximity) %>%
     as.matrix()
 
+  message("Calculating gap statistic...")
   kmeans_gap_stat <-
     cluster::clusGap(
       x          = rf_distance_mat,
@@ -160,6 +180,7 @@ ident_clusters <- function(
       d.power    = d.power
     )
 
+  message("determining optimal k...")
   new_optimal_k <-
     with(
       data = kmeans_gap_stat,
@@ -170,6 +191,7 @@ ident_clusters <- function(
       )
     )
 
+  message("Determining k clusters...")
   k_clusters <-
     stats::kmeans(
       x       = rf_distance_mat,
