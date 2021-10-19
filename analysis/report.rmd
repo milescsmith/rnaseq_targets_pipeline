@@ -399,7 +399,7 @@ volcanoes <- purrr::map(
   header <-
       knitr::knit_expand(
         text       = "\n\n### Comparison of {{COMPARISON}}\n",
-        COMPARISON = str_replace(string = x, pattern = "_", replacement = " ")
+        COMPARISON = stringr::str_replace(string = x, pattern = "_", replacement = " ")
       )
   volcano_plot <-
     knitr::knit_expand(

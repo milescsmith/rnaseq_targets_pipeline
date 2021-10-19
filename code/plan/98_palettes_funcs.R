@@ -16,7 +16,7 @@
 getRandomPalette <-
   function(
     n,
-    favored_palettes = NULL
+    favored_palettes = NULL,
     use_all_palettes = FALSE
     ){
 

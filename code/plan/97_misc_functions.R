@@ -131,95 +131,6 @@ plot_dispersion_estimate.DESeqDataSet <- function(object, CV = FALSE){
 }
 
 
-ident_clusters <- function(
-  expr_mat,
-  pca_explain_prop = 0.015,
-  optimal_k_method = "Tibs2001SEmax",
-  nstart = 25,
-  K.max = 50,
-  B = 100,
-  d.power = 2
-){
-
-  expr_mat <- expr_mat[,which(apply(expr_mat, 2, var) != 0)]
-
-  pca_res <-
-    irlba::prcomp_irlba(
-      x = expr_mat,
-      n = min(dim(expr_mat))-1,
-      center = TRUE,
-      scale. = TRUE
-      )
-
-  pca_res[["x"]] <-
-    magrittr::set_rownames(
-      x = pca_res[["x"]],
-      value = rownames(expr_mat)
-      )
-
-  message("Calculating random forest proximities...")
-  module_rf <-
-    randomForest::randomForest(
-      x = pca_res$x[,which(pca_res$sdev^2/(sum(pca_res$sdev^2)) >= pca_explain_prop)],
-      y = NULL,
-      prox = TRUE
-      )
-
-  rf_distance_mat <-
-    stats::dist(1 - module_rf$proximity) %>%
-    as.matrix()
-
-  message("Calculating gap statistic...")
-  kmeans_gap_stat <-
-    cluster::clusGap(
-      x          = rf_distance_mat,
-      FUNcluster = kmeans,
-      nstart     = nstart,
-      K.max      = min(nrow(rf_distance_mat), K.max+1)-1,
-      B          = B,
-      d.power    = d.power
-    )
-
-  message("determining optimal k...")
-  new_optimal_k <-
-    with(
-      data = kmeans_gap_stat,
-      expr = cluster::maxSE(
-        Tab[,"gap"],
-        Tab[,"SE.sim"],
-        method=optimal_k_method
-      )
-    )
-
-  message("Determining k clusters...")
-  k_clusters <-
-    stats::kmeans(
-      x       = rf_distance_mat,
-      centers = new_optimal_k,
-      nstart  = 25
-    )
-
-  sample_clusters <-
-    tibble::enframe(
-      x     = k_clusters[["cluster"]],
-      name  = "sample_name",
-      value = "cluster"
-    ) %>%
-    dplyr::mutate(
-      cluster = forcats::as_factor(cluster)
-    )
-
-  ret_values <-
-    list(
-      kmeans_res  = k_clusters,
-      rf_distance = rf_distance_mat,
-      clusters    = sample_clusters,
-      gap_stat    = kmeans_gap_stat
-    )
-
-  ret_values
-}
-
 targets_recode <- function(
   target_list,
   thing_to_unquote_splice
@@ -311,24 +222,26 @@ targets_recode <- function(
 #' @importFrom stringr str_replace str_replace_all
 #' @importFrom snakecase to_any_case
 #' @importFrom janitor warn_micro_mu
-make_clean_names <- function(string,
-                             case = "snake",
-                             replace=
-                               c(
-                                 "'"="",
-                                 "\""="",
-                                 "%"="_percent_",
-                                 "#"="_number_"
-                               ),
-                             ascii=TRUE,
-                             use_make_names=TRUE,
-                             # default arguments for snake_case::to_any_case
-                             sep_in = "\\.",
-                             transliterations = "Latin-ASCII",
-                             parsing_option = 1,
-                             numerals = "asis",
-                             allow_duplicates = FALSE,
-                             ...) {
+make_clean_names <- function(
+  string,
+  case             = "snake",
+  replace          =
+   c(
+     "'"="",
+     "\""="",
+     "%"="_percent_",
+     "#"="_number_"
+   ),
+  ascii            = TRUE,
+  use_make_names   = TRUE,
+  # default arguments for snake_case::to_any_case
+  sep_in = "\\.",
+  transliterations = "Latin-ASCII",
+  parsing_option   = 1,
+  numerals         = "asis",
+  allow_duplicates = FALSE,
+  ...
+  ) {
 
   # Handling "old_janitor" case for backward compatibility
   if (case == "old_janitor") {
