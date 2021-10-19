@@ -1419,7 +1419,7 @@ list(
     path          = "analysis/report.rmd",
     params        = list(
       set_author = "Miles Smith",
-      set_title  = "Shakedown run"
+      set_title  = "BLAST responders vs non-responders"
     ),
     output_dir    = "reports/",
     packages      =
@@ -1439,7 +1439,8 @@ list(
         "tidyselect",
         "purrr",
         "formattable",
-        "grid"
+        "grid",
+        "stringr"
     ),
     quiet = FALSE
   )
