@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] - 2021-10-19
+### Changed
+  - Moved `project_parameters.R` to the project root folder.
+  - Overhauled how clustering is performed.  Replaced using random forest
+   proximities and the gap statistic and am instead clustering directly
+   on a PCA of the variance-stabilized data (with the significant PCs
+   selected by either PCAtools::findElbowPoint or PCAtools::parallelPCA),
+   selecting the appropriate number of clusters by selecting the
+   highest **k** that yields clusters with a Jaccard stability score
+   above 0.6.
+### Fixed
+  - Fixed a few stray missing commas or package namespace declarations
+
 ## [2.8.0] - 2021-10-13
 ### Changed
   - Moved PCA of variance-stabilized data for clustering to be performed within
@@ -203,6 +216,10 @@ Pulling changes from updates added during BLAST analysis
   - Rearranged directory layout
   - Split analysis plan into parts
 
+[2.9.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.8.0...2.9.0
+[2.8.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.7.0...2.8.0
+[2.7.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.6.0...2.7.0
+[2.6.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.5.1...2.6.0
 [2.5.1]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.5.0...2.5.1
 [2.5.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.4.0...2.5.0
 [2.4.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.3.0...2.4.0

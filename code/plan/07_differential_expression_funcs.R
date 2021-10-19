@@ -663,18 +663,26 @@ deg_pathway_enrichment <-
 
 
 get_enrichment_fcs <- function(enrichResult, degResult){
-  genes_in_reactome <- slot(enrichResult[["reactome"]], "gene2Symbol")
-  genes_in_go       <- slot(enrichResult[["gene_ontology"]], "gene2Symbol")
 
-  reactome_lfc <-
-    degResult |>
-    dplyr::filter(gene %in% genes_in_reactome) |>
-    dplyr::pull(log2FoldChange, gene)
+  if (!is.null(enrichResult[["reactome"]])){
+    genes_in_reactome <- slot(enrichResult[["reactome"]], "gene2Symbol")
+    reactome_lfc <-
+      degResult |>
+      dplyr::filter(gene %in% genes_in_reactome) |>
+      dplyr::pull(log2FoldChange, gene)
+  } else {
+    reactome_lfc <- NULL
+  }
 
-  go_lfc <-
-    degResult |>
-    dplyr::filter(gene %in% genes_in_go) |>
-    dplyr::pull(log2FoldChange, gene)
+  if (!is.null(enrichResult[["gene_ontology"]])){
+    genes_in_go       <- slot(enrichResult[["gene_ontology"]], "gene2Symbol")
+    go_lfc <-
+      degResult |>
+      dplyr::filter(gene %in% genes_in_go) |>
+      dplyr::pull(log2FoldChange, gene)
+  } else {
+    go_lfc <- NULL
+  }
 
   list(
     gene_ontology = go_lfc,

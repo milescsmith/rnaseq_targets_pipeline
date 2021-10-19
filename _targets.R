@@ -1,11 +1,12 @@
 library(targets)
 library(tarchetypes)
 
-source("code/project_parameters.R")
+source("project_parameters.R")
 
 source("code/plan/01_import_funcs.R")
 source("code/plan/02_filtering_funcs.R")
 source("code/plan/04_module_funcs.R")
+source("code/plan/05_cluster_funcs.R")
 source("code/plan/06_dimensional_reduction_funcs.R")
 source("code/plan/07_differential_expression_funcs.R")
 source("code/plan/08_WGCNA_funcs.R")
@@ -24,11 +25,6 @@ future::plan(strategy = future::multisession)
 utils::globalVariables("where")
 
 list(
-
-  targets::tar_target(
-    name = comparison_groups,
-    command = project_params[["comparison_groups"]]
-  ),
 
   targets::tar_target(
     name = sample_species_org,
@@ -462,14 +458,15 @@ list(
     name = sample_cluster_info,
     command =
       ident_clusters(
-        expr_mat = t(vsc_exprs),
-        K.max = 20
+        expr_mat = vsc_exprs,
+        max_k = 15
       ),
     packages =
       c(
         "randomForest",
-        "cluster",
-        "stats",
+        "fpc",
+        "PCAtools",
+        "rlang",
         "tibble",
         "forcats",
         "dplyr",
@@ -623,12 +620,21 @@ list(
         "clusterProfiler",
         "dplyr",
         "ReactomePA"
-      )
+      ),
+    cue = targets::tar_cue("never")
   ),
 
   targets::tar_target(
     name = up_enrichment,
-    command = rlang::set_names(x = unnamed_up_enrichment, nm = names(res))
+    command =
+      rlang::set_names(
+        x = unnamed_up_enrichment,
+        nm = names(res)
+        ) |>
+      purrr::map(
+        .f = purrr::discard,
+        .p = is.null
+        )
   ),
 
   targets::tar_target(
@@ -677,12 +683,21 @@ list(
         "clusterProfiler",
         "dplyr",
         "ReactomePA"
-      )
+      ),
+    cue = targets::tar_cue("never")
   ),
 
   targets::tar_target(
     name = down_enrichment,
-    command = rlang::set_names(x = unnamed_down_enrichment, nm = names(res))
+    command =
+      rlang::set_names(
+        x = unnamed_down_enrichment,
+        nm = names(res)
+        ) |>
+      purrr::map(
+        .f = purrr::discard,
+        .p = is.null
+      )
   ),
 
   targets::tar_target(
@@ -924,6 +939,16 @@ list(
   ),
 
   targets::tar_target(
+    name = comparison_groups,
+    command =
+      purrr::keep(
+        .x = project_params[["comparison_groups"]],
+        .p = ~ length(unique(study_md[[.x]])) != 1
+      ),
+    packages = "purrr"
+  ),
+
+  targets::tar_target(
     name = unnamed_wgcna_rf_models,
     command   =
       rf_classifier(
@@ -948,27 +973,32 @@ list(
         "dials",
         "workflows",
         "tune"
-      )
+      ),
+  cue = targets::tar_cue("never")
   ),
 
   targets::tar_target(
     name = wgcna_rf_models,
-    command = rlang::set_names(x = unnamed_wgcna_rf_models, nm = comparison_groups),
+    command  =
+      rlang::set_names(
+        x    = unnamed_wgcna_rf_models,
+        nm   = comparison_groups
+        ),
     packages = "rlang"
   ),
 
   targets::tar_target(
     name = filtered_wgcna_module_genes,
-    command =
+    command       =
       dplyr::filter(
-        .data =
+        .data     =
           dplyr::mutate(
             .data = wgcna_module_genes,
             hugo  = HGNChelper::checkGeneSymbols(gene)[["Suggested.Symbol"]]
           ),
         !is.na(hugo)
       ),
-    packages =
+    packages      =
       c(
         "dplyr",
         "HGNChelper"
@@ -1014,8 +1044,8 @@ list(
     name = md_with_module_scores,
     command =
       dplyr::left_join(
-        x = module_scores,
-        y = tibble::as_tibble(
+        x   = module_scores,
+        y   = tibble::as_tibble(
           x        = annotation_info,
           rownames = "sample_name"
         )
