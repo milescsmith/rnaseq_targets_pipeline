@@ -62,7 +62,7 @@ tirosh_score_modules <- function(
   data_avg <- Matrix::rowMeans(x = expr_obj)
   data_avg <- data_avg[order(data_avg)]
   data_cut <-
-    cut_number(
+    ggplot2::cut_number(
       x = data_avg + rnorm(n = length(data_avg)) / 1e30,
       n = num_ctrls,
       labels = FALSE,

@@ -3,22 +3,22 @@ library(tarchetypes)
 
 source("project_parameters.R")
 
-source("code/plan/01_import_funcs.R")
-source("code/plan/02_filtering_funcs.R")
-source("code/plan/04_module_funcs.R")
-source("code/plan/05_cluster_funcs.R")
-source("code/plan/06_dimensional_reduction_funcs.R")
-source("code/plan/07_differential_expression_funcs.R")
-source("code/plan/08_WGCNA_funcs.R")
-source("code/plan/09_ml_funcs.R")
-source("code/plan/10_viral_transcript_funcs.R")
-source("code/plan/11_stats_testing_funcs.R")
-# source("code/plan/12_table_outputs.R")
-source("code/plan/13_pathways.R")
-source("code/plan/14_report_funcs.R")
-source("code/plan/97_misc_functions.R")
-source("code/plan/98_palettes_funcs.R")
-source("code/plan/99_output_funcs.R")
+source("code/01_import_funcs.R")
+source("code/02_filtering_funcs.R")
+source("code/04_module_funcs.R")
+source("code/05_cluster_funcs.R")
+source("code/06_dimensional_reduction_funcs.R")
+source("code/07_differential_expression_funcs.R")
+source("code/08_WGCNA_funcs.R")
+source("code/09_ml_funcs.R")
+source("code/10_viral_transcript_funcs.R")
+source("code/11_stats_testing_funcs.R")
+# source("code/12_table_outputs.R")
+source("code/13_pathways.R")
+source("code/14_report_funcs.R")
+source("code/97_misc_functions.R")
+source("code/98_palettes_funcs.R")
+source("code/99_output_funcs.R")
 
 options(tidyverse.quiet = TRUE)
 future::plan(strategy = future::multisession)
@@ -57,9 +57,11 @@ list(
         filter_value                  = project_params[["filter_value"]],
         extra_columns                 = project_params[["extra_columns"]],
         samples_to_exclude            = project_params[["manual_sample_removal"]],
-        extra_controls_metadata_file  = raw_metadata,
+        extra_controls_metadata_file  = project_params[["extra_controls_sample_sheet"]],
         extra_controls_metadata_sheet = project_params[["main_sample_sheet"]],
         extra_controls_metadata_skip  = project_params[["main_sample_sheet_skip"]],
+        extra_controls_ident_col      = project_params[["extra_controls_ident_col"]],
+        extra_controls_ident          = "Control",
         skip_lines                    = project_params[["skip_lines"]],
         control_group                 = project_params[["control_group"]]
       ),
@@ -103,12 +105,14 @@ list(
     format     = "file"
   ),
 
+  #### annot ####
   targets::tar_target(
     name = annot,
     command    = read_csv(annotation_file),
     packages   = "readr"
   ),
 
+  #### final_md ####
   targets::tar_target(
     name = final_md,
     command    =
@@ -129,6 +133,7 @@ list(
     cue = targets::tar_cue(mode = "never")
   ),
 
+  #### imported_data ####
   targets::tar_target(
     name = imported_data,
     command =
@@ -137,7 +142,7 @@ list(
         sample_metadata    = final_md,
         aligner            = project_params[["aligner"]],
         annotations        = annot,
-        minimum_gene_count = 1,
+        # minimum_gene_count = 1,
         removal_pattern    = "^RNA5",
         only_hugo          = project_params[["only_hugo_named_genes"]]
       ),
@@ -156,6 +161,7 @@ list(
     cue = targets::tar_cue(mode = "never")
   ),
 
+  #### processed_data ####
   targets::tar_target(
     name = processed_data,
     command = process_counts(
@@ -168,6 +174,8 @@ list(
       BPPARAM                      = BPPARAM,
       use_combat                   = project_params[["use_combat"]],
       minimum_gene_count           = project_params[["minimum_gene_count"]],
+      prune_majority_zero          = TRUE,
+      sva_control_genes            = project_params[["sva_control_genes"]],
       num_sva                      = project_params[["sva_num"]],
       method                       = project_params[["process_method"]],
       control_group                = project_params[["control_group"]]
@@ -459,7 +467,8 @@ list(
     command =
       ident_clusters(
         expr_mat = vsc_exprs,
-        max_k = 15
+        max_k = 10,
+        sig_pc_method = "horn"
       ),
     packages =
       c(
@@ -546,6 +555,8 @@ list(
 
   # TODO: {targets} should be able to handle mapping
   # the comparison list to the function instead of us mapping it
+
+  #### res ####
   targets::tar_target(
     name = res,
     command =
@@ -554,6 +565,7 @@ list(
         method                       = project_params[['process_method']],
         object                       = dataset_with_scores,
         comparison_grouping_variable = project_params[["comparison_grouping_variable"]],
+        shrink_lfc                   = project_params[["shrink_lfc"]],
         BPPARAM                      = project_params[["BPPARAM"]],
         design                       = processed_data[['design_matrix']]
       ),
@@ -634,13 +646,17 @@ list(
       purrr::map(
         .f = purrr::discard,
         .p = is.null
-        )
+        ) |>
+      purrr::map(
+        .f = purrr::discard,
+        .p = empty_enrichment
+      )
   ),
 
   targets::tar_target(
     name = unnamed_up_enrichment_degs,
     command =
-      if(!is.null(up_enrichment[[1]][[1]])){
+      if(!is.null(unlist(up_enrichment))){
         get_enrichment_fcs(
           enrichResult = up_enrichment[[res_length]],
           degResult = res[[res_length]]
@@ -697,13 +713,17 @@ list(
       purrr::map(
         .f = purrr::discard,
         .p = is.null
+      ) |>
+      purrr::map(
+        .f = purrr::discard,
+        .p = empty_enrichment
       )
   ),
 
   targets::tar_target(
     name = unnamed_down_enrichment_degs,
     command =
-      if(!is.null(down_enrichment[[1]][[1]])){
+      if(!is.null(unlist(down_enrichment))){
           get_enrichment_fcs(
             enrichResult = down_enrichment[[res_length]],
             degResult = res[[res_length]]

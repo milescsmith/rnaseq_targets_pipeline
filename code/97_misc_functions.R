@@ -415,3 +415,11 @@ findOrgDb <- function(target_species = "human"){
 is_null_list <- function(x) {
   identical(x, list())
 }
+
+is_empty <- function(x) {
+  if (length(x) == 0){
+    TRUE
+  } else {
+    FALSE
+  }
+}

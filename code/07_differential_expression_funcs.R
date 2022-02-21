@@ -26,28 +26,45 @@ create_results_list.DESeqDataSet <- function(
   object,
   comparison_grouping_variable,
   design = NULL,
+  shrink_lfc = TRUE,
   BPPARAM = bpparam(),
   ...
   ){
-  purrr::map(comparison_list, function(i) {
-    message(paste("Now comparing", i))
-    DESeq2::lfcShrink(
-      dds      = object,
-      coef     = i,
-      parallel = TRUE,
-      type     = "apeglm",
-      apeAdapt = TRUE,
-      BPPARAM  = BiocParallel::SnowParam(type = "SOCK", progressbar = TRUE),
-      quiet    = FALSE
-      ) %>%
-    tibble::as_tibble(rownames="gene")
-  }) %>%
-    rlang::set_names(
-      purrr::map_chr(
-        comparison_list,
-        stringr::str_remove,
-        pattern = paste0(comparison_grouping_variable, "_")
-      )
+  {
+    if (isTRUE(shrink_lfc)){
+      purrr::map(comparison_list, function(i) {
+        message(paste("Now comparing", i))
+        DESeq2::lfcShrink(
+          dds      = object,
+          coef     = i,
+          parallel = TRUE,
+          type     = "apeglm",
+          apeAdapt = TRUE,
+          BPPARAM  = BiocParallel::SnowParam(type = "SOCK", progressbar = TRUE),
+          quiet    = FALSE
+          ) %>%
+          tibble::as_tibble(rownames="gene")
+        })
+    } else {
+      purrr::map(comparison_list, function(i) {
+        message(paste("Now comparing", i))
+        DESeq2::results(
+          object        = object,
+          name          = i,
+          pAdjustMethod = "fdr",
+          parallel      = TRUE,
+          BPPARAM       = BiocParallel::SnowParam(type = "SOCK", progressbar = TRUE),
+        ) %>%
+          tibble::as_tibble(rownames="gene")
+      })
+    }
+  } %>%
+  rlang::set_names(
+    purrr::map_chr(
+      comparison_list,
+      stringr::str_remove,
+      pattern = paste0(comparison_grouping_variable, "_")
+    )
   )
 }
 
@@ -179,7 +196,7 @@ create_results_list.limma <- function(
       )
 
   comparisons <-
-    purrr::map(
+    purrr::map_chr(
       .x = comparison_list,
       .f = \(x)
         stringr::str_split(
@@ -191,11 +208,11 @@ create_results_list.limma <- function(
         paste0(comparison_grouping_variable, .)
     )
 
-  efit <- eBayes(fit)
+  efit <- limma::eBayes(fit)
 
   purrr::map2(
-    .x = colnames(contra_matrix),
-    .y = coeff,
+    .x = comparisons,
+    .y = colnames(design)[which(!colnames(design) %in% c("(Intercept)", grep(x = colnames(design), pattern = "^SV", value = TRUE)))],
     .f = \(i, j) {
       message(glue::glue("Performing DEG for {i}..."))
       limma::topTreat(
@@ -608,8 +625,8 @@ deg_pathway_enrichment <-
     filtered_results <-
       switch(
         EXPR = direction,
-        up   = dplyr::filter(.data = results, padj < fcPvalue, log2FoldChange > fcThreshold),
-        down = dplyr::filter(.data = results, padj < fcPvalue, log2FoldChange > -(fcThreshold))
+        up   = dplyr::filter(.data = results, padj <= fcPvalue, log2FoldChange >= fcThreshold),
+        down = dplyr::filter(.data = results, padj <= fcPvalue, log2FoldChange >= -(fcThreshold))
       )
 
     # Technically, the enrich-series of functions work with gene symbols,

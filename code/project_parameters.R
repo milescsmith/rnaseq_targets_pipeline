@@ -22,7 +22,10 @@ project_params = list(
   skip_lines                      = 0,
   main_sample_list                = "metadata/NovaSeq_Sample_List.xlsx",
   main_sample_sheet               = NULL,
-  main_sample_sheet_skip          = 1,
+  main_sample_sheet_skip          = 0,
+  extra_controls_sample_sheet     = "metadata/NovaSeq_Sample_List.xlsx",
+  extra_controls_ident_col        = "Disease_Class",
+  extra_controls_iden             = "control",
   annotation_file                 = "references/gencode_v32_virus_tx2gene_v1.2.csv",
 
   #### Metadata columns ####

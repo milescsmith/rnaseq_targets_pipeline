@@ -307,3 +307,12 @@ grouped_complex_heatmap <- function(
     heatmap_legend_list = list(lgd)
   )
 }
+
+empty_enrichment <- function(er){
+  sig_er <- dplyr::filter(er@result, p.adjust <= er@pvalueCutoff)
+  if (nrow(sig_er) > 0){
+    FALSE
+  } else {
+    TRUE
+  }
+}

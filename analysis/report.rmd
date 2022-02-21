@@ -47,8 +47,8 @@ comparison_grouping_variable <-
   project_params[["comparison_grouping_variable"]]
 diffused_comparison <- rlang::sym(comparison_grouping_variable)
 diffused_comparison <- rlang::enquo(diffused_comparison)
-source("code/project_parameters.R")
-source("code/plan/14_report_funcs.R")
+source("project_parameters.R")
+source("code/14_report_funcs.R")
 ```
 
 ```{r}

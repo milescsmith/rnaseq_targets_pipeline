@@ -1,6 +1,7 @@
 ident_clusters <- function(
   expr_mat,
   sig_pc_method = c("elbow", "horn"),
+  bootmethod = "bojit",
   max_k = 10,
   ...
 ){
@@ -24,14 +25,22 @@ ident_clusters <- function(
       horn = PCAtools::parallelPCA(mat = expr_mat)[["n"]]
     )
 
+  if (max_k >= nrow(pca_res[["rotated"]])){
+    message("max_k was set to a value higher than the ",
+            "number of samples, while k *must* be less ",
+            "than the number of samples minus 1. ",
+            "Adjusting max_k...")
+    max_k <- nrow(pca_res[["rotated"]])-1
+  }
 
   cbs <- future.apply::future_lapply(
     X = seq(2,max_k),
     FUN = \(y) {
       fpc::clusterboot(
         data          = pca_res[["rotated"]][,1:pcs_use],
-        clustermethod = claraCBI,
-        k             = y
+        clustermethod = fpc::claraCBI,
+        k             = y,
+        bootmethod    = "bojit"
       )
     }
   )
@@ -43,15 +52,15 @@ ident_clusters <- function(
       purrr::imap_lgl(
         .x = cbs,
         .f = \(x, y) {
-          all(cbs[[y]][["bootmean"]] > 0.6)
+          all(cbs[[y]][["bojitmean"]] > 0.6)
           }
         )
-      ) |>
-    
-    if (length(optimal_k == 0)){
-      sample_clusters <- 
-        tibble(
-          sample_name = colnames(expr_mat)
+      )
+
+    if (length(optimal_k) == 0){
+      sample_clusters <-
+        tibble::tibble(
+          sample_name = colnames(expr_mat),
           cluster     = 1
         )
     } else {
@@ -61,7 +70,7 @@ ident_clusters <- function(
         tibble::enframe(
           name  = "sample_name",
           value = "cluster"
-        ) %>%
+        ) |>
         dplyr::mutate(
           cluster = forcats::as_factor(cluster)
         )
@@ -70,7 +79,7 @@ ident_clusters <- function(
   ret_values <-
     list(
       kmeans_res     = cbs,
-      k              = max(optimal_k),
+      k              = max(optimal_k) + 1,
       clusters       = sample_clusters
     )
 

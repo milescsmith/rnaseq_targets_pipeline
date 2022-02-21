@@ -15,7 +15,7 @@ c2_react_mat <-
   column_to_rownames("gene") %>%
   as.matrix()
 
-plier_c2_react <- PLIER(vsd_exprs, c2_react_mat)
+plier_c2_react <- PLIER(vsc_exprs, c2_react_mat)
 pheatmap::pheatmap(
   mat = t(plier_c2_react$B)[sample_disease_order,],
   scale="column",

@@ -4,7 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.0] - 2022-02-21
+
+### Fixed
+  - Trying to use non-project controls no longer fails to actually add the controls
+   due to a grouping column not being present in in the metadata; instead, all
+   missing columns are added to the metadata for the controls.  Also added
+   options to specify which columns to use in determining what samples are
+   controls.
+
 ## [2.9.0] - 2021-10-19
+
 ### Changed
   - Moved `project_parameters.R` to the project root folder.
   - Overhauled how clustering is performed.  Replaced using random forest
@@ -14,10 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    selecting the appropriate number of clusters by selecting the
    highest **k** that yields clusters with a Jaccard stability score
    above 0.6.
+   
 ### Fixed
   - Fixed a few stray missing commas or package namespace declarations
 
 ## [2.8.0] - 2021-10-13
+
 ### Changed
   - Moved PCA of variance-stabilized data for clustering to be performed within
   the `ident_clusters()` function.  Added a "pca_explain_prop" argument to control
@@ -35,10 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   data is used (instead of impliciting casting it to a vector)
 
 ## [2.7.0] - 2021-10-13
+
 ### Fixed
   - Several fixes for empty enrichment lists
 
 ## [2.6.0] - 2021-10-01
+
 ### Changed
   - More `%>%` to `|>` replacements
   - Added "extra_controls_metadata_sheet" and "extra_controls_metadata_skip" so that
@@ -53,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `read_md_file` now properly uses the "skip_lines" parameter
 
 ## [2.5.1] - 2021-09-29
+
 ### Added
   - parameter for including extra columns from the metadata file
 
@@ -62,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     file is an Excel spreadsheet
 
 ## [2.5.0] - 2021-09-29
+
 ### Added
   - Gene ontology and Reactome pathway enrichment analysis for differentially
     expressed genes
@@ -71,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 ## [2.4.0] - 2021-09-27
+
 ### Changed
   - Removed {pheatmap}-based heatmaps in favor of {ComplexHeatmap}
   
@@ -79,6 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixes for `groupedComplexHeatmap()` and `comparisonComplexHeatmap()`
 
 ## [2.3.0] - 2021-09-24
+
 ### Added 
   - The function `DimPlotHull` to handle PCA and UMAP plotting
   - The function `groupedComplexHeatmap` to handle heatmap plotting where the data is
@@ -122,6 +140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `getRandomPalette` now actually checks to see if one of the preferred palettes will work,
 
 ## [2.2.0] - 2021-09-02
+
 ### Added
   - No longer need to create palettes manually thanks to the new `generatePalettes`
     function
@@ -189,6 +208,7 @@ Pulling changes from updates added during BLAST analysis
 
 
 ## [1.2.0] - 2021-08-??
+
 ### Changed
   - Separated import of count files from processing of counts
   - Started adding package namespace declarations in front of 
@@ -198,6 +218,7 @@ Pulling changes from updates added during BLAST analysis
   - Pipeline up to `sva_graph_data` target
 
 ## [1.1.0] - 2021-04-22
+
 ### Changed
   - Switched to using a generic metadata template instead of trying to 
     customize the import_metadata function for each new dataset.
@@ -207,6 +228,7 @@ Pulling changes from updates added during BLAST analysis
 
 
 ## [1.0.0] - 2021-03-08
+
 ### Added
   - Started project
   - CHANGELOG.md
@@ -216,6 +238,7 @@ Pulling changes from updates added during BLAST analysis
   - Rearranged directory layout
   - Split analysis plan into parts
 
+[2.10.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.9.0...2.10.0
 [2.9.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.8.0...2.9.0
 [2.8.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.7.0...2.8.0
 [2.7.0]: https://github.com/milescsmith/rnaseq_targets_pipeline/compare/2.6.0...2.7.0

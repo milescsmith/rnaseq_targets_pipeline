@@ -12,6 +12,8 @@ import_metadata <- function(
   extra_controls_metadata_file  = NULL,
   extra_controls_metadata_sheet = "main",
   extra_controls_metadata_skip  = NULL,
+  extra_controls_ident_col      = NULL,
+  extra_controls_ident          = "control",
   groups_to_include             = NULL,
   groups_to_exclude             = NULL,
   projects_to_include           = NULL,
@@ -30,6 +32,13 @@ import_metadata <- function(
 
   diffused_project <- rlang::sym(project_column)
   diffused_project <- rlang::enquo(diffused_project)
+
+  if (!is.null(extra_controls_ident_col)){
+    diffused_control_col_sym <- rlang::sym(extra_controls_ident_col)
+    diffused_control_col_sym <- rlang::enquo(diffused_control_col_sym)
+  } else {
+    diffused_control_col_sym <- diffused_comparison_sym
+  }
 
   study_metadata <-
     read_md_file(
@@ -79,8 +88,9 @@ import_metadata <- function(
         sheet = extra_controls_metadata_sheet,
         skip = extra_controls_metadata_skip
       ) |>
+      dplyr::filter({{diffused_control_col_sym}} == extra_controls_ident) |>
       dplyr::select(
-        all_of(
+        any_of(
           c(
             sample_name_column,
             grouping_column,
@@ -89,8 +99,21 @@ import_metadata <- function(
             filter_column
           )
         )
-      ) |>
+      )
+
+    if (!all(names(study_metadata) %in% names(non_project_controls))){
+      missing_columns <- names(study_metadata)[!names(study_metadata) %in% names(non_project_controls)]
+      for (x in missing_columns) {
+        non_project_controls <- add_column(non_project_controls, {{x}} := "NA")
+      }
+      if (comparison_grouping_variable %in% missing_columns){
+        non_project_controls[[comparison_grouping_variable]] <- "control"
+      }
+    }
+
+    non_project_controls <-
       dplyr::mutate(
+        .data = non_project_controls,
         dplyr::across(
           where(is.character) & -sample_name_column,
           forcats::as_factor
@@ -99,12 +122,8 @@ import_metadata <- function(
           make_clean_names(
             string = {{diffused_sample_name}},
             case = "all_caps"
-          ),
-        {{diffused_comparison_sym}} :=
-          tolower({{diffused_comparison_sym}}) |>
-          make_clean_names(allow_duplicates = TRUE)
-      ) |>
-      dplyr::filter({{diffused_comparison_sym}} == "control")
+          )
+      )
 
     study_metadata <-
       dplyr::bind_rows(
@@ -118,7 +137,7 @@ import_metadata <- function(
           dplyr::filter(
             .data = study_metadata,
             filter_column > filter_value
-            )
+          )
       } else if (is.character(filter_value)){
         study_metadata <-
           dplyr::filter(
@@ -133,7 +152,10 @@ import_metadata <- function(
 }
 
 
-import_counts <- function(directory, metadata){
+import_counts <- function(
+  directory,
+  metadata
+  ){
 
   tx_files <-
     dir(
@@ -169,7 +191,7 @@ prep_data_import <- function(
   sample_metadata,
   annotations,
   aligner            = "salmon",
-  minimum_gene_count = 1,
+  # minimum_gene_count = 1,
   removal_pattern    = "^RNA5",
   only_hugo          = TRUE
 ){
@@ -199,17 +221,18 @@ prep_data_import <- function(
       importer = data.table::fread
     )
 
-  message(glue::glue("Filtering genes with fewer than {minimum_gene_count} reads"))
-  genes_with_passing_counts <-
-    counts[["counts"]] |>
-    tibble::as_tibble(rownames = "gene_symbol") |>
-    dplyr::mutate(
-      rowsum = rowSums(dplyr::across(where(is.numeric)))
-    ) |>
-    dplyr::filter(
-      rowsum > minimum_gene_count
-    ) |>
-    dplyr::pull(gene_symbol)
+  # message(glue::glue("Filtering genes with fewer than {minimum_gene_count} reads"))
+  # genes_with_passing_counts <-
+  #   counts[["counts"]] |>
+  #   tibble::as_tibble(rownames = "gene_symbol") |>
+  #   dplyr::mutate(
+  #     across(.cols = where(is.numeric), .fns = as.integer),
+  #     rowsum = rowSums(dplyr::across(where(is.numeric)))
+  #   ) |>
+  #   dplyr::filter(
+  #     rowsum > minimum_gene_count
+  #   ) |>
+  #   dplyr::pull(gene_symbol)
 
   filtered_counts <-
     purrr::map(
@@ -218,11 +241,8 @@ prep_data_import <- function(
         cleaned_counts <-
           counts[[x]] |>
           tibble::as_tibble(rownames = "gene_symbol") |>
-          dplyr::mutate(
-            hugo = HGNChelper::checkGeneSymbols(gene_symbol)[["Suggested.Symbol"]]
-          ) |>
           dplyr::filter(
-            gene_symbol %in% genes_with_passing_counts,
+            # gene_symbol %in% genes_with_passing_counts,
             stringr::str_detect(
               string = gene_symbol,
               pattern = removal_pattern,
@@ -232,6 +252,9 @@ prep_data_import <- function(
 
         if (isTRUE(only_hugo)){
           cleaned_counts <-
+            dplyr::mutate(
+              hugo = HGNChelper::checkGeneSymbols(gene_symbol)[["Suggested.Symbol"]]
+            ) |>
             dplyr::filter(
               .data = cleaned_counts,
               !is.na(hugo)
@@ -248,22 +271,24 @@ prep_data_import <- function(
             as.matrix()
         } else {
           cleaned_counts <-
-            dplyr::mutate(
-              .data = cleaned_counts,
-              gene_symbol =
-                dplyr::if_else(
-                  condition = is.na(hugo),
-                  true = gene_symbol,
-                  false = hugo
-                )
-            ) |>
-            dplyr::select(
-              -hugo
-            ) |>
-            dplyr::group_by(gene_symbol) |>
-            dplyr::mutate(across(where(is.numeric), sum)) |>
-            dplyr::slice(1) |>
-            dplyr::ungroup() |>
+            cleaned_counts |>
+            # dplyr::mutate(
+            #   .data = cleaned_counts,
+            #   gene_symbol =
+            #     dplyr::if_else(
+            #       condition = is.na(hugo),
+            #       true = gene_symbol,
+            #       false = hugo
+            #     )
+            # ) |>
+            # dplyr::select(
+            #   -hugo
+            # ) |>
+            # dplyr::group_by(gene_symbol) |>
+            # dplyr::mutate(across(where(is.numeric), sum)) |>
+            # dplyr::slice(1) |>
+            # dplyr::ungroup() |>
+            dplyr::mutate(across(-matches("gene_symbol"), as.numeric)) |>
             tibble::column_to_rownames("gene_symbol") |>
             as.matrix()
         }
@@ -501,6 +526,7 @@ process_counts.limma <-
     BPPARAM                      = BPPARAM,
     use_combat                   = FALSE,
     num_sva                      = 2,
+    sva_control_genes            = NULL,
     minimum_gene_count           = 1,
     control_group                = "control",
     ...
@@ -551,14 +577,14 @@ process_counts.limma <-
         group        = sample_grouping,
         lib.size     = eff.lib,
         remove.zeros = TRUE
-      ) |>
+      ) %>%
       edgeR::scaleOffset(
         # y = .,
         offset = normMat[rownames(.[["counts"]]),]
-      ) |>
+      ) %>%
       magrittr::extract(
         edgeR::filterByExpr(
-          # y               = .,
+          y               = .,
           group           = sample_grouping,
           keep.lib.sizes  = FALSE,
           min.count       = minimum_gene_count,
@@ -621,9 +647,10 @@ process_counts.limma <-
     message("Running surrogate variable analysis...")
     sva_res <-
       calc_sva(
-        object       = pre_sva_dge,
-        model_design = study_design,
-        n.sva        = num_sva
+        object        = pre_sva_dge,
+        model_design  = study_design,
+        n.sva         = num_sva,
+        control_genes = sva_control_genes
       )
 
     post_qc_dge <-
@@ -767,6 +794,7 @@ process_counts.edgeR <-
     BPPARAM                      = BPPARAM,
     use_combat                   = FALSE,
     num_sva                      = 2,
+    sva_control_genes            = NULL,
     minimum_gene_count           = 1,
     control_group                = "control",
     ...
@@ -964,7 +992,9 @@ process_counts.deseq2 <-
     BPPARAM                      = BPPARAM,
     use_combat                   = FALSE,
     minimum_gene_count           = 1,
+    prune_majority_zero          = FALSE,
     num_sva                      = 2,
+    sva_control_genes            = NULL,
     ...
   ){
 
@@ -978,7 +1008,27 @@ process_counts.deseq2 <-
         txi     = imported_counts[["counts"]],
         colData = imported_counts[["metadata"]],
         design  = study_design
-      )
+      ) %>%
+      magrittr::extract(rowSums(counts(.)) > minimum_gene_count, )
+
+    if (isTRUE(prune_majority_zero)){
+      nsamples <- ncol(dds_import)
+      majority_non_zero_genes <-
+        DESeq2::counts(dds_import) |>
+        tibble::as_tibble(rownames="gene") |>
+        tidyr::pivot_longer(
+          -gene,
+          names_to = "sample_name",
+          values_to = "expr"
+          ) |>
+        dplyr::filter(expr != 0) |>
+        dplyr::group_by(gene) |>
+        dplyr::count() |>
+        dplyr::filter(n >= nsamples/2) |>
+        dplyr::pull(gene)
+
+      dds_import <- dds_import[majority_non_zero_genes,]
+    }
 
     if (isTRUE(use_combat)){
       message("Running ComBat...")
@@ -1021,7 +1071,8 @@ process_counts.deseq2 <-
       calc_sva(
         object = dds,
         model_design = study_design,
-        n.sva = num_sva
+        n.sva = num_sva,
+        control_genes = sva_control_genes
       )
 
     sva_graph_data <- sva_res[["sva"]]
@@ -1071,7 +1122,8 @@ calc_sva.DESeqDataSet <-
   function(
     object,
     model_design = NULL,
-    n.sva = NULL
+    n.sva = NULL,
+    control_genes = NULL
     ){
 
     if (is.null(model_design)){
@@ -1103,7 +1155,17 @@ calc_sva.DESeqDataSet <-
 
   mod0 <- model.matrix(~ 1, SummarizedExperiment::colData(object))
 
-  svseq <- sva::svaseq(filtered_dat, mod, mod0, n.sv = n.sva)
+  if (is.null(control_genes)){
+    svseq <- sva::svaseq(filtered_dat, mod, mod0, n.sv = n.sva, method = "irw")
+  } else {
+    if (!all(control_genes %in% rownames(filtered_dat))){
+      control_genes <- control_genes[which(control_genes %in% rownames(filtered_dat))]
+      message(paste("Not all provided control genes are present in the data. Using those that were found:", paste(control_genes, collapse = ", ")))
+    }
+    control_prob <- as.integer(rownames(filtered_dat) %in% control_genes)
+    svseq <- sva::svaseq(filtered_dat, mod, mod0, n.sv = n.sva, method = "supervised", controls = control_prob)
+  }
+
 
   colnames(svseq$sv) <- paste0("SV", seq(ncol(svseq$sv)))
 
@@ -1134,7 +1196,7 @@ calc_sva.DESeqDataSet <-
     DESeq2::estimateSizeFactors(
       object = object,
       type = "ratio",
-      locfunc = genefilter::shorth,
+      #locfunc = genefilter::shorth,
       quiet = FALSE
       )
 
@@ -1142,7 +1204,7 @@ calc_sva.DESeqDataSet <-
   object <-
     DESeq2::estimateDispersions(
       object = object,
-      fitType = "glmGamPoi",
+      #fitType = "glmGamPoi",
       quiet = FALSE
       # modelMatrix = mm
     )
@@ -1190,7 +1252,8 @@ calc_sva.DGEList <-
     object,
     model_design = NULL,
     batch_var = NULL,
-    n.sva = 2
+    n.sva = 2,
+    control_genes = NULL
     ){
 
   batch_var <- batch_var %||% 1
@@ -1202,6 +1265,31 @@ calc_sva.DGEList <-
       mod0 = model.matrix(as.formula(paste("~", 1)), object[["samples"]]),
       n.sv = n.sva
     )
+
+  if (is.null(control_genes)){
+    svseq <-
+      sva::svaseq(
+        dat = object[["counts"]],
+        mod = model.matrix(as.formula(model_design), object[["samples"]]),
+        mod0 = model.matrix(as.formula(paste("~", 1)), object[["samples"]]),
+        n.sv = n.sva
+      )
+  } else {
+    if (!all(control_genes %in% rownames(filtered_dat))){
+      control_genes <- control_genes[which(control_genes %in% rownames(filtered_dat))]
+      message(paste("Not all provided control genes are present in the data. Using those that were found:", paste(control_genes, collapse = ", ")))
+    }
+    control_prob <- as.integer(rownames(filtered_dat) %in% control_genes)
+    svseq <-
+      sva::svaseq(
+        dat = object[["counts"]],
+        mod = model.matrix(as.formula(model_design), object[["samples"]]),
+        mod0 = model.matrix(as.formula(paste("~", 1)), object[["samples"]]),
+        n.sv = n.sva,
+        method = "supervised",
+        controls = control_prob
+      )
+  }
 
   svseq[["sv"]] <-
     rlang::set_names(

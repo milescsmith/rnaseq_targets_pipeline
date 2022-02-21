@@ -624,8 +624,10 @@ groupedComplexHeatmap <- function(
   annotation_palettes,
   row_grouping        = NULL,
   row_annotation      = NULL,
+  row_fontsize        = 9,
   col_grouping        = NULL,
   col_annotation      = NULL,
+  col_fontsize        = 9,
   scale_exprs         = TRUE,
   silent              = FALSE,
   ...
@@ -877,10 +879,11 @@ groupedComplexHeatmap <- function(
     top_annotation = col_annotation_data,
     name = "Expression\nZ-score",
     row_title_gp = grid::gpar(fontsize = 9),
-    row_names_gp = grid::gpar(fontsize = 9),
-    column_title_gp = grid::gpar(fontsize = 9),
+    row_names_gp = grid::gpar(fontsize = row_fontsize),
+    column_title_gp = grid::gpar(fontsize = col_fontsize, lwd = 100),
     column_title_rot = 90,
-    column_names_gp = grid::gpar(fontsize = 9),
+
+    column_names_gp = grid::gpar(fontsize = col_fontsize),
     ...
   )
 }
