@@ -1,0 +1,10 @@
+$\beta_{ir}$ the logarithmic fold change for gene $\ i$ and covariate $\ r$
+
+$\beta_{c}^{i}$ = $\overline c^{t}$ $\overline{\beta}_{i}$
+
+$\overline c$  represents a numeric contrast, e.g., 1 and −1 specifying the numerator and denominator of a simple two-level contrast
+
+$\sum_{i}$ = Cov $\overline{x}_{i}$
+
+
+res$lfcSE <- log2(exp(1)) * fit$sd[,coefNum]

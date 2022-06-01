@@ -1,0 +1,14 @@
+```{r, fig.width=6, fig.height=12}
+groupedHeatMap(
+    expr_mat            = {{DATASET}},
+    gene_list           = {{VARIABLE_LIST}},
+    md                  = {{METADATA}},
+    annotation_palettes = {{PALETTES}},
+    row_grouping        = "{{ROW_GROUPING}}",
+    row_annotation      = {{ROW_ANNOTATION}},
+    col_grouping        = "{{COL_GROUPING}}",
+    col_annotation      = {{COL_ANNOTATION}},
+    scale_exprs         = {{SCALE}},
+    scale               = "column"
+    )
+```
