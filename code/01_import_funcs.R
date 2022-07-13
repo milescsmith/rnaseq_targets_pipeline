@@ -175,7 +175,7 @@ import_counts <- function(
     stringr::str_split(pattern = "/") |>
     purrr::map_chr(\(x) purrr::pluck(.x = x, length(x)-1)) |>
     stringr::str_remove(pattern = '(_[L|S][[:digit:]]+)+') |>
-    make_clean_names(case = "all_caps")
+    janitor::make_clean_names(case = "all_caps")
 
   tx_files <-
     rlang::set_names(
